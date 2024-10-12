@@ -1,0 +1,3 @@
+#!/bin/bash
+
+gcc -Wall -Wextra -pedantic mvdir.c && valgrind -s --tool=memcheck --leak-check=full --track-origins=yes ./a.out

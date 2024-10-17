@@ -113,8 +113,8 @@ void mvprog_read_dir(MVPROG_INTTYPE fd) {
 	DIR *dir = NULL;
 	struct dirent *entry;
 	static char *c_entry_name;
-	static char *cwd = (char *)0;
-	static unsigned char alloc_mem = FALSE;
+	static char *cwd = (char *)NULL;
+	static ssize_t alloc_mem = 0;
 	struct stat statbuf __attribute__((unused));
 	static int efd __attribute__((unused));
 	static int recursive_count = 0;
@@ -128,17 +128,18 @@ void mvprog_read_dir(MVPROG_INTTYPE fd) {
 		}
 #define RECURSIVELY_CALL_MVPROG_READ_DIR(...)							\
 		if (!alloc_mem) {												\
-			if ((cwd = (char *)malloc(1024)) == NULL) {					\
+			if ((cwd = (char *)malloc(PATH_MAX)) == NULL) {					\
 				fprintf(stderr, "malloc: could not allocate memory");	\
 				exit(MVPROG_FAILURE);									\
 			}															\
-			alloc_mem = TRUE;											\
+			alloc_mem = PATH_MAX;											\
 		}																\
 		/* store current working directory in cwd */					\
-		MVPROG_PERROR_RET((getcwd(cwd, 1024) == NULL), "getcwd");		\
+		MVPROG_PERROR_RET((getcwd(cwd, alloc_mem) == NULL), "getcwd"); \
 		/* temporarily change directory to fd to directly access c_entry_name */ \
 		MVPROG_PERROR_RET(fchdir(fd), "fchdir");						\
-		MVPROG_PERROR_RET(((efd = open(c_entry_name, O_DIRECTORY, S_IRWXU | S_IRGRP | S_IWGRP | S_IROTH)) && (errno != EEXIST)), "open"); \
+		efd = open(c_entry_name, O_DIRECTORY, S_IRWXU | S_IRGRP | S_IWGRP | S_IROTH);\
+		MVPROG_PERROR_RET((efd == -1) && (errno != EEXIST), "open");	\
 		recursive_count += 1;											\
 		/* recursively call function */									\
 		MVPROG_RECALL_FUNC(mvprog_read_dir, efd);						\
@@ -158,7 +159,7 @@ void mvprog_read_dir(MVPROG_INTTYPE fd) {
 		}
 #endif
 		else
-			fprintf(stdout, "%s\n", c_entry_name);
+			(void)0;//puts(c_entry_name);
 	}
 
 	if (recursive_count != 0) {
@@ -174,10 +175,77 @@ void mvprog_read_dir(MVPROG_INTTYPE fd) {
 			perror("closedir");
 	}
 }
+#define mvprog_rdpath_macro(dir) mvprog_rdpath(dir, 0)
+int mvprog_rdpath(char *dir) {
+	struct dirent *entry;
+	ssize_t plen = 0;
+	static ssize_t blen = 0, len = 0;
+	DIR *pdir;
+	char *c_entry;
+	static char *dir_buf = NULL;
+	char *dm;
+
+	if (dir == NULL || *dir == 0)
+		return -1;
+
+	pdir = opendir(dir);
+	if (pdir == NULL) {
+		perror("opendir");
+		return -1;
+	}
+
+	errno = 0;
+	while ((entry = readdir(pdir))) {
+		c_entry = entry->d_name;
+
+		if (S_DOTREF_2DOTREF(c_entry)) {
+			continue;
+		}
+#if defined(_BSD_SOURCE) || defined(_DIRENT_HAVE_D_TYPE)
+		if (entry->d_type == DT_DIR) {
+			if (dir_buf == NULL) {
+				blen = len = (plen = strlen(dir)) + strlen(c_entry) + 2;
+				dir_buf = malloc(blen);
+
+				if (dir_buf == NULL) {
+					errno = ENOMEM;
+					perror("mvprog>malloc");
+					blen = len = plen = 0;
+					continue;
+				}
+				if (strcpy(dir_buf, dir) == NULL) {
+					plen = len = 0;
+				strgerr:
+					fprintf(stderr, "mvprog>strcpy: cannot copy filename %s\n", c_entry);
+					continue;
+				}
+				if ((*dir == '/' && plen != 1) || dir[len - 1] != '/' || TRUE) {
+					dir_buf[len++] = '/';
+					plen += 1;
+				}
+			}
+			else {
+				len += strlen(c_entry);
+			}
+			if (blen < len) {
+				if (realloc(dir_buf, len - blen) == NULL) {
+					errno = ENOMEM;
+					perror("mvprog>realloc");
+					len = plen;
+					continue;
+				}
+				blen = len;
+			}
+			if (strcpy(dir_buf + plen, c_entry) == NULL) {
+				len = plen;
+				goto strgerr;
+			}
+		}
+#endif
+	}
+}
 MVPROG_INTTYPE main(int argc __attribute__((unused)), char **argv __attribute__((unused))) {
 	int fd;
-	ssize_t s __attribute__((unused)) = 0;
-	char *p = 0;
 	if (mkdir("newdir", S_IRWXU | S_IRGRP) && (errno != EEXIST)) {
 		perror("");
 		exit(-1);
@@ -186,17 +254,11 @@ MVPROG_INTTYPE main(int argc __attribute__((unused)), char **argv __attribute__(
 		perror("");
 		exit(-1);
 	}
-	if ((fd = open("newdir", O_DIRECTORY, S_IRWXU | S_IRGRP | S_IWGRP | S_IROTH)) && (errno != EEXIST)){
+	if ((fd = open("/", O_DIRECTORY, S_IRWXU | S_IRGRP | S_IWGRP | S_IROTH)) && (errno != EEXIST)){
+		puts("here");
 		perror("open");
 		return -1;
 	}
-	p = mvprog_malloc(p, 4, 0);
-	//mvprog_read_dir(fd);
-	//s = 4;
-	/* test for null before assignment */
-	//s = 4;
-	if (mvprog_getcwd(&p, &s))
-		puts(p);
-	free(p);
+	mvprog_rdpath_macro("newdir");
 	return MVPROG_SUCC;
 }

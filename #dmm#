@@ -1,0 +1,92 @@
+struct dirent *entry;
+	ssize_t plen = 0;
+	static ssize_t blen = 0, len = 0;
+	DIR *pdir;
+	char *c_entry;
+	static char *dir_buf = NULL;
+	char *dm = NULL;
+
+	if (dir == NULL || *dir == 0)
+		return -1;
+
+	pdir = opendir(dir);
+	if (pdir == NULL) {
+		perror("mvprog>opendir");
+		return -1;
+	}
+
+	errno = 0;
+	plen = blen != 0 ? len : 0;
+	while ((entry = readdir(pdir))) {
+		c_entry = entry->d_name;
+
+		if (S_DOTREF_2DOTREF(c_entry)) {
+			continue;
+		}
+#if defined(_BSD_SOURCE) || defined(_DIRENT_HAVE_D_TYPE)
+		if (entry->d_type == DT_DIR) {
+			if (blen == 0) {
+				plen = strlen(dir);
+				len = (blen =  plen + strlen(c_entry) + 2) - 1;
+				dir_buf = malloc(blen);
+
+				if (dir_buf == NULL) {
+					errno = ENOMEM;
+					perror("mvprog>malloc");
+					blen = len = plen = 0;
+					break;
+				}
+				if (strcpy(dir_buf, dir) == NULL) {
+					plen = len = 0;
+				strgerr:
+
+					fprintf(stderr, "mvprog>strcpy: cannot copy filename %s\n", c_entry);
+					break;
+				}
+				//dir = dir_buf;
+				if (dir[plen - 1] != '/') {
+					dir_buf[plen++] = '/';
+					dir_buf[plen] = 0;
+				}
+				else {
+					len -= 1;
+				}
+			}
+			else {
+				len += strlen(c_entry);
+				dir_buf[plen - 1] = '/';
+				dir_buf[plen] = 0;
+			}
+			if ((blen - 1) < len) {
+				dm = realloc(dir_buf, len - (blen - 1));
+				if (dm == NULL) {
+					errno = ENOMEM;
+					perror("mvprog>realloc");
+					len = plen;
+					continue;
+				}
+				dir_buf = dm;
+				blen = len + 1;
+			}
+
+			if (strcpy(dir_buf + plen, c_entry) == NULL) {
+				len = plen;
+				goto strgerr;
+			}
+			dir_buf[len] = 0;
+			printf("%s %ld %ld\n", dir_buf, len, plen);
+			mvprog_rdpath(dir_buf);
+			//len = plen;
+			dir_buf[len] = 0;
+			printf("%s %ld %ld\n", dir_buf, len, plen);
+		}
+		else {
+			//puts(c_entry);
+		}
+#endif
+	}
+	//printf("%ld %ld\n", blen, len);
+	len = plen;
+	closedir(pdir);
+	//puts(dir_buf);
+	return MVPROG_SUCC;

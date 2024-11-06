@@ -82,10 +82,10 @@ MVPROG_STR mvprog_getcwd (MVPROG_STR *buf, ssize_t *bufsz) {
 			MVPROG_PERROR_RET(TRUE, "mvprog_getcwd", (MVPROG_STR)0);
 		}
 		/* "(unreachable)" attached by linux(>2.6.36) when accessing a dir below root of the process */
-			if (*cwd == '(') {
-				fprintf(stderr,"mvprog_getcwd: unreachable");
-				return (MVPROG_STR)0;
-			}
+		if (*cwd == '(') {
+			fprintf(stderr,"mvprog_getcwd: unreachable");
+			return (MVPROG_STR)0;
+		}
 	}
 	else {
 		len = strlen(gtcwd) + 1;
@@ -130,17 +130,17 @@ void mvprog_read_dir(MVPROG_INTTYPE fd) {
 		}
 #define RECURSIVELY_CALL_MVPROG_READ_DIR(...)							\
 		if (!alloc_mem) {												\
-			if ((cwd = (char *)malloc(PATH_MAX)) == NULL) {					\
+			if ((cwd = (char *)malloc(PATH_MAX)) == NULL) {				\
 				fprintf(stderr, "malloc: could not allocate memory");	\
 				exit(MVPROG_FAILURE);									\
 			}															\
-			alloc_mem = PATH_MAX;											\
+			alloc_mem = PATH_MAX;										\
 		}																\
 		/* store current working directory in cwd */					\
-		MVPROG_PERROR_RET((getcwd(cwd, alloc_mem) == NULL), "getcwd"); \
+		MVPROG_PERROR_RET((getcwd(cwd, alloc_mem) == NULL), "getcwd");	\
 		/* temporarily change directory to fd to directly access c_entry_name */ \
 		MVPROG_PERROR_RET(fchdir(fd), "fchdir");						\
-		efd = open(c_entry_name, O_DIRECTORY, S_IRWXU | S_IRGRP | S_IWGRP | S_IROTH);\
+		efd = open(c_entry_name, O_DIRECTORY, S_IRWXU | S_IRGRP | S_IWGRP | S_IROTH); \
 		MVPROG_PERROR_RET((efd == -1) && (errno != EEXIST), "open");	\
 		recursive_count += 1;											\
 		/* recursively call function */									\
@@ -245,11 +245,15 @@ char *mvprog_rdpath(char *dir, ssize_t blen, ssize_t len, ssize_t *ptr_blen) {
 			for (ep = len; (dir[ep] = *crr_entry++); ep++)
 				mvprog_do_nothing();
 			dir[ep] = 0;
-			//Recursively expand till we get to the end of each tree
+
+			//save state
 			*ptr_blen = blen;
+
+			//Recursively expand till we get to the end of each tree
 			memp = mvprog_rdpath(dir, blen, ep, ptr_blen);
 			(void)(memp != NULL ? (dir = memp) : 0);
 
+            //restore state
 			if (ptr_blen != NULL) {
 				blen = *ptr_blen;
 			}

@@ -19,7 +19,7 @@
 #define MVPROG_STR char *
 #define MVPROG_FILE unsigned int
 #define MVPROG_SUCC 0
-#define MVPROG_FAILURE 1024
+#define MVPROG_FAILURE -1024
 #define MVPROG_FILENMAX 255
 #define MVPROG_PATHMAX
 #define MVPROG_DEREFSYMLOOP 5
@@ -27,4 +27,6 @@
 #define MVPROG_DIRTYPE DIR *
 
 #define MVPROG_HAS_PATHSEP 0x01
+
+#define MVPROG_RDPH_END 0x15
 #endif

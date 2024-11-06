@@ -14,6 +14,8 @@
 #define MVPROG_PERROR_RET(cond, str, ...) do { if ((cond)) { perror(str); return __VA_ARGS__; }} while (0)
 #define MVPROG_MAX_MEM_ALLOC (INT_MAX - 1)
 
+#define mvprog_do_nothing() (void)0
+
 extern char **environ;
 
 void *mvprog_malloc(void *ptr, size_t n, int reAlloc) {
@@ -175,12 +177,13 @@ void mvprog_read_dir(MVPROG_INTTYPE fd) {
 			perror("closedir");
 	}
 }
-#define mvprog_rdpath_macro(dir) mvprog_rdpath(dir, 0, 0)
-char *mvprog_rdpath(char *dir, ssize_t blen, ssize_t len) {
+#define mvprog_rdpath_macro(dir) mvprog_rdpath(dir, 0, 0, NULL)
+char *mvprog_rdpath(char *dir, ssize_t blen, ssize_t len, ssize_t *ptr_blen) {
 	DIR *PDIR;
 	struct dirent *dir_entry;
-	register char *crr_entry, memp;
-	register ssize_t len_crr_entry, dir_crr_entry;
+	register char *crr_entry, *memp;
+	register ssize_t len_crr_entry, dir_crr_entry, ep;
+	register size_t oo = 1;
 
 	if ((dir == NULL) || (*dir == 0)) {
 		return NULL;
@@ -188,67 +191,74 @@ char *mvprog_rdpath(char *dir, ssize_t blen, ssize_t len) {
 	PDIR = opendir(dir);
 	if (PDIR == NULL) {
 		perror("mvprog>opendir");
-		return -1;
+		return NULL;
+	}
+	if (ptr_blen == NULL) {
+		ptr_blen = &blen;
 	}
 	errno = 0;
 
-	while ((dir_entry = readdir(pdir))) {
+	while ((dir_entry = readdir(PDIR))) {
 		crr_entry = dir_entry->d_name;
 
-		if (S_DOTREF_2DOTREF(c_entry)) {
+		if (S_DOTREF_2DOTREF(crr_entry)) {
 			continue;
 		}
 #if defined(_BSD_SOURCE) || defined(_DIRENT_HAVE_D_TYPE)
-		dir_crr_entry = entry->d_type == DT_DIR;
+		dir_crr_entry = dir_entry->d_type == DT_DIR;
 #else
+		char *statbuf = stat(crr_entry, statbuf);
 #endif
 		len_crr_entry = strlen(crr_entry);
 		if (dir_crr_entry) {
 			if (blen == 0) {
-				len = strlen(dir) + 1;
-				memp = malloc(len + len_crr_entry + 2);
+				len = strlen(dir);
+				blen = len + len_crr_entry + 2;
+				memp = malloc(blen);
+
 				if (memp == NULL) {
 					perror("mvprog>malloc");
+					blen = len = 0;
 					break;
 				}
-				blen = len + len_crr_entry + 1;
-
-				if (strncpy(memp, dir, len - 1) == NULL) {
-					fprintf(stderr, "mvprog>strcpy: cannot copy file '%s'\n", dir);
-					len = 0;
-					break;
-				}
-				if (*dir != '/' || dir[len - 2] != '/')
-					len -= 1, blen -= 1;
-				dir = memp;
+				//cpy1
+				for (ep = 0; (memp[ep] = *dir); ep++, dir++)
+					mvprog_do_nothing();
+				memp[ep] = 0, dir = memp;
 				memp = NULL;
 			}
-			else {
-			}
-
-			if (blen < (len + len_crr_entry)) {
-				memp = realloc(dir, (len + len_crr_entry) - blen);
+			oo &= (size_t) dir[len - 1] != '/';
+			ep = len + len_crr_entry + (oo & MVPROG_HAS_PATHSEP);
+			if (blen < ep) {
+				memp = realloc(dir, ep + 1);
 				if (memp == NULL) {
-					len -= 1;
 					perror("mvprog>realloc");
-					continue;
-				}
-			}
-
-			dir[len - 1] = '/';
-			if (strncpy(dir + len, crr_entry, len_crr_entry) == NULL) {
-				fprintf(stderr, "mvprog>strcpy: cannot copy file '%s%s'\n", dir, crr_entry);
-					len = 0;
 					break;
+				}
+				dir = memp, memp = NULL;
+				blen = ep + 1;
 			}
-			dir[len + len_crr_entry + 1] = 0;
-			memp = mvprog_rdpath(dir, blen, len + len_crr_entry);
-			memp != NULL ? (void)(dir = memp) : (void)0;
-			dir[len] = 0;
+			//Append path prefix
+			(void)(oo & MVPROG_HAS_PATHSEP ? (dir[len] = '/'), len++ : 0);
+
+            //Cpy2
+			for (ep = len; (dir[ep] = *crr_entry++); ep++)
+				mvprog_do_nothing();
+			dir[ep] = 0;
+			//Recursively expand till we get to the end of each tree
+			*ptr_blen = blen;
+			memp = mvprog_rdpath(dir, blen, ep, ptr_blen);
+			(void)(memp != NULL ? (dir = memp) : 0);
+			if (ptr_blen != NULL) {
+				blen = *ptr_blen;
+			}
+			ep = len, dir[ep] = 0;
 		}
 		else {
+			puts(crr_entry);
 		}
 	}
+
 	if (closedir(PDIR)) {
 		perror("mvprog>closedir");
 		exit(-1);
@@ -270,7 +280,7 @@ MVPROG_INTTYPE main(int argc __attribute__((unused)), char **argv __attribute__(
 		perror("open");
 		return -1;
 	}
-	mvprog_rdpath("newdir");
+	mvprog_rdpath_macro("newdir");
 	//char *pd = malloc(8);
 	//pd = realloc(pd, 2);
 	return MVPROG_SUCC;

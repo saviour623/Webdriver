@@ -28,5 +28,7 @@
 
 #define MVPROG_HAS_PATHSEP 0x01
 
-#define MVPROG_RDPH_END 0x15
+//track calling stack
+#define MVPROG_RDPH_START 0x15
+#define MVPROG_PREALLOC 0x14
 #endif

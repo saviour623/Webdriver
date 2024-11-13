@@ -14,48 +14,57 @@
 #define MVPROG_PERROR_RET(cond, str, ...) do { if ((cond)) { perror(str); return __VA_ARGS__; }} while (0)
 #define MVPROG_MAX_MEM_ALLOC (INT_MAX - 1)
 
+#define mvprog_do_nothing() (void)0
+
 extern char **environ;
 
 void *mvprog_malloc(void *ptr, size_t n, int reAlloc) {
+	void *mp = NULL;
+
 	if (n < 1) {
 		return NULL;
 	}
 	if (ptr == NULL) {
-		ptr = malloc(n);
+		mp = malloc(n);
 	}
 	if (ptr && reAlloc) {
-		ptr = realloc(ptr, n);
+		mp = realloc(ptr, n);
 	}
 	/* couldn't allocate memory */
-	if (ptr == NULL) {
+	if (mp == NULL) {
 		fprintf(stderr, "malloc: out of memory");
 		return NULL;
 	}
-	return ptr;
+	ptr = mp;
+	return mp;
 }
-MVPROG_STR mvprog_getcwd (MVPROG_STR buf, ssize_t *bufsz) {
-	MVPROG_STR gtcwd = getenv("PWD");
-	MVPROG_STR cwd = buf;
-	register ssize_t len __attribute__((unused)) = 0;
-	int null_tracker = (buf == NULL);
+MVPROG_STR mvprog_getcwd (MVPROG_STR *buf, ssize_t *bufsz) {
+	MVPROG_STR gtcwd = NULL;
+	MVPROG_STR cwd = *buf;
+	register ssize_t len = 0;
+	unsigned char is_null = buf == NULL || *buf == NULL;
 
-	gtcwd = environ;
-	for (; (gtcwd != NULL); gtcwd++) {
-		if ((gtcwd[0] == 'P') && (gtcwd[1] == 'W') && (gtcwd[2] == 'D') && (gtcwd[3] == '=')) {
-			*gtcwd += 4;
-		}
-	}
-	puts(*gtcwd);
-	puts(*environ);
-	return NULL;
-	if ((*bufsz < 0) && (buf == NULL))
+	if ((*bufsz < 0) && is_null)
 		bufsz = 0;
-	if (((*bufsz < 1) && (buf != NULL)) || (*bufsz >= MVPROG_MAX_MEM_ALLOC)) {
+	if (((*bufsz < 1) && is_null) || (*bufsz >= MVPROG_MAX_MEM_ALLOC)) {
 		/* bufsz must be set correctly to the size allocated to buf */
 		return (MVPROG_STR)0;
 	}
+
+	for (; (environ[len] != NULL); len++) {
+#if !__assert_pwd
+#define __assert_pwd(c)													\
+		(((c)[0] && (c)[1] && (c)[2] && (c)[3]) && ((c)[0] == 'P') && ((c)[1] == 'W') && ((c)[2] == 'D') && ((c)[3] == '='))
+		if (__assert_pwd(environ[len])) {
+			gtcwd = (environ[len]) + 4;
+			break;
+		}
+#undef assert_pwd
+#endif
+	}
+	gtcwd = NULL;
 	if ((gtcwd == NULL) || (*(gtcwd) == '\0')) {
-		if (buf == NULL) {
+		if (is_null) {
 			cwd = (MVPROG_STR)mvprog_malloc(NULL, PATH_MAX, 0);
 			if (cwd == NULL)
 				return (MVPROG_STR)0;
@@ -73,42 +82,41 @@ MVPROG_STR mvprog_getcwd (MVPROG_STR buf, ssize_t *bufsz) {
 			MVPROG_PERROR_RET(TRUE, "mvprog_getcwd", (MVPROG_STR)0);
 		}
 		/* "(unreachable)" attached by linux(>2.6.36) when accessing a dir below root of the process */
-			if (*cwd == '(') {
-				fprintf(stderr,"mvprog_getcwd: unreachable");
-				return (MVPROG_STR)0;
-			}
-			return null_tracker ? cwd : ((buf = cwd), buf);
+		if (*cwd == '(') {
+			fprintf(stderr,"mvprog_getcwd: unreachable");
+			return (MVPROG_STR)0;
+		}
 	}
 	else {
 		len = strlen(gtcwd) + 1;
 
-		if (buf == NULL) {
+		if (is_null) {
 			cwd = (MVPROG_STR)mvprog_malloc(buf, len, 0);
 
-			if (cwd == (MVPROG_STR)0)
+			if (cwd == NULL)
 				return (MVPROG_STR)0;
 			*bufsz = len;
 		}
 		else if (len > *bufsz) {
-			cwd = (MVPROG_STR)mvprog_malloc(buf, len - *bufsz, 1);
-			if (cwd == (MVPROG_STR)0)
+			cwd = mvprog_malloc(*buf, len - *bufsz, 1);
+			if (cwd == NULL)
 				return (MVPROG_STR)0;
 			*bufsz = len;
 		}
-
-		if ((MVPROG_STR)strcpy(cwd, gtcwd) == (MVPROG_STR)NULL) {
+		if (strcpy(cwd, gtcwd) == NULL) {
 			fprintf(stderr, "mvprog_getcwd: strcpy: unable to copy");
 			return (MVPROG_STR)0;
 		}
-		return ((cwd[len] = '\0'), (null_tracker ? cwd : (buf = cwd), buf));
+		cwd[len] = 0;
 	}
+	return is_null ? cwd : (*buf = cwd), *buf;
 }
 void mvprog_read_dir(MVPROG_INTTYPE fd) {
 	DIR *dir = NULL;
 	struct dirent *entry;
 	static char *c_entry_name;
-	static char *cwd = (char *)0;
-	static unsigned char alloc_mem = FALSE;
+	static char *cwd = (char *)NULL;
+	static ssize_t alloc_mem = 0;
 	struct stat statbuf __attribute__((unused));
 	static int efd __attribute__((unused));
 	static int recursive_count = 0;
@@ -122,17 +130,18 @@ void mvprog_read_dir(MVPROG_INTTYPE fd) {
 		}
 #define RECURSIVELY_CALL_MVPROG_READ_DIR(...)							\
 		if (!alloc_mem) {												\
-			if ((cwd = (char *)malloc(1024)) == NULL) {					\
+			if ((cwd = (char *)malloc(PATH_MAX)) == NULL) {				\
 				fprintf(stderr, "malloc: could not allocate memory");	\
 				exit(MVPROG_FAILURE);									\
 			}															\
-			alloc_mem = TRUE;											\
+			alloc_mem = PATH_MAX;										\
 		}																\
 		/* store current working directory in cwd */					\
-		MVPROG_PERROR_RET((getcwd(cwd, 1024) == NULL), "getcwd");		\
+		MVPROG_PERROR_RET((getcwd(cwd, alloc_mem) == NULL), "getcwd");	\
 		/* temporarily change directory to fd to directly access c_entry_name */ \
 		MVPROG_PERROR_RET(fchdir(fd), "fchdir");						\
-		MVPROG_PERROR_RET(((efd = open(c_entry_name, O_DIRECTORY, S_IRWXU | S_IRGRP | S_IWGRP | S_IROTH)) && (errno != EEXIST)), "open"); \
+		efd = open(c_entry_name, O_DIRECTORY, S_IRWXU | S_IRGRP | S_IWGRP | S_IROTH); \
+		MVPROG_PERROR_RET((efd == -1) && (errno != EEXIST), "open");	\
 		recursive_count += 1;											\
 		/* recursively call function */									\
 		MVPROG_RECALL_FUNC(mvprog_read_dir, efd);						\
@@ -152,7 +161,7 @@ void mvprog_read_dir(MVPROG_INTTYPE fd) {
 		}
 #endif
 		else
-			fprintf(stdout, "%s\n", c_entry_name);
+			(void)0;//puts(c_entry_name);
 	}
 
 	if (recursive_count != 0) {
@@ -168,10 +177,110 @@ void mvprog_read_dir(MVPROG_INTTYPE fd) {
 			perror("closedir");
 	}
 }
+typedef struct {
+	ssize_t aci_bflen;
+	ssize_t aci_dirlen;
+	ssize_t aci_trace_bflen;
+	ssize_t aci_prog_info;
+} _atstack_current_info;
+
+#define mvprog_rdpath_macro(dir) mvprog_rdpath(dir, 0, 0, NULL)
+char *mvprog_rdpath(char *dir, ssize_t blen, ssize_t len, ssize_t *ptr_blen) {
+	DIR *PDIR;
+	struct dirent *dir_entry;
+	register char *crr_entry, *memp;
+	register ssize_t len_crr_entry, dir_crr_entry, ep;
+	register size_t prog_stat = 1;
+
+	if ((dir == NULL) || (*dir == 0)) {
+		return NULL;
+	}
+	PDIR = opendir(dir);
+	if (PDIR == NULL) {
+		perror("mvprog>opendir");
+		return NULL;
+	}
+	if (ptr_blen == NULL) {
+		ptr_blen = &blen;
+	}
+	errno = 0;
+
+	while ((dir_entry = readdir(PDIR))) {
+		crr_entry = dir_entry->d_name;
+
+		if (S_DOTREF_2DOTREF(crr_entry)) {
+			continue;
+		}
+		//some implementations provide a d_type in struct dirent
+#if defined(_BSD_SOURCE) || defined(_DIRENT_HAVE_D_TYPE)
+		dir_crr_entry = dir_entry->d_type == DT_DIR;
+#else
+		//alot of things changes
+		char *statbuf = stat(crr_entry, statbuf);
+#endif
+		len_crr_entry = strlen(crr_entry);
+		if (dir_crr_entry) {
+			if (blen == 0) {
+				len = strlen(dir);
+				blen = len + len_crr_entry + 2;
+				memp = malloc(blen);
+
+				if (memp == NULL) {
+					perror("mvprog>malloc");
+					blen = len = 0;
+					break;
+				}
+				//cpy1
+				for (ep = 0; (memp[ep] = *dir); ep++, dir++)
+					mvprog_do_nothing();
+				memp[ep] = 0, dir = memp;
+				memp = NULL;
+			}
+			prog_stat &= (size_t) dir[len - 1] != '/';
+			ep = len + len_crr_entry + (prog_stat & MVPROG_HAS_PATHSEP);
+			if (blen < ep) {
+				memp = realloc(dir, ep + 1);
+				if (memp == NULL) {
+					perror("mvprog>realloc");
+					break;
+				}
+				dir = memp, memp = NULL;
+				blen = ep + 1;
+			}
+			//Append path prefix
+			(void)(prog_stat & MVPROG_HAS_PATHSEP ? (dir[len] = '/'), len++ : 0);
+
+            //Cpy2
+			for (ep = len; (dir[ep] = *crr_entry++); ep++)
+				mvprog_do_nothing();
+			dir[ep] = 0;
+
+			//save state
+			*ptr_blen = blen;
+
+			//Recursively expand till we get to the end of each tree
+			memp = mvprog_rdpath(dir, blen, ep, ptr_blen);
+			(void)(memp != NULL ? (dir = memp) : 0);
+
+            //restore state
+			if (ptr_blen != NULL) {
+				blen = *ptr_blen;
+			}
+			ep = len, dir[ep] = 0;
+		}
+		else {
+			//do work here
+		}
+	}
+
+	if (closedir(PDIR)) {
+		perror("mvprog>closedir");
+		exit(MVPROG_FAILURE);
+	}
+	return dir;
+}
 MVPROG_INTTYPE main(int argc __attribute__((unused)), char **argv __attribute__((unused))) {
 	int fd;
-	ssize_t s __attribute__((unused)) = 0;
-	char *p = 0;
 	if (mkdir("newdir", S_IRWXU | S_IRGRP) && (errno != EEXIST)) {
 		perror("");
 		exit(-1);
@@ -180,16 +289,13 @@ MVPROG_INTTYPE main(int argc __attribute__((unused)), char **argv __attribute__(
 		perror("");
 		exit(-1);
 	}
-	if ((fd = open("newdir", O_DIRECTORY, S_IRWXU | S_IRGRP | S_IWGRP | S_IROTH)) && (errno != EEXIST)){
+	if ((fd = open("/", O_DIRECTORY, S_IRWXU | S_IRGRP | S_IWGRP | S_IROTH)) && (errno != EEXIST)){
+		puts("here");
 		perror("open");
 		return -1;
 	}
-	p = mvprog_malloc(p, 4, 0);
-	//mvprog_read_dir(fd);
-	//s = 4;
-	/* test for null before assignment */
-	mvprog_getcwd(p, &s);
-	//puts(p);
-	free(p);
+	mvprog_rdpath_macro("/");
+	//char *pd = malloc(8);
+	//pd = realloc(pd, 2);
 	return MVPROG_SUCC;
 }

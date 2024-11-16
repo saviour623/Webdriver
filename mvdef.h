@@ -14,13 +14,15 @@
 #include <dirent.h>
 #include <math.h>
 
+#define MVPROG_UINT8 int8_t;
 #define MVPROG_INTTYPE int32_t
+
 #define MVPROG_CHARTYPE unsigned char
 #define MVPROG_STR char *
 #define MVPROG_FILE unsigned int
 #define MVPROG_SUCC 0
 #define MVPROG_FAILURE -1024
-#define MVPROG_FILENMAX 255
+#define MVPROG_FILENMAX 256 
 #define MVPROG_PATHMAX
 #define MVPROG_DEREFSYMLOOP 5
 #define MVPROG_DEREFSYMLINK_PATH 40

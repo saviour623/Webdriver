@@ -1,6 +1,7 @@
 #ifndef MVDEF_H
 #define MVDEF_H
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -10,6 +11,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <dirent.h>
 #include <math.h>

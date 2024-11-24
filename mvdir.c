@@ -1,17 +1,16 @@
-#define _GNU_SOURCE
 #include <ftw.h>
 #include "mvdef.h"
-#define  S_DOTREF_2DOTREF(s)						\
-    (((s) != NULL) && ((*(s) != '\0')) && (strlen(s) <= 2) ? (*(s) == '.' && *((s) + 1) == '.') || (*(s) == '.') : 0)
+
 #define MVPROG_END_OF_MACRO_FUNC(...) (void)0
-
 #define MVPROG_RECALL_FUNC(func, ...) func(__VA_ARGS__)
-#define MVPROG_PERROR_RET(cond, str, ...) do { if ((cond)) { perror(str); return __VA_ARGS__; }} while (0)
+#define MVPROG_PERROR_RET(cond, str, ...)\
+    do {\
+	if ((cond))\
+	    { perror(str); return __VA_ARGS__; }	\
+    } while (0)
 #define MVPROG_MAX_MEM_ALLOC (INT_MAX - 1)
-
 #define mvprog_do_nothing() (void)0
 
-extern char **environ;
 
 void *mvprog_malloc(void *ptr, size_t n, int reAlloc) {
     void *mp = NULL;
@@ -147,13 +146,15 @@ MVPROG_STR mvprog_getcwd (MVPROG_STR buf, ssize_t *bufsz) {
 #endif
 #if ! _HAVE_RDLW_OPENDIR
 #define RD_NBLOCK_NFOLL_MODE (O_RDONLY | O_NDELAY | O_NOFOLLOW)
-#define rdlw_opendir(fd, fn, pd)\
+#define rdlw_opendir(fd, fn, pd)					\
     (((fd) = open((fn), O_DIRECTORY | RD_NBLOCK_NFOLL_MODE)) != -1 ? ((pd) = fdopendir(fd)) : 0)
 #endif
+#define  S_DOTREF_2DOTREF(s)						\
+    (((s) != NULL) && ((*(s) != '\0')) && (strlen(s) <= 2) ? (*(s) == '.' && *((s) + 1) == '.') || (*(s) == '.') : 0)
 
 #define errp(crr_entry) char bv[1024]; sprintf(bv, "%s:%s", getcwd(NULL, 0), crr_entry); perror(bv);
 
-static inline char * __FORCE_INLINE__  mvprog_rdpath(char *dir) {
+__extension__ static __inline__ char * __FORCE_INLINE__  mvprog_rdpath(char *dir) {
     DIR *PDIR;
     struct dirent *dir_entry;
     register char *crr_entry, *proc_cwd;
@@ -181,7 +182,7 @@ static inline char * __FORCE_INLINE__  mvprog_rdpath(char *dir) {
 		if (chdir("..") == -1) {
 		    perror("chdir");
 		    return NULL;
-		    }
+		}
 	    }
 	    ts = 0;
 	    rs = 1;
@@ -193,13 +194,13 @@ static inline char * __FORCE_INLINE__  mvprog_rdpath(char *dir) {
 	if (S_DOTREF_2DOTREF(crr_entry)) {
 	    continue;
 	}
-	//some fs implementations provide a d_type in struct dirent
+	/* some fs implementations provide a d_type in struct dirent */
 #if defined(_BSD_SOURCE) || defined(_DIRENT_HAVE_D_TYPE)
 	dir_crr_entry = (dir_entry->d_type == DT_DIR);
 #else
 #endif
 	if (dir_crr_entry) {
-	    //printf("%d %s %s\n", rddir_stat, getcwd(NULL, 0), dir);
+	    /* printf("%d %s %s\n", rddir_stat, getcwd(NULL, 0), dir); */
 	    if (!rs && !ts){
 		if (chdir(dir)) {
 		    perror("chdir");
@@ -209,7 +210,7 @@ static inline char * __FORCE_INLINE__  mvprog_rdpath(char *dir) {
 	    bkfd[ts ? --rddir_stat : rddir_stat] = PDIR;
 	    ts = rs = 0;
 	    if (! rdlw_opendir(dirfd, crr_entry, PDIR)) {
-	     	 if (errno == EACCES) {
+		if (errno == EACCES) {
 		    PDIR = bkfd[rddir_stat];
 		    rs = ts = 1;
 		}
@@ -218,70 +219,76 @@ static inline char * __FORCE_INLINE__  mvprog_rdpath(char *dir) {
 		    return NULL;
 		}
 	    }
-	    /*
-	    if (!memcmp(PDIR, bkfd[rddir_stat], 1)) {
-		puts("recursion");
-		sleep(4);
-		}*/
 	    dir = crr_entry;
 	    rddir_stat += 1;
 	}
 	else {
 	    printf("%s/%s\n", getcwd(NULL, 0), crr_entry);
-	    //puts(crr_entry);
 	}
     }
 #define PDIR __MVPG_RPDIR__
 #undef __MVPG_RPDIR__
 }
-/*
-  A - B - C
-  B - C - D
-  C - [D*] (rs = 1, ts = 1) 
-  C - [C*] (ts/rs = 0, rs = 1, ts = 1);
-  r = 1
-  dir = ..
 
-  C - D (r = 0) (r = 1)
- */
-int nothing(const char *fpath, const struct stat *sb, int typeflag) {
-    puts(fpath);
-}
-
+#if !defined(_STDINT_H) || !defined (INT32_MAX) || !defined (INT32_MIN)
+typedef signed char int8_t;
+typedef unsigned char uint8_t;
+/* this is an assumption; int maybe 16 bit in some systems */ 
+typedef int int32_t;
+typedef unsigned int uint32_t;
+/* However it's still neccessary to get the correct max and min */
+#define INT32_WIDTH (sizeof (int))
+#define INT32_MAX (int32_t)((1u << INT32_WIDTH) - 1)
+#define INT32_MIN -(1u << INT32_WIDTH)
+#define _MSB_AT32 (1u << INT32_WIDTH)
+#endif
 #undef U
 #define U uint32_t
-#if !defined (INT32_MAX)
-#define INT32_MAX 2147483647
+#ifndef _MSB_AT32
+#define _MSB_AT32 0x80000000
 #endif
+#define TOINT_ERRCONV INT32_MIN
 #if defined(_STDBOOL_H) || defined(__BOOL__)
 #define CAST_TO_BOOL(exp) ((_Bool)(exp))
 #else
 #define CAST_TO_BOOL(exp) (!!(exp))
 #endif
-#define _MSB_AT32 0x80000000
 #define _ISASCII_NUM(c) (((c) ^ 0x30) < 0x0a)
 #define _INT32_OVERFLOW(n) CAST_TO_BOOL((U)n & (U)(_MSB_AT32))
-#define _SCAN_OPREFIX(c) & (c ^ 48)
-#define _SPCNUM_SGN(c)\
+#define _SCAN_OPREFIX(c) && (c ^ 48)
+#define _SPCNUM_SGN(c)						\
     (!(((c) ^ 45) & ((c) ^ 43) & ((c) ^ 32) _SCAN_OPREFIX(c)))
+#define _TURNOFF_SGN 0x3f
+#define _TURNON_SGN 0x40
+#if ! _STRIP_TRAILING_PREFIX
+#define  _STRIP_TRAILING_PREFIX 0
+#endif
 #ifndef _SKIP
 #define _SKIP()
 #endif
 
-static inline int32_t __FORCE_INLINE__ toInt(char *s) {
+__extension__ static __inline__ int32_t __FORCE_INLINE__ toInt(char *s) {
     register U num = 0;
     register uint8_t c = 0, sn = 0;
 
     if (s == NULL || *s == 0)
 	goto nullRoverflow;
-    int k = 0;
-    printf("%d\n", _SPCNUM_SGN(*s));
-        /* strip +, -, ' ', 0 prefix(es) in string */
+#if _STRIP_TRAILING_PREFIX == 1
+    /* strip +, -, ' ', 0 prefix(es) in string */
     for (; (c = *s) && _SPCNUM_SGN((U)c); s++) {
-	/* latest prefix determines the sign of num */
-	sn = (U)c == 0x2d;
+	/* allow repetition of only one prefix; */
+	if (sn && ((sn & _TURNOFF_SGN) != c) && (c != 0x30))
+	    goto nullRoverflow;
+	/* store the sign bit at the 7th bit. */
+	sn |= !sn ? c | ((U)(c == 0x2d) << 6) : c;
     }
-    //    putchar('A');
+    /* retrieve only the 7th bit */
+    sn &= _TURNON_SGN;
+#else
+#define _X_OR_Y_AND_Z(x, y, z) (((x) || (y)) && (z))
+    /* increment str if its first char is a sign (+ or -) */
+    (void) _X_OR_Y_AND_Z((sn = (U)c == 0x2d), ((U)c == 0x2d), s++);
+#endif
     /* to int */
     for (; (c = *s) &&  _ISASCII_NUM(c); s++) {
 	num = ((num << 1) + (num << 3)) + ((U)c ^ 0x30);
@@ -291,60 +298,45 @@ static inline int32_t __FORCE_INLINE__ toInt(char *s) {
 	    break;
 	}
     }
-    return sn ? -(int32_t)num : num;
+    return sn ? -(int32_t)num : (int32_t)num;
 }
 /* we have no use scanning for preceding 0 */
 #undef _SCAN_OPREFIX
 #define _SCAN_OPREFIX(c)
 
-static inline int8_t __FORCE_INLINE__ isInt(char *s) {
+__extension__ static __inline__ int8_t __FORCE_INLINE__ isInt(char *s) {
     register uint8_t c __attribute__((unused));
 
     if (s == NULL || *s == 0)
-	 return 0;
+	return 0;
     /* strip +, -, ' ' prefix(es) in string; however the checks for trailing zero(s) is eliminated */
     for (; (c = *s) && _SPCNUM_SGN(c); s++) {
 	_SKIP()
-    }
+	    }
     /* !expr preserves the implication of the null byte from been treated as a false assertion */
     for (; (c = *s) && ((c = !_ISASCII_NUM(c)), !c); s++) {
 	_SKIP();
     }
-    //    putchar(c);
     return !c;
 }
+
+int nothing(const char *fpath, const struct stat *sb, int typeflag) {
+    return puts(fpath);
+}
+
 MVPROG_INTTYPE main(int argc __attribute__((unused)), char **argv __attribute__((unused))) {
-    int fd;
-    /*if {
-      perror("");
-      exit(-1);
-      }
-      if ((symlink("newdir", "symlink_newdir")) && (errno != EEXIST)) {
-      perror("");
-      exit(-1);
-      }*/
     if (argc < 2 || *argv[1] == '\0') {
 	return 0;
-    }/*
-    switch (:
-    case 1:*/
+    }
+    if (argc > 3 && isInt(argv[1])) {
+	if (toInt(argv[1]) == TOINT_ERROR)
+    }
+       switch (:
+       case 1:*/
 	
-    printf("%d\n", toInt("8"));
+    printf("%d\n", toInt("70008"));
     
     //    puts(p);    //mvprog_rdpath("/sys");
     //ftw("/proc", nothing, 32000);
-    //ssize_t sz = 0;
-    //char *p = mvprog_getcwd(NULL, &sz);
-    //char *p = getcwd(NULL, 0);
-    //puts(p ? p : "null");
-    //char *pd = malloc(8);
-    //pd = realloc(pd, 2);
     return MVPROG_SUCC;
 }
-/* if (errno == EACCES){
-		    PDIR = bkfd[--rddir_stat];
-		    //rddir_stat--;
-		    continue;
-		}
-		//	    puts(gcwdbf[rddir_stat]);
-		*/

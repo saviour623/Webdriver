@@ -1,5 +1,9 @@
-#ifndef MVDEF_H
-#define MVDEF_H
+#ifndef _MVDEF_H
+#define _MVDEF_H
+
+#ifdef __GNUC__
+#define _GNU_SOURCE
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -31,8 +35,11 @@
 #define MVPROG_DIRTYPE DIR *
 
 #define MVPROG_HAS_PATHSEP 0x01
-
-//track calling stack
+/* enable scaning of trailing chars in toInt */
+#define  _STRIP_TRAILING_PREFIX 1
+/* track calling stack */
 #define MVPROG_RDPH_START 0x15
 #define MVPROG_PREALLOC 0x14
+
+extern char **environ;
 #endif

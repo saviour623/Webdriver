@@ -1,0 +1,9 @@
+*~ 
+ backup
+ m
+ a.out
+ stream
+ key 
+ run
+ ftw.c 
+ *# symlink_newdir

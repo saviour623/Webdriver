@@ -1,0 +1,151 @@
+#!/bin/bash
+
+set -u
+shopt -s extglob
+shopt -s expand_aliases
+
+alias JUMPC="cat > /dev/null <<-"
+
+readonly SEP_DEFAULT=" "
+readonly SEP_OPTARGS=";"
+readonly NULL=""
+readonly GBNULL=""
+readonly ENABLED=1
+readonly DISABLED=0
+
+#error variables
+readonly ER_NOARGS=1 # empty arguments but program expects one
+readonly ER_TYPE=2 # invalid file type
+readonly ER_PERM=3 # cannot access a source [file, ...]
+readonly ER_INVALOPT=4 # unknown option passed as an argument
+readonly ER_NVAL=5 # invalid argument assigned to optiom
+readonly ER_SOURCE=6 # more than one source file
+
+declare -A global_options=(\
+    -s 0 -p 1 -c 0 -d 1 -h 0 -o 0 -A 0 -n 0 -q 0\
+       --root 1 --directory 1 --no-desc 0 --quiet\
+       --verbose 0 --force 0 --backup 1 --background 0\
+       --mode 1 --overwrite 1 --set 1\
+    )
+declare -A global_set=(\
+    -s 0 -p 0 -c 0 -d 0 -h 0 -o 0 -A 0 -n 0 -q 0\
+       --root 0 --directory 0 --no-desc 0 --quiet\
+       --verbose 0 --force 0 --backup 0 --background 0\
+       --mode 0 --overwrite 0 --set 0\
+    )
+
+### utility functions 
+function END_IFJMP {
+    return 0 ;
+}
+function __is_integer {
+    test -z `echo -n "$1" | sed -n -r '/^[0-9]+$/'p` ; echo -n $? 
+}
+function __getopt {    
+    echo 1 ;
+}
+
+function __prepare {
+    echo 1 ;
+}
+function __program_usage {
+    echo $1 ;
+}
+###
+
+function __init {
+    declare -a varargs=(a b -p 1 c d o k)
+    local filename=$NULL
+    local argc=${#varargs[*]}
+
+    if [ $argc == 0 ] ; then
+	__program_usage $ER_NOARGS ;
+	exit 1 ;
+    fi
+
+    ### prepare options
+    # extract option-like arguments; returns (option, index; ...) 
+    # option-index pair is delimited by SEP_OPTARGS 
+
+    IFS=$SEP_OPTARGS
+
+    declare -a fopts=( ` echo -n ${varargs[*]} | awk 'BEGIN {RS=" " ; } { gsub(/[[:space:]]/, "", $0) ; if ($0 ~ /^--?[a-zA-Z]+[[:alnum:]]*$/ ) printf "%s %d;", $0, FNR }' ` )
+
+    # for the purpose of options that takes a value, it is easy to
+    # bind the options with it's successor and later assert if such
+    # option requires an argument or not
+    declare -A mapnext
+
+    for ((N=0; N < argc; N++)) ; do
+	# mapnext is a map of an option as a key to its successor as a value. Assuming (-b true),  mapnext[-b] would be 'true'
+	mapnext[$N]="${varargs[$((N + 1))]:- 0}" ;
+    done
+    
+    # get and set valid options to the 'global option set array'
+    # Disclaimer: This code is ambigous and unreadable. see C34 in doc
+    IFS=$SEP_DEFAULT
+
+    for (( N=0 ; N < ${#fopts[*]} ; N++ )) ; do
+	declare -a expd=( ${fopts[$N]} ) ;
+	typeset -i index=${expd[1]}
+
+	case "${global_options[$expd]:- $NULL}" in
+	    '0')
+		unset varargs[${expd[1]}]
+		(( argc -= 1 ))
+		;;
+	    '1')
+		if (( `__is_integer ${mapnext[$index]:- NULL}` )) ; then
+		    JUMPC 'LABEL_SET_GLOBAL_OPTION_AND_DEL' ;
+		fi # JDMB
+		;;
+	    '2')
+		if (( `__is_integer ${mapnext[index]:- NULL}` )) ; then
+		    JUMPC 'LABEL_SET_GLOBAL_OPTION_AND_DEL' ;
+		fi # JDMB
+		;;
+	    '?!!?')
+		LABEL_SET_GLOBAL_OPTION_AND_DEL
+		#if [[ THIS_IS_A_FAKE_IF ]] ; then
+
+		    global_set[$expd]=${mapnext[$index]} ;
+		    unset varargs[$index] ;
+		    unset varargs[$((index + 1)] ;
+		    ((argc -= 2)) ;
+
+		    END_IFJMP LABEL_SET_GLOBAL_OPTION_AND_DEL ;
+		else
+		    __program_usage $ER_NVAL ;
+		    exit 1 ;
+		fi # JMB
+	    ;;
+	    *)
+		__program_usage $ER_INVALOPT ;
+		exit 1 ;
+		;;
+	esac
+    done
+
+
+    ### prepare input file
+    filename=$varargs ;
+
+    if [ $argc -ne 1 ] ; then
+	__program_usage $ER_SOURCE ;
+	exit 1 ;
+    elif ! [[ -f $filename && -r $filename && -s $filename ]] ; then
+	__program_usage $ER_TYPE ;
+	exit 1 ;
+    fi
+    # return 1 (success)
+    echo "$filename" ;
+}
+
+function main () {
+    filename=$( __init $@ ) ;
+
+    echo $filename ;
+    return 0 ;
+}
+main $@
+

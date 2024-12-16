@@ -7,7 +7,7 @@
 #endif
 #define PASS (void)0
 
-#define OBJHASH_BUCKET 8
+#define OBJHASH_BUCKET 11
 #define F_OBJEXIST 0x01
 #define F_NWRITE 0x02
 #define MIN_FILE_BYTES 7
@@ -20,15 +20,14 @@
 #define strcmp(s1, s2) wcscmp(s1, s2)
 #define Json_strLen(s) wcstrlen(s)
 typedef wchar_t JsonChar;
-typedef JsonChar * JsonString;
 #define JS_CH(txt) L txt
 #else
 #include <ctype.h>
 #define JS_CH(txt) txt
 typedef uint8_t  JsonChar;
-typedef JsonChar * JsonString;
 #define Json_strLen(s) strlen(s)
 #endif
+typedef JsonChar * JsonString;
 typedef intmax_t JsonInteger;
 typedef double JsonDecimal;
 typedef void ** JsonArray;
@@ -69,14 +68,14 @@ struct JsonDataStruct {
 struct JsonObjectStruct {
     JsonData __head[OBJHASH_BUCKET];
     JsonData __tail[OBJHASH_BUCKET];
+    size_t __sz[OBJHASH_BUCKET];
     JsonObject *__self;
     void * (*string)(JsonObject, JsonString, void *);
     void * (*read)(JsonObject, char *);
     void * (*remove)(JsonObject, JsonString);
     void * (*delete)(JsonObject, char *);
     void * (*jsonDump)(JsonObject *,  char *);
-    int __hashBkt;
-    unsigned int __setfl;
+    uint8_t __hashBkt, __setfl;
 };
 
 /* PROTOTYPES */
@@ -122,7 +121,9 @@ __NONNULL__ JsonObject JsonOpen(unsigned char *file) {
     for (L0 = 0; L0 < OBJHASH_BUCKET; L0++) {
 	newObj->__head[L0] = newObj->__tail[L0] = NULL;
     }
+
     newObj->__setfl |= F_OBJEXIST;
+    newObj->__hashBkt = OBJHASH_BUCKET;
     newObj->__self = &newObj;
     newObj->string = addStringToHashTable;
     newObj->remove = removeFromHashTable;
@@ -340,7 +341,7 @@ __NONNULL__ HASH_int getHashKeyFromByte (void *byte, ssize_t len, uint32_t seed)
 #define jsonGetIndex(key, bkt) (size_t)(getHashKeyFromByte((key), Json_strLen((key)), 123) % (bkt))
 
 __NONNULL__ void *addStringToHashTable (JsonObject self, JsonString key, void *value) {
-    register size_t _atIndex;
+    register size_t _atIndex = 1;
     JsonData newData;
 
     if (*key == 0)
@@ -363,8 +364,10 @@ __NONNULL__ void *addStringToHashTable (JsonObject self, JsonString key, void *v
 	newData->__nd = NULL;
 	self->__tail[_atIndex] = newData;
     }
+    (self->__sz[_atIndex])++;
     return self;
 }
+#define IGNORE_EXPR(expr) ((void)(expr))
 __NONNULL__ void *removeFromHashTable (JsonObject self, JsonString key) {
     register size_t _fromIndex;
     JsonData iterItems;
@@ -372,14 +375,15 @@ __NONNULL__ void *removeFromHashTable (JsonObject self, JsonString key) {
     if (*key == 0)
 	return self;
     _fromIndex = jsonGetIndex(key, self->__hashBkt);
+
     if (self->__head[_fromIndex] == NULL)
 	goto error;
 
     iterItems = self->__head[_fromIndex];
     while (iterItems != NULL) {
 	if (! strcmp(key, iterItems->__key)) {
-	    iterItems->__pd->__nd = iterItems->__nd;
-	    iterItems->__nd->__pd = iterItems->__pd;
+	    IGNORE_EXPR(iterItems->__pd ? iterItems->__pd->__nd = iterItems->__nd : 0);
+	    IGNORE_EXPR(iterItems->__nd ? iterItems->__nd->__pd = iterItems->__pd : 0);
 	    break;
 	}
 	iterItems = iterItems->__nd;
@@ -389,9 +393,11 @@ __NONNULL__ void *removeFromHashTable (JsonObject self, JsonString key) {
 	throwError(EINVAL, "%s does not exist", key);
 	return NULL;
     }
+    if (--(self->__sz[_fromIndex]) == 0)
+	self->__head[_fromIndex] = self->__tail[_fromIndex] = NULL;
     return iterItems;
 }
-__NONNULL__ static inline void *HashTableToListMap (JsonObject self) {
+__NONNULL__ static __inline__ void *HashTableToListMap (JsonObject self) {
     register size_t tableSize, i;
 
     tableSize = self->__hashBkt - 1;
@@ -402,7 +408,7 @@ __NONNULL__ static inline void *HashTableToListMap (JsonObject self) {
     }
     return self->__head[0];
 }
-__NONNULL__ static inline void *ListMapToHsashTable (JsonObject self) {
+__NONNULL__ static __inline__ void *ListMapToHsashTable (JsonObject self) {
     register size_t tableSize, i;
 
     tableSize = self->__hashBkt - 1;
@@ -442,6 +448,8 @@ int main(int argc, char **argv) {
 	perror("");
     }
     myjson->string(myjson, "name", "michael");
+    myjson->string(myjson, "test", "26");
+    myjson->remove(myjson, "value");
     return 0;
 }
 

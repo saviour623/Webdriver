@@ -122,43 +122,19 @@ MVPROG_STR mvprog_getcwd (MVPROG_STR buf, ssize_t *bufsz) {
 #define MVPROG_SYMCURR_DIR "."
 #define MVPROG_SYMPREV_DIR ".."
 
-#ifdef __MVPG_USENATIVE
-#define getcwd __mvprog_getcwd
-#else
-#define getcwd getcwd
-#endif
-#ifdef PDIR
-#define __MVPG_RPDIR__ PDIR
-#undef PDIR
-#endif
-#if !defined(PATH_MAX)
-#define PATH_MAX pathconf(_PC_PATH_MAX)
-#endif
-#if !__MVPG_ERRLOGGER__
-#define log_error(err) perror(err)
-#else
-#define __tostrtok(tok) #tok
-#define log_error(err)(__func__, __tostrtok(__line__ ## : ## __counter__), err)
-#undef __tostrtok
-#endif
-#if __GNUC__
-#define __FORCE_INLINE__ __attribute ((always_inline))
-#else
-#define __FORCE_INLINE__
-#endif
-
+typedef int __mvprog_fdt;
 #define mvprog_rdpath_macro(dir) mvprog_rdpath(dir, 0, 0, NULL)
-
-static inline char * __FORCE_INLINE__  mvprog_rdpath(char *dir) {
+static inline char * __attribute ((always_inline)) mvprog_rdpath(char *dir) {
     DIR *PDIR;
     struct dirent *dir_entry;
     register char *crr_entry, *proc_cwd;
     register ssize_t dir_crr_entry;
     register size_t prog_stat = 1;
     register size_t rddir_stat = 0;
-
+    ssize_t bufsz = 1024;
+    char *mem = malloc(1024);
     DIR *bkfd[MVPROG_BKSZ];
-    char *initcwd;
+    char *gcwdbf[4062], *initcwd;
 
     if ((dir == NULL) || (*dir == 0)) {
 	return NULL;
@@ -169,20 +145,10 @@ static inline char * __FORCE_INLINE__  mvprog_rdpath(char *dir) {
 	return NULL;
     }
     errno = 0;
-    initcwd = mvprog_getcwd(NULL, (int[1]){0});
-    if (chdir(dir) == -1) {
-	perror("chdir>dir");
-	return NULL;
-    }
-    bkfd[rddir_stat++] = PDIR;
-
     while ((dir_entry = readdir(PDIR)) || rddir_stat) {
 	if (dir_entry == NULL) {
 	    PDIR = bkfd[--rddir_stat];
-	    if (chdir("..") == -1) {
-		perror("chdir");
-		break;
-	    }
+	    dir = prog_stat ? (--prog_stat, MVPROG_SYMCURR_DIR) : mvprog_getcwd(mem, &bufsz);
 	    continue;
 	}
 	crr_entry = dir_entry->d_name;
@@ -197,31 +163,33 @@ static inline char * __FORCE_INLINE__  mvprog_rdpath(char *dir) {
 #endif
 	if (dir_crr_entry) {
 	    //printf("%d %s %s\n", rddir_stat, getcwd(NULL, 0), dir);
-	    if (!(PDIR = opendir(crr_entry))) {
-		if (errno == EACCES){
-		    PDIR = bkfd[--rddir_stat];
-		    //rddir_stat--;
-		    continue;
-		}
-		//	    puts(gcwdbf[rddir_stat]);
-		puts(getcwd(NULL, 0));
-		perror(crr_entry);
-		return NULL;
-	    }
-	    bkfd[rddir_stat++] = PDIR;
-	    if (chdir(crr_entry)) {
+	    if (chdir(dir)) {
 		perror("chdir");
 		return NULL;
 	    }
+	    bkfd[rddir_stat] = PDIR;
+	    //	    puts(gcwdbf[rddir_stat]);
+
+	    if (!(PDIR = opendir(crr_entry))) {
+		if (errno == EACCES){
+		    chdir(gcwdbf[rddir_stat - 1]);
+		    PDIR = bkfd[rddir_stat--];
+		    //rddir_stat--;
+		    continue;
+		}
+		//rddir_stat += 1;
+		//puts(getcwd(NULL, 0));
+		//puts(dir);
+		perror(crr_entry);
+		return NULL;
+	    }
 	    dir = crr_entry;
+	    rddir_stat += 1;
 	}
 	else {
 	    puts(crr_entry);
 	}
     }
-#define PDIR __MVPG_RPDIR__
-#undef __MVPG_RPDIR__
-
 }
 /*
   root - Mvpg - .git - hook
@@ -234,10 +202,9 @@ static inline char * __FORCE_INLINE__  mvprog_rdpath(char *dir) {
   Mvdir - .git - hook
   Mvdir - .git - _hook_
  */
-int nothing(const char *fpath, const struct stat *sb, int typeflag) {
-    puts(fpath);
+int nothing() {
+    
 }
-#include "/usr/include/crypt.h"
 MVPROG_INTTYPE main(int argc __attribute__((unused)), char **argv __attribute__((unused))) {
     int fd;
     /*if (mkdir("newdir", S_IRWXU | S_IRGRP) && (errno != EEXIST)) {
@@ -248,8 +215,7 @@ MVPROG_INTTYPE main(int argc __attribute__((unused)), char **argv __attribute__(
       perror("");
       exit(-1);
       }*/
-
-    mvprog_rdpath("newdir");
+    //mvprog_rdpath("/");
     //ftw("/", nothing, 32000);
     //ssize_t sz = 0;
     //char *p = mvprog_getcwd(NULL, &sz);

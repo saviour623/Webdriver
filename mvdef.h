@@ -3,6 +3,7 @@
 
 #ifdef __GNUC__
 #define _GNU_SOURCE
+#endif
 
 #include <stdint.h>
 #include <stdbool.h>

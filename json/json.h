@@ -6,6 +6,8 @@
 #include "../mvdef.h"
 #define __NONNULL__ __attribute__((nonnull))
 #define __UNUSED__ __attribute__((unused))
+/* Do not change this for now. Non-buffering has'nt been handled */
+#define JSON_DOBUFFERING 1
 
 /*________________________________________________
 //                                                |

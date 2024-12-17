@@ -13,7 +13,7 @@
 			}
 		}
 	},
-	"age": 24,
+	"age": "24",
 	"author": "michael Saviour",
 	"date": "Nov 28 3:01",
 	"file": "au.json",

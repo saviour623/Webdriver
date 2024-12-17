@@ -75,6 +75,10 @@ struct JsonObjectStruct {
     void * (*remove)(JsonObject, JsonString);
     void * (*delete)(JsonObject, char *);
     void * (*jsonDump)(JsonObject *,  char *);
+#if JSON_DOBUFFERING
+    void *__buf;
+    ssize_t __szbuf;
+#endif
     uint8_t __hashBkt, __setfl;
 };
 
@@ -82,18 +86,19 @@ struct JsonObjectStruct {
 __NONNULL__ static __inline__ void *lexer(JsonObject, JsonString, ssize_t);
 __NONNULL__ void *addStringToHashTable (JsonObject, JsonString, void *);
 __NONNULL__ void *removeFromHashTable (JsonObject, JsonString);
+static __inline__ void *readfl(JsonObject, int, ssize_t);
 
 #ifdef JSON_DEBUG
 #define throwError(errnum, mem, ...) __jsonError__(errnum, #__LINE__, #object ##->##__FUNC__, mem)
 #else
 #define throwError(errnum, ...) (errno = errnum)
 #endif
-
+#define puti(d) printf("%ld\n", (long)(d))
 enum {
       ESYNTAX = 7
 };
 
-__NONNULL__ JsonObject JsonOpen(unsigned char *file) {
+__NONNULL__ __attribute__((warn_unused_result)) JsonObject JsonOpen(unsigned char *file) {
     struct stat statbf;
     JsonObject newObj;
     register int L0 __UNUSED__;
@@ -128,6 +133,10 @@ __NONNULL__ JsonObject JsonOpen(unsigned char *file) {
     newObj->string = addStringToHashTable;
     newObj->remove = removeFromHashTable;
 
+    if(! readfl(newObj, fd, statbf.st_size)) {
+	puts("readfl encountered an error");
+	perror("");
+    }
     return newObj;
 }
 
@@ -136,29 +145,35 @@ static __inline__ void *readfl(JsonObject obj, int fd, ssize_t sz) {
     register ssize_t rdbytes, L1;
 
     if (fd < 0 || sz < 0) {
-	return 0;
+	return NULL;
     }
-    bf = malloc(sz + 1);
-
+#if JSON_DOBUFFERING
     if (sz > MAX_FILE_BYTES) {
 	/* TODO: read block by block ( each block reads MAX_FILE_BYTES bytes )  */
+	return NULL;
     }
-    if (bf == NULL) {
+    if (! (bf = malloc(sz + 1))) {
 	throwError(ENOMEM, NULL);
 	return NULL;
     }
-
-    while (((rdbytes = read(fd, bf, sz)) != -1) || (rdbytes == EINTR)) {
+    obj->__buf = bf;
+    obj->__sbf = sz + 1;
+#endif
+    errno = 0;
+    while (((L1 = read(fd, bf, sz)) && (L1 != -1)) || (errno == EINTR)) {
 	/* TODO: update file pointer using seek if EINTR */
-	continue;
+	rdbytes = L1;
     }
-    if (rdbytes < sz) {
-	/* incomplete read */
-	/* TODO: read the complete bytes per a byte using getchar */
+    if (L1 == -1) {
+	throwError(errno, NULL);
+	return NULL;
     }
     bf[rdbytes] = 0;
-
-    return lexer(obj, bf, sz);
+    if (! lexer(obj, bf, sz)) {
+	puts("lexer error");
+	return NULL;
+    }
+    return obj;
 }
 
 __NONNULL__ static __inline__ ssize_t getKey(JsonString str, JsonString __restrict *bf) {
@@ -205,14 +220,13 @@ __NONNULL__ static __inline__ ssize_t getKey(JsonString str, JsonString __restri
 #define EOVAL(c)							\
     (!(((c) ^ JS_CH(',')) && ((c) ^ JS_CH('\n')) && ((c) ^ JS_CH('}')) && ((c) ^ JS_CH(']'))))
 
-#define puti(d) printf("%ld\n", (long)(d))
 __NONNULL__ static __inline__ void *lexer(JsonObject obj, JsonString bf, ssize_t sz) {
     register ssize_t objMtch, arrMtch, nkeys, L2, L3, LINE, CH_AT;
     register JsonChar c;
     uint8_t rswitch;
 
-    JsonString k;
-    JsonString va;
+    JsonString key;
+    JsonString value;
     LINE = objMtch = arrMtch = rswitch = 0;
     for (L2 = 0; (c = bf[L2]); L2++) {
 	if ((c == JS_CH('\n') ? LINE++ : 0) || isspace(c))
@@ -221,7 +235,7 @@ __NONNULL__ static __inline__ void *lexer(JsonObject obj, JsonString bf, ssize_t
 	case JS_CH('{'):
 	    objMtch += 1;
 	    if (rswitch & EXP_VAL) {
-		putchar(c);
+		//putchar(c);
 	    }
 	    rswitch |= MBLK_OBJ | MBLK_START | EXP_KEY;
 	    break;
@@ -230,7 +244,7 @@ __NONNULL__ static __inline__ void *lexer(JsonObject obj, JsonString bf, ssize_t
 	    if ((rswitch & EXP_VAL_R_KEY))
 		goto syntaxError;
 	    if (objMtch > 1)
-		puts("}");
+		//puts("}");
 	    rswitch &= MBLK_CLOSE;
 	    objMtch -= 1;
 	    break;
@@ -240,14 +254,14 @@ __NONNULL__ static __inline__ void *lexer(JsonObject obj, JsonString bf, ssize_t
 	    break;
 	case JS_CH('"'):
 	    if (rswitch & EXP_KEY) {
-		if ((L3 = getKey(bf + ++L2, &k)) == -1) {
+		if ((L3 = getKey(bf + ++L2, &key)) == -1) {
 		    goto syntaxError;
 		}
-		k[L3] = 0;
+		key[L3] = 0;
 		M0V_BUFFER_PTR(bf, L2 + L3);
 		L2 = -1;
 		SET_OPFLAG(rswitch, EXP_VAL);
-		printf("%s: ", k);
+		//printf("%s: ", key);
 	    }
 	    else {
 		if (!(rswitch & MBLK_START)) {
@@ -260,16 +274,18 @@ __NONNULL__ static __inline__ void *lexer(JsonObject obj, JsonString bf, ssize_t
 		if (c == 0) {
 		    goto syntaxError;
 		}
-		if ((va = malloc(L2 + 1)) == NULL) {
+		if ((value = malloc(L2 + 1)) == NULL) {
 		    throwError(ENOMEM, NULL);
 		    return NULL;
 		}
-		memcpy(va, bf, L2);
+		memcpy(value, bf, L2);
 		M0V_BUFFER_PTR(bf, ++L2);
-		va[L2] = 0;
+		value[L2] = 0;
 		L2 = -1;
 		rswitch &= MBLK_CLOSE;
-		puts(va);
+
+		obj->string(obj, key, value);
+		//puts(value);
 	    }
 	    break;
 	case JS_CH('['):
@@ -305,10 +321,10 @@ __NONNULL__ static __inline__ void *lexer(JsonObject obj, JsonString bf, ssize_t
 	    bf += L3;
 	    L2 = -1;
 	    rswitch &= MBLK_CLOSE;
-	    puts("");
+	    //puts("");
 	}
     }
-    printf("%ld\n", LINE);
+    //printf("%ld\n", LINE);
 }
 
 void static __inline__ __jsonError__(int errn, char * __restrict line, char * __restrict objf, char *obj) {
@@ -326,7 +342,7 @@ void static __inline__ __jsonError__(int errn, char * __restrict line, char * __
 #define HASH_c2
 #define HASH_c3
 #endif
-__NONNULL__ HASH_int getHashKeyFromByte (void *byte, ssize_t len, uint32_t seed) {
+__NONNULL__ __attribute__((pure)) HASH_int getHashKeyFromByte (void *byte, ssize_t len, uint32_t seed) {
     HASH_int c1;
 
     c1 = 57722121L;
@@ -417,7 +433,58 @@ __NONNULL__ static __inline__ void *ListMapToHsashTable (JsonObject self) {
 	self->__head[i]->__pd = self->__tail[i]->__nd = NULL;
     }
 }
+__NONNULL__ static __inline__ ssize_t dump(JsonObject self, ...) {
+#if JSON_DOBUFFERING
+    dumpbf(self);
+#else
+#endif
+}
+typedef struct {
+    uint8_t indent_char;
+    uint8_t indent_width;
+    uint8_t sort;
+    uint8_t raw;
+} printfmt;
 
+/* ... (tab), indent char */
+__NONNULL__ ssize_t dumpbf(JsonObject self, printfmt *fmt) {
+    JsonString buf;
+    jsonData data;
+    size_t szbuf, sztbe;
+
+    szbuf = self->__szbuf;
+    if (!self->__buf && !(self->__buf = malloc((szbuf = sizeof(JsonChar) * 1024)))) {
+	throwError(ENOMEM, NULL);
+	return -1;
+    }
+    self->__szbuf = szbuf;
+    buf = self->__buf;
+
+    *buf++ = JS_CH('{');
+    *buf++ = JS_CH('\n');
+    szbuf -= 2;
+
+    data = self->__head[0];
+    while ((sztbe < self->__hashBkt) || data) {
+	if (data == NULL) {
+	    data = self->__head[sztbe++];
+	    continue;
+	}
+	do {
+	    *buf++ = fmt->indent_character;
+	    szbuf--;
+	} while (--fmt->indent_width);
+	/* TODO: REMOVE ASSUMPTIONS: sz is sufficient and no error */
+	buf += snprintf(buf, szbuf - 2, "%s: %s,\n", data->__key, data->__str);
+	data = data->__nd;
+    }
+    *buf++ = JS_CH('}');
+    *buf++ = JS_CH('\n');
+    *buf = 0;
+
+    szbuf = fprintf(stdout, self->__buf);
+    return szbuf;
+}
 __NONNULL__ void JsonMemcpy(void *dest, void *src, ssize_t sz) {
     ssize_t chk;
 }
@@ -447,9 +514,8 @@ int main(int argc, char **argv) {
     if (myjson == NULL) {
 	perror("");
     }
-    myjson->string(myjson, "name", "michael");
-    myjson->string(myjson, "test", "26");
-    myjson->remove(myjson, "value");
+    JsonData d;
+    puts((d = myjson->remove(myjson, "debug")) ? d->__str : (void *)"null");
     return 0;
 }
 

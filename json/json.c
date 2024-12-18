@@ -51,6 +51,7 @@ typedef struct JsonDataStruct * JsonData;
 #define SIZEOF_JSON_OBJECT sizeof(struct JsonObjectStruct)
 #define SIZEOF_JSON_DATA sizeof(struct JsonDataStruct)
 
+/*data struct */
 struct JsonDataStruct {
     JsonString __key;
     union {
@@ -65,28 +66,48 @@ struct JsonDataStruct {
     JsonData __pd;
     uint8_t __type;
 };
+/* object struct */
 struct JsonObjectStruct {
     JsonData __head[OBJHASH_BUCKET];
     JsonData __tail[OBJHASH_BUCKET];
+#ifdef CACHE_OBJSIZE
     size_t __sz[OBJHASH_BUCKET];
+#endif
     JsonObject *__self;
+#ifndef NOBJ_METHODS
     void * (*string)(JsonObject, JsonString, void *);
     void * (*read)(JsonObject, char *);
     void * (*remove)(JsonObject, JsonString);
     void * (*delete)(JsonObject, char *);
     void * (*jsonDump)(JsonObject *,  char *);
-#if JSON_DOBUFFERING
+#endif
+#ifndef NOBJ_BUFFERING
     void *__buf;
     ssize_t __szbuf;
 #endif
     uint8_t __hashBkt, __setfl;
 };
+/* print format strut */
+typedef struct {
+    uint8_t indent_char;
+    uint8_t indent_width;
+    uint8_t sorted;
+    uint8_t raw;
+} printfmt;
+
+/* obj stack */
+typedef struct objStack {
+    JsonObject stk_obj;
+    struct objStack *stk_mov;
+} objStack;
 
 /* PROTOTYPES */
 __NONNULL__ static __inline__ void *lexer(JsonObject, JsonString, ssize_t);
 __NONNULL__ void *addStringToHashTable (JsonObject, JsonString, void *);
 __NONNULL__ void *removeFromHashTable (JsonObject, JsonString);
 static __inline__ void *readfl(JsonObject, int, ssize_t);
+__NONNULL__ static ssize_t dump(JsonObject self, ...);
+__NONNULL__ ssize_t dumpbf(JsonObject, printfmt *);
 
 #ifdef JSON_DEBUG
 #define throwError(errnum, mem, ...) __jsonError__(errnum, #__LINE__, #object ##->##__FUNC__, mem)
@@ -97,7 +118,26 @@ static __inline__ void *readfl(JsonObject, int, ssize_t);
 enum {
       ESYNTAX = 7
 };
+__NONNULL__ __attribute__((warn_unused_result)) void *JsonInit(JsonObject *self) {
+    register int L0 __UNUSED__;
 
+    if (! (*self = malloc(SIZEOF_JSON_OBJECT))) {
+	throwError(ENOMEM, *self);
+	return NULL;
+    }
+    
+    for (L0 = 0; L0 < OBJHASH_BUCKET; L0++) {
+	(*self)->__head[L0] = (*self)->__tail[L0] = NULL;
+    }
+
+    (*self)->__setfl |= F_OBJEXIST;
+    (*self)->__hashBkt = OBJHASH_BUCKET;
+    (*self)->__self = self;
+    (*self)->string = addStringToHashTable;
+    (*self)->remove = removeFromHashTable;
+
+    return *self;
+}
 __NONNULL__ __attribute__((warn_unused_result)) JsonObject JsonOpen(unsigned char *file) {
     struct stat statbf;
     JsonObject newObj;
@@ -118,20 +158,10 @@ __NONNULL__ __attribute__((warn_unused_result)) JsonObject JsonOpen(unsigned cha
     }
     if (statbf.st_size < MIN_FILE_BYTES) {
     }
-    if (! (newObj = malloc(SIZEOF_JSON_OBJECT))) {
-	throwError(ENOMEM, newObj);
+    /* initialize object */
+    if (! JsonInit(&newObj)) {
 	return NULL;
     }
-    
-    for (L0 = 0; L0 < OBJHASH_BUCKET; L0++) {
-	newObj->__head[L0] = newObj->__tail[L0] = NULL;
-    }
-
-    newObj->__setfl |= F_OBJEXIST;
-    newObj->__hashBkt = OBJHASH_BUCKET;
-    newObj->__self = &newObj;
-    newObj->string = addStringToHashTable;
-    newObj->remove = removeFromHashTable;
 
     if(! readfl(newObj, fd, statbf.st_size)) {
 	puts("readfl encountered an error");
@@ -147,7 +177,7 @@ static __inline__ void *readfl(JsonObject obj, int fd, ssize_t sz) {
     if (fd < 0 || sz < 0) {
 	return NULL;
     }
-#if JSON_DOBUFFERING
+#ifndef NOBJ_BUFFERING
     if (sz > MAX_FILE_BYTES) {
 	/* TODO: read block by block ( each block reads MAX_FILE_BYTES bytes )  */
 	return NULL;
@@ -157,7 +187,7 @@ static __inline__ void *readfl(JsonObject obj, int fd, ssize_t sz) {
 	return NULL;
     }
     obj->__buf = bf;
-    obj->__sbf = sz + 1;
+    obj->__szbuf = sz + 1;
 #endif
     errno = 0;
     while (((L1 = read(fd, bf, sz)) && (L1 != -1)) || (errno == EINTR)) {
@@ -326,11 +356,33 @@ __NONNULL__ static __inline__ void *lexer(JsonObject obj, JsonString bf, ssize_t
     }
     //printf("%ld\n", LINE);
 }
+static __inline__ void popFromStack(objStack **top) {
+    objStack *remTop;
 
-void static __inline__ __jsonError__(int errn, char * __restrict line, char * __restrict objf, char *obj) {
+    top && *top ?
+	(remTop = *top),
+	(*top = (*top)->stk_mov),
+	free(remTop) : (objStack *)NULL;
+    remTop = NULL;
+}
+static __inline__ void *pushToStack(objStack **top, void *obj) {
+    objStack *newTop;
+
+    if ((newTop = malloc(sizeof(objStack)))) {
+	return (objStack *)NULL;
+    }
+    newTop->stk_obj;
+    newTop->stk_mov = (top == NULL || *top == NULL) ? NULL : *top;
+
+    return *(top = &newTop);
+}
+static __inline__ void *retrieveFromStack(objStack **top) {
+    return (top && *top) ? (*top)->stk_obj : NULL;
 }
 
-/* HASHES */
+/*
+ OBJECT 
+*/
 #ifdef __UINT64_T__
 #define HASH_int uint64_t
 #define HASH_c1
@@ -433,23 +485,17 @@ __NONNULL__ static __inline__ void *ListMapToHsashTable (JsonObject self) {
 	self->__head[i]->__pd = self->__tail[i]->__nd = NULL;
     }
 }
-__NONNULL__ static __inline__ ssize_t dump(JsonObject self, ...) {
-#if JSON_DOBUFFERING
-    dumpbf(self);
+__NONNULL__ static ssize_t dump(JsonObject self, ...) {
+    printfmt fmt;
+#ifndef NOBJ_BUFFERING
+    dumpbf(self, &fmt);
 #else
 #endif
 }
-typedef struct {
-    uint8_t indent_char;
-    uint8_t indent_width;
-    uint8_t sort;
-    uint8_t raw;
-} printfmt;
-
 /* ... (tab), indent char */
 __NONNULL__ ssize_t dumpbf(JsonObject self, printfmt *fmt) {
     JsonString buf;
-    jsonData data;
+    JsonData data;
     size_t szbuf, sztbe;
 
     szbuf = self->__szbuf;
@@ -471,7 +517,7 @@ __NONNULL__ ssize_t dumpbf(JsonObject self, printfmt *fmt) {
 	    continue;
 	}
 	do {
-	    *buf++ = fmt->indent_character;
+	    *buf++ = fmt->indent_char;
 	    szbuf--;
 	} while (--fmt->indent_width);
 	/* TODO: REMOVE ASSUMPTIONS: sz is sufficient and no error */
@@ -482,11 +528,13 @@ __NONNULL__ ssize_t dumpbf(JsonObject self, printfmt *fmt) {
     *buf++ = JS_CH('\n');
     *buf = 0;
 
-    szbuf = fprintf(stdout, self->__buf);
+    szbuf = fprintf(stdout, "%s", (JsonString)self->__buf);
     return szbuf;
 }
 __NONNULL__ void JsonMemcpy(void *dest, void *src, ssize_t sz) {
     ssize_t chk;
+}
+void static __inline__ __jsonError__(int errn, char * __restrict line, char * __restrict objf, char *obj) {
 }
 
 int main(int argc, char **argv) {

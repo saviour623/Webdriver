@@ -7,8 +7,27 @@
 #define __NONNULL__ __attribute__((nonnull))
 #define __UNUSED__ __attribute__((unused))
 /* Do not change this for now. Non-buffering has'nt been handled */
-#define JSON_DOBUFFERING 1
+#define CACHE_OBJSIZE 1
 
+#ifdef JSON_MINIFY
+#undef CACHE_OBJSIZE
+#define NOBJ_METHODS
+#define NOBJ_BUFFERING
+#endif
+
+#ifdef CACHE_OBJSIZE
+#define GET_SIZE(_obj, _at) ((_obj)->__sz[(_at)])
+#else
+static __inline__ size_t JsonGetSize(JsonData obj)
+{
+    size_t sz;
+
+    for (sz = 0; obj; sz++)
+	obj->__nd;
+    return sz;
+}
+#define GET_SIZE(_obj, _at) jsonGetSize(_obj)
+#endif
 /*________________________________________________
 //                                                |
 //                 RSWITCH (8 bits)               |

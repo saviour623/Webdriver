@@ -1,0 +1,20 @@
+{
+	a: "true",
+	b: "false",
+	"name": {
+		NULL,
+	}
+	"thoughts": {
+		NULL,
+	}	
+}
+
+create base object - [
+       a: string
+       b: string
+       name: object - i) create object;
+                      ii) add to base;
+		      iii) reserve current object;
+		      iv) change the current object pointer to new object
+		      v) at end of object - i) change the object pointer back to base pointer
+]

@@ -74,20 +74,20 @@ struct JsonObjectStruct {
     size_t __sz[OBJHASH_BUCKET];
 #endif
     JsonObject *__self;
-#ifndef NOBJ_METHODS
+#if !defined(NOBJ_METHODS)
     void * (*string)(JsonObject, JsonString, void *);
     void * (*read)(JsonObject, char *);
     void * (*remove)(JsonObject, JsonString);
     void * (*delete)(JsonObject, char *);
     void * (*jsonDump)(JsonObject *,  char *);
 #endif
-#ifndef NOBJ_BUFFERING
+#if !defined(NOBJ_BUFFERING)
     void *__buf;
     ssize_t __szbuf;
 #endif
     uint8_t __hashBkt, __setfl;
 };
-/* print format strut */
+/* print format struct */
 typedef struct {
     uint8_t indent_char;
     uint8_t indent_width;
@@ -97,27 +97,185 @@ typedef struct {
 
 /* obj stack */
 typedef struct objStack {
-    JsonObject stk_obj;
+    void *stk_obj;
     struct objStack *stk_mov;
 } objStack;
 
 /* PROTOTYPES */
+#if !defined(CACHE_OBJSIZE)
+extern __inline__ size_t jsonGetSize(void *obj);
+#endif
 __NONNULL__ static __inline__ void *lexer(JsonObject, JsonString, ssize_t);
+__NONNULL__ void *addToJsonObject (JsonObject, JsonString, void *, uint8_t);
 __NONNULL__ void *addStringToHashTable (JsonObject, JsonString, void *);
 __NONNULL__ void *removeFromHashTable (JsonObject, JsonString);
 static __inline__ void *readfl(JsonObject, int, ssize_t);
 __NONNULL__ static ssize_t dump(JsonObject self, ...);
 __NONNULL__ ssize_t dumpbf(JsonObject, printfmt *);
 
-#ifdef JSON_DEBUG
-#define throwError(errnum, mem, ...) __jsonError__(errnum, #__LINE__, #object ##->##__FUNC__, mem)
+#ifdef CACHE_OBJSIZE
+#define GET_SIZE(_obj, _at) ((_obj)->__sz[(_at)])
 #else
-#define throwError(errnum, ...) (errno = errnum)
+#define GET_SIZE(_obj, _at) jsonGetSize(_obj)
 #endif
-#define puti(d) printf("%ld\n", (long)(d))
-enum {
-      ESYNTAX = 7
-};
+
+#define STACK_init(...) ((objStack *)NULL)
+static __inline__ __FORCE_INLINE__ objStack *popFromStack(objStack **top) {
+    objStack *remTop;
+
+    return top && *top ?
+	(remTop = *top),
+	(*top = (*top)->stk_mov), remTop : (objStack *)NULL;
+}
+static __inline__ void *pushToStack(objStack **top, void *obj) {
+    objStack *newTop;
+
+    if (! (newTop = malloc(sizeof(objStack)))) {
+	return NULL;
+    }
+    newTop->stk_obj = obj;
+    newTop->stk_mov = (top == NULL || *top == NULL) ? NULL : *top;
+    *top = newTop;
+}
+static __inline__ __FORCE_INLINE__ void *getFromStack(objStack **top) {
+    return (top && *top) ? (*top)->stk_obj : NULL;
+}
+
+#ifdef __UINT64_T__
+#define HASH_int uint64_t
+#define HASH_c1
+#define HASH_c2
+#define HASH_c3
+#else
+#define HASH_int uint32_t
+#define HASH_c1
+#define HASH_c2
+#define HASH_c3
+#endif
+__NONNULL__ __attribute__((pure)) HASH_int getHashKeyFromByte (void *byte, ssize_t len, uint32_t seed) {
+    HASH_int c1;
+
+    c1 = 57722121L;
+    while (len--) {
+	c1 ^= *(char *)byte++ * 23423491L;
+	c1 = (c1 * (seed << 13)) ^ 123;
+	c1 *= 234239473L;
+    }
+    return (c1 ^ 9697619231L) ^ (c1 << 13), c1 ^= 11;
+}
+
+__NONNULL__ static __inline__ __FORCE_INLINE__ void *addStringToJsonObject (JsonObject self, JsonString key, void *value) {
+    return addToJsonObject(self, key, value, JSONSTRING_TYPE);
+}
+#define jsonGetIndex(key, bkt) (size_t)(getHashKeyFromByte((key), Json_strLen((key)), 123) % (bkt))
+__NONNULL__ void *addToJsonObject (JsonObject self, JsonString key, void *value, uint8_t type) {
+    register size_t _atIndex;
+    JsonData newData;
+
+    if (*key == 0)
+	return self;
+    if (! (newData = malloc(SIZEOF_JSON_DATA))) {
+	errno = ENOMEM;
+	return self;
+    }
+    newData->__key = key;
+
+    switch (type) {
+    case JSONSTRING_TYPE:
+	newData->__str = value;
+	newData->__type = JSONSTRING_TYPE;
+        break;
+    case JSONINTEGER_TYPE:
+	*(newData->__int) = *(JsonInteger *)value;
+	newData->__type = JSONINTEGER_TYPE;
+	break;
+    case JSONDECIMAL_TYPE:
+	*(newData->__flt) = *(JsonDecimal *)value;
+	newData->__type = JSONDECIMAL_TYPE;
+	break;
+    case JSONBOOL_TYPE:
+	*(newData->__bool) = *(JsonBool *)value;
+	newData->__type = JSONBOOL_TYPE;
+	break;
+    case JSONARRAY_TYPE:
+	newData->__arr = value;
+	newData->__type = JSONARRAY_TYPE;
+	break;
+    case JSONOBJECT_TYPE:
+	newData->__obj = value;
+	newData->__type = JSONOBJECT_TYPE;
+	break;
+    default:
+	free(newData);
+	newData = NULL;
+	throwError(EINVAL, NULL);
+	goto _end;
+    }
+    _atIndex = jsonGetIndex(key, self->__hashBkt);
+
+    if (self->__head[_atIndex] == NULL) {
+	newData->__pd = newData->__nd = NULL;
+	self->__head[_atIndex] = self->__tail[_atIndex] = newData;
+    }
+    else {
+	newData->__pd = self->__tail[_atIndex];
+	newData->__nd = NULL;
+	self->__tail[_atIndex] = newData;
+    }
+    (self->__sz[_atIndex])++;
+ _end:
+    return self;
+}
+#define IGNORE_EXPR(expr) ((void)(expr))
+__NONNULL__ void *removeFromJsonObject (JsonObject self, JsonString key) {
+    register size_t _fromIndex;
+    JsonData iterItems;
+
+    if (*key == 0)
+	return self;
+    _fromIndex = jsonGetIndex(key, self->__hashBkt);
+
+    if (self->__head[_fromIndex] == NULL)
+	goto error;
+
+    iterItems = self->__head[_fromIndex];
+    while (iterItems != NULL) {
+	if (! strcmp(key, iterItems->__key)) {
+	    IGNORE_EXPR(iterItems->__pd ? iterItems->__pd->__nd = iterItems->__nd : 0);
+	    IGNORE_EXPR(iterItems->__nd ? iterItems->__nd->__pd = iterItems->__pd : 0);
+	    break;
+	}
+	iterItems = iterItems->__nd;
+    }
+    if (iterItems == NULL) {
+    error:
+	throwError(EINVAL, "%s does not exist", key);
+	return NULL;
+    }
+    if (--(self->__sz[_fromIndex]) == 0)
+	self->__head[_fromIndex] = self->__tail[_fromIndex] = NULL;
+    return iterItems;
+}
+__NONNULL__ static __inline__ void *HashTableToListMap (JsonObject self) {
+    register size_t tableSize, i;
+
+    tableSize = self->__hashBkt - 1;
+
+    for (i = 0; i < tableSize; i++) {
+	self->__tail[i]->__nd = self->__tail[i + 1];
+	self->__head[i + 1]->__pd = self->__tail[i];
+    }
+    return self->__head[0];
+}
+__NONNULL__ static __inline__ void *ListMapToHsashTable (JsonObject self) {
+    register size_t tableSize, i;
+
+    tableSize = self->__hashBkt - 1;
+
+    for (i = 0; i < tableSize; i++) {
+	self->__head[i]->__pd = self->__tail[i]->__nd = NULL;
+    }
+}
 __NONNULL__ __attribute__((warn_unused_result)) void *JsonInit(JsonObject *self) {
     register int L0 __UNUSED__;
 
@@ -133,8 +291,8 @@ __NONNULL__ __attribute__((warn_unused_result)) void *JsonInit(JsonObject *self)
     (*self)->__setfl |= F_OBJEXIST;
     (*self)->__hashBkt = OBJHASH_BUCKET;
     (*self)->__self = self;
-    (*self)->string = addStringToHashTable;
-    (*self)->remove = removeFromHashTable;
+    (*self)->string = addStringToJsonObject;
+    (*self)->remove = removeFromJsonObject;
 
     return *self;
 }
@@ -177,7 +335,7 @@ static __inline__ void *readfl(JsonObject obj, int fd, ssize_t sz) {
     if (fd < 0 || sz < 0) {
 	return NULL;
     }
-#ifndef NOBJ_BUFFERING
+#if !defined(NOBJ_BUFFERING)
     if (sz > MAX_FILE_BYTES) {
 	/* TODO: read block by block ( each block reads MAX_FILE_BYTES bytes )  */
 	return NULL;
@@ -212,12 +370,14 @@ __NONNULL__ static __inline__ ssize_t getKey(JsonString str, JsonString __restri
 
     if (*str == 0)
 	return -1;
-    /* TODO: REMOVE THE STOP AT NULL BYTE */
+    /* get length */
     for (rsz = 0; (c = str[rsz]) && !(c == JS_CH('"')); rsz++)
 	PASS;
     if (c == JS_CH('"')) {
+	/* clear preceeding whitespace */
 	for (i = rsz + 1; (c = str[i]) && isspace(c); i++)
 	    PASS;
+	/* get key value usually after a ':' */
 	if (c == JS_CH(':')) {
 	    *bf = malloc(rsz + 1);
 	    if (*bf == NULL) {
@@ -257,24 +417,45 @@ __NONNULL__ static __inline__ void *lexer(JsonObject obj, JsonString bf, ssize_t
 
     JsonString key;
     JsonString value;
+    objStack *OBJ_trace;
+    JsonObject newObj;
+
+    newObj = NULL;
+    OBJ_trace = STACK_init(NULL);
     LINE = objMtch = arrMtch = rswitch = 0;
+
     for (L2 = 0; (c = bf[L2]); L2++) {
 	if ((c == JS_CH('\n') ? LINE++ : 0) || isspace(c))
 	    continue;
 	switch (c) {
 	case JS_CH('{'):
-	    objMtch += 1;
 	    if (rswitch & EXP_VAL) {
-		//putchar(c);
+		/* Initialize a new object */
+		if (! JsonInit(&newObj)) {
+		    throwError(EINIT, NULL);
+		    /* This may be undesirable. IMPLEMENT #5, TODO.md */
+		    return obj;
+		}
+		/* The new object is added to the base object */
+		addToJsonObject(obj, key, newObj, JSONOBJECT_TYPE);
+
+		/* We update the base object with the new object and store the base on the stack for reuse after the lifetime of newObj is over (we've read upto a '}') */ 
+		if (! pushToStack(&OBJ_trace, obj)) {
+		    throwError(ENOMEM, NULL);
+		    /* IMPLEMENT #5, TODO.md */
+		    return obj;
+		}
+		obj = newObj;
 	    }
+	    objMtch += 1;
 	    rswitch |= MBLK_OBJ | MBLK_START | EXP_KEY;
 	    break;
 	case JS_CH('}'):
-	    /* TODO: handle trailing braces @anonymous position */
+	    /* IMPLEMENT #6, TODO.md */
 	    if ((rswitch & EXP_VAL_R_KEY))
 		goto syntaxError;
-	    if (objMtch > 1)
-		//puts("}");
+	    if (objMtch > 1) 
+		obj = popFromStack(&OBJ_trace)->stk_obj;
 	    rswitch &= MBLK_CLOSE;
 	    objMtch -= 1;
 	    break;
@@ -356,138 +537,9 @@ __NONNULL__ static __inline__ void *lexer(JsonObject obj, JsonString bf, ssize_t
     }
     //printf("%ld\n", LINE);
 }
-static __inline__ void popFromStack(objStack **top) {
-    objStack *remTop;
-
-    top && *top ?
-	(remTop = *top),
-	(*top = (*top)->stk_mov),
-	free(remTop) : (objStack *)NULL;
-    remTop = NULL;
-}
-static __inline__ void *pushToStack(objStack **top, void *obj) {
-    objStack *newTop;
-
-    if ((newTop = malloc(sizeof(objStack)))) {
-	return (objStack *)NULL;
-    }
-    newTop->stk_obj;
-    newTop->stk_mov = (top == NULL || *top == NULL) ? NULL : *top;
-
-    return *(top = &newTop);
-}
-static __inline__ void *retrieveFromStack(objStack **top) {
-    return (top && *top) ? (*top)->stk_obj : NULL;
-}
-
-/*
- OBJECT 
-*/
-#ifdef __UINT64_T__
-#define HASH_int uint64_t
-#define HASH_c1
-#define HASH_c2
-#define HASH_c3
-#else
-#define HASH_int uint32_t
-#define HASH_c1
-#define HASH_c2
-#define HASH_c3
-#endif
-__NONNULL__ __attribute__((pure)) HASH_int getHashKeyFromByte (void *byte, ssize_t len, uint32_t seed) {
-    HASH_int c1;
-
-    c1 = 57722121L;
-    while (len--) {
-	c1 ^= *(char *)byte++ * 23423491L;
-	c1 = (c1 * (seed << 13)) ^ 123;
-	c1 *= 234239473L;
-    }
-    return (c1 ^ 9697619231L) ^ (c1 << 13), c1 ^= 11;
-}
-
-#define jsonGetIndex(key, bkt) (size_t)(getHashKeyFromByte((key), Json_strLen((key)), 123) % (bkt))
-
-__NONNULL__ void *addStringToHashTable (JsonObject self, JsonString key, void *value) {
-    register size_t _atIndex = 1;
-    JsonData newData;
-
-    if (*key == 0)
-	return self;
-    if (! (newData = malloc(SIZEOF_JSON_DATA))) {
-	errno = ENOMEM;
-	return self;
-    }
-    newData->__key = key;
-    newData->__str = value;
-    newData->__type = JSONSTRING_TYPE;
-    _atIndex = jsonGetIndex(key, self->__hashBkt);
-
-    if (self->__head[_atIndex] == NULL) {
-	newData->__pd = newData->__nd = NULL;
-	self->__head[_atIndex] = self->__tail[_atIndex] = newData;
-    }
-    else {
-	newData->__pd = self->__tail[_atIndex];
-	newData->__nd = NULL;
-	self->__tail[_atIndex] = newData;
-    }
-    (self->__sz[_atIndex])++;
-    return self;
-}
-#define IGNORE_EXPR(expr) ((void)(expr))
-__NONNULL__ void *removeFromHashTable (JsonObject self, JsonString key) {
-    register size_t _fromIndex;
-    JsonData iterItems;
-
-    if (*key == 0)
-	return self;
-    _fromIndex = jsonGetIndex(key, self->__hashBkt);
-
-    if (self->__head[_fromIndex] == NULL)
-	goto error;
-
-    iterItems = self->__head[_fromIndex];
-    while (iterItems != NULL) {
-	if (! strcmp(key, iterItems->__key)) {
-	    IGNORE_EXPR(iterItems->__pd ? iterItems->__pd->__nd = iterItems->__nd : 0);
-	    IGNORE_EXPR(iterItems->__nd ? iterItems->__nd->__pd = iterItems->__pd : 0);
-	    break;
-	}
-	iterItems = iterItems->__nd;
-    }
-    if (iterItems == NULL) {
-    error:
-	throwError(EINVAL, "%s does not exist", key);
-	return NULL;
-    }
-    if (--(self->__sz[_fromIndex]) == 0)
-	self->__head[_fromIndex] = self->__tail[_fromIndex] = NULL;
-    return iterItems;
-}
-__NONNULL__ static __inline__ void *HashTableToListMap (JsonObject self) {
-    register size_t tableSize, i;
-
-    tableSize = self->__hashBkt - 1;
-
-    for (i = 0; i < tableSize; i++) {
-	self->__tail[i]->__nd = self->__tail[i + 1];
-	self->__head[i + 1]->__pd = self->__tail[i];
-    }
-    return self->__head[0];
-}
-__NONNULL__ static __inline__ void *ListMapToHsashTable (JsonObject self) {
-    register size_t tableSize, i;
-
-    tableSize = self->__hashBkt - 1;
-
-    for (i = 0; i < tableSize; i++) {
-	self->__head[i]->__pd = self->__tail[i]->__nd = NULL;
-    }
-}
 __NONNULL__ static ssize_t dump(JsonObject self, ...) {
     printfmt fmt;
-#ifndef NOBJ_BUFFERING
+#if !defined( NOBJ_BUFFERING)
     dumpbf(self, &fmt);
 #else
 #endif
@@ -563,7 +615,7 @@ int main(int argc, char **argv) {
 	perror("");
     }
     JsonData d;
-    puts((d = myjson->remove(myjson, "debug")) ? d->__str : (void *)"null");
+    puts((d = myjson->remove(myjson, "debug")) ? d->__str : (void *)"null");;
     return 0;
 }
 

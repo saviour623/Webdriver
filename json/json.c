@@ -73,7 +73,7 @@ struct JsonObjectStruct {
 #ifdef CACHE_OBJSIZE
     size_t __sz[OBJHASH_BUCKET];
 #endif
-    JsonObject *__self;
+    JsonObject *__self, *__parent;
 #if !defined(NOBJ_METHODS)
     void * (*string)(JsonObject, JsonString, void *);
     void * (*read)(JsonObject, char *);
@@ -139,6 +139,59 @@ static __inline__ void *pushToStack(objStack **top, void *obj) {
 }
 static __inline__ __FORCE_INLINE__ void *getFromStack(objStack **top) {
     return (top && *top) ? (*top)->stk_obj : NULL;
+}
+typedef long VEC_szType;
+#define VEC_META_DATA_SZ sizeof(long)
+#define VEC_DATA_START VEC_META_DATA_SZ
+#define VEC_ALLOC_SZ 1
+
+static __inline__ __FORCE_INLINE__ void *VEC_szcpy(void *dest, void *src, ssize_t sz) {
+    if (sz == sizeof(VEC_szType)) {
+	/* We are assuming memory alignment of src and dest to be same */
+	*(VEC_szType *)dest = *(VEC_szType *)src;
+    }
+    else {
+	unsigned char *_dest, *_src;
+
+	_dest = (unsigned char *)dest, _src = (unsigned char *)src;
+	while (sz--)
+	    *_dest++ = *_src++; 
+    }
+    return dest;
+}
+
+static __inline__ void **vecT(void) {
+    uint8_t **vec_0;
+    VEC_szType sz = VEC_ALLOC_SZ;
+
+    vec_0 = malloc((sizeof(uint8_t *) * sz) + VEC_META_DATA_SZ);
+    VEC_szcpy(vec_0, &sz, sizeof(sz));
+    *(vec_0 + VEC_DATA_START) = NULL;
+
+    return vec_0 ? (void **)vec_0 + VEC_DATA_START : NULL;
+}
+__NONNULL__ static __inline__ void **vecExpand(void **vec, void *vd, ssize_t index) {
+    uint8_t **vec_0, **vecMetaData;
+    VEC_szType sz;
+
+    vec_0 = vec;
+    vecMetaData = (vec_0 - VEC_DATA_START);
+    VEC_szcpy(&sz, vecMetaData, sizeof(VEC_szType));
+    if (vec[VEC_DATA_START] == NULL || (sz <= VEC_ALLOC_SZ)) {
+	vec_0[sz++] = vd;
+	VEC_szcpy(vecMetaData, &sz, sizeof(VEC_szType));
+    }
+    else {
+	vec_0 = realloc((vec_0 = vecMetaData), (long)(sz + VEC_ALLOC_SZ + VEC_META_DATA_SZ));
+	if (! vec_0)
+	    return NULL;
+
+	vecMetaData = vec_0;
+	(vec_0 + VEC_DATA_START)[sz] = vd;
+	sz += VEC_ALLOC_SZ;
+	VEC_szcpy(vecMetaData, &sz, sizeof(VEC_szType));
+    }
+    return (void **)(vec_0 + VEC_DATA_START);
 }
 
 #ifdef __UINT64_T__
@@ -276,6 +329,9 @@ __NONNULL__ static __inline__ void *ListMapToHsashTable (JsonObject self) {
 	self->__head[i]->__pd = self->__tail[i]->__nd = NULL;
     }
 }
+/*
+ * __init__
+ */
 __NONNULL__ __attribute__((warn_unused_result)) void *JsonInit(JsonObject *self) {
     register int L0 __UNUSED__;
 
@@ -291,11 +347,19 @@ __NONNULL__ __attribute__((warn_unused_result)) void *JsonInit(JsonObject *self)
     (*self)->__setfl |= F_OBJEXIST;
     (*self)->__hashBkt = OBJHASH_BUCKET;
     (*self)->__self = self;
+    /* __parent will be modified during object attachment for non-base objects, so as to inherit their parents */ 
+    (*self)->__parent = NULL;
+    /* Methods */
+#if !defined(NOBJ_METHODS)
     (*self)->string = addStringToJsonObject;
     (*self)->remove = removeFromJsonObject;
-
+#endif
     return *self;
 }
+
+/*
+ * __open__
+ */
 __NONNULL__ __attribute__((warn_unused_result)) JsonObject JsonOpen(unsigned char *file) {
     struct stat statbf;
     JsonObject newObj;
@@ -328,6 +392,9 @@ __NONNULL__ __attribute__((warn_unused_result)) JsonObject JsonOpen(unsigned cha
     return newObj;
 }
 
+/* 
+ * __read__
+ */
 static __inline__ void *readfl(JsonObject obj, int fd, ssize_t sz) {
     JsonString bf;
     register ssize_t rdbytes, L1;
@@ -409,6 +476,10 @@ __NONNULL__ static __inline__ ssize_t getKey(JsonString str, JsonString __restri
 /* assert end of value characters */
 #define EOVAL(c)							\
     (!(((c) ^ JS_CH(',')) && ((c) ^ JS_CH('\n')) && ((c) ^ JS_CH('}')) && ((c) ^ JS_CH(']'))))
+
+/* 
+ * __parser__
+ */
 
 __NONNULL__ static __inline__ void *lexer(JsonObject obj, JsonString bf, ssize_t sz) {
     register ssize_t objMtch, arrMtch, nkeys, L2, L3, LINE, CH_AT;
@@ -537,6 +608,9 @@ __NONNULL__ static __inline__ void *lexer(JsonObject obj, JsonString bf, ssize_t
     }
     //printf("%ld\n", LINE);
 }
+/* 
+ * __dump__
+ */
 __NONNULL__ static ssize_t dump(JsonObject self, ...) {
     printfmt fmt;
 #if !defined( NOBJ_BUFFERING)
@@ -544,7 +618,7 @@ __NONNULL__ static ssize_t dump(JsonObject self, ...) {
 #else
 #endif
 }
-/* ... (tab), indent char */
+
 __NONNULL__ ssize_t dumpbf(JsonObject self, printfmt *fmt) {
     JsonString buf;
     JsonData data;
@@ -597,20 +671,7 @@ int main(int argc, char **argv) {
     if (argc != 2) {
 	return -1;
     }
-
-    if ((fd = open(argv[argc - 1], O_RDONLY)) == -1) {
-	fprintf(stderr, "open: %s\n", strerror(errno));
-	return -1;
-    }
-    if ((nr = read(fd, bf, 1024)) == -1) {
-	fprintf(stderr, "%s\n", strerror(errno));
-	return -1;
-    }
-    bf[nr] = 0;
-    /*	if (lexer((JsonObject)1, bf, nr) == NULL) {
-	puts("error");
-	}*/
-    JsonObject myjson = JsonOpen("tjs.json");
+    JsonObject myjson = JsonOpen(argv[1]);
     if (myjson == NULL) {
 	perror("");
     }

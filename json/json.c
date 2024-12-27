@@ -140,58 +140,90 @@ static __inline__ void *pushToStack(objStack **top, void *obj) {
 static __inline__ __FORCE_INLINE__ void *getFromStack(objStack **top) {
     return (top && *top) ? (*top)->stk_obj : NULL;
 }
-typedef long VEC_szType;
-#define VEC_META_DATA_SZ sizeof(long)
+
+/*
+ * vector
+ */
+typedef unsigned long VEC_szType;
+#define VEC_PREALLOC ((VEC_szType)LONG_MAX + 1)
+#define VEC_META_DATA_SZ sizeof(VEC_szType)
 #define VEC_DATA_START VEC_META_DATA_SZ
-#define VEC_ALLOC_SZ 1
+#define VEC_ALLOC_SZ 1024
+#define VEC_APPEND 268
+#define VEC_VECTOR 2
 
 static __inline__ __FORCE_INLINE__ void *VEC_szcpy(void *dest, void *src, ssize_t sz) {
     if (sz == sizeof(VEC_szType)) {
-	/* We are assuming memory alignment of src and dest to be same */
-	*(VEC_szType *)dest = *(VEC_szType *)src;
+        /* We are assuming memory alignment of src and dest to be same */
+        *(VEC_szType *)dest = *(VEC_szType *)src;
     }
     else {
-	unsigned char *_dest, *_src;
+        unsigned char *_dest, *_src;
 
-	_dest = (unsigned char *)dest, _src = (unsigned char *)src;
-	while (sz--)
-	    *_dest++ = *_src++; 
+        _dest = (unsigned char *)dest, _src = (unsigned char *)src;
+        while (sz--)
+            *_dest++ = *_src++; 
     }
     return dest;
 }
 
 static __inline__ void **vecT(void) {
-    uint8_t **vec_0;
-    VEC_szType sz = VEC_ALLOC_SZ;
-
-    vec_0 = malloc((sizeof(uint8_t *) * sz) + VEC_META_DATA_SZ);
-    VEC_szcpy(vec_0, &sz, sizeof(sz));
-    *(vec_0 + VEC_DATA_START) = NULL;
-
-    return vec_0 ? (void **)vec_0 + VEC_DATA_START : NULL;
-}
-__NONNULL__ static __inline__ void **vecExpand(void **vec, void *vd, ssize_t index) {
-    uint8_t **vec_0, **vecMetaData;
+    void **vec_0;
     VEC_szType sz;
 
-    vec_0 = vec;
-    vecMetaData = (vec_0 - VEC_DATA_START);
-    VEC_szcpy(&sz, vecMetaData, sizeof(VEC_szType));
-    if (vec[VEC_DATA_START] == NULL || (sz <= VEC_ALLOC_SZ)) {
-	vec_0[sz++] = vd;
-	VEC_szcpy(vecMetaData, &sz, sizeof(VEC_szType));
-    }
-    else {
-	vec_0 = realloc((vec_0 = vecMetaData), (long)(sz + VEC_ALLOC_SZ + VEC_META_DATA_SZ));
-	if (! vec_0)
-	    return NULL;
+    vec_0 = malloc((sizeof(void *) * VEC_ALLOC_SZ) + VEC_META_DATA_SZ);
 
-	vecMetaData = vec_0;
-	(vec_0 + VEC_DATA_START)[sz] = vd;
-	sz += VEC_ALLOC_SZ;
-	VEC_szcpy(vecMetaData, &sz, sizeof(VEC_szType));
+    if (vec_0 == NULL)
+	return NULL;
+    *(vec_0 + VEC_DATA_START) = NULL;
+    sz = 1;
+    if (VEC_ALLOC_SZ > 1) {
+	sz |= VEC_PREALLOC;
     }
-    return (void **)(vec_0 + VEC_DATA_START);
+     memcpy(vec_0, &sz, sizeof(sz));
+
+    return vec_0 ? vec_0 + VEC_DATA_START : NULL;
+}
+
+static __inline__  __NONNULL__ void **vecAppend(void ***vec, void *new, VEC_szType sz) {
+    void **v0;
+
+    v0 = *vec ? realloc(*vec - VEC_DATA_START, (sz & ~VEC_PREALLOC) + VEC_ALLOC_SZ + VEC_META_DATA_SZ) : NULL;
+    if ((v0 == NULL) || (sz < 0))
+	return (void **)NULL;
+    *vec = v0;
+    (*vec + VEC_DATA_START)[sz] = new;
+    sz += VEC_ALLOC_SZ;
+    if (VEC_ALLOC_SZ > 1) {
+	sz |= VEC_PREALLOC;
+    }
+    memcpy(*vec, &sz, sizeof(VEC_szType));
+    *vec += VEC_DATA_START;
+}
+
+/* The sum of preallocated block: ((sz / pre_alloc_sz) + (1 or 0)) * pre_alloc_sz; where the +1 accounts for the effect of the remainder when sz is not a multiple of pre_alloc_sz */
+#define NUMBER_OF_PREALLOC_FROM_SZ(sz) (((sz / VEC_ALLOC_SZ) + !!(sz % VEC_ALLOC_SZ)) * VEC_ALLOC_SZ)
+
+static __inline__  __NONNULL__ void **vecExpand(void ***vec, void *vd, ssize_t index, ssize_t vflag) {
+    void *v0;
+    VEC_szType sz, fl;
+
+    memcpy(&sz, *vec - VEC_DATA_START, sizeof sz);
+    fl = sz & VEC_PREALLOC;
+    sz = sz & ~VEC_PREALLOC;
+    if ((*vec)[0] == NULL)
+        (*vec)[0] = vd;
+    else if (index < sz)
+    	(*vec)[index] = vd;
+    else if (fl && (index < (NUMBER_OF_PREALLOC_FROM_SZ(sz)))) {
+	(*vec)[index - 1] = vd;
+	sz = (sz + 1) | fl;
+	memcpy(*vec - VEC_DATA_START, &sz, sizeof(VEC_szType));
+    }
+    else if (! ((vflag & VEC_APPEND) && vecAppend(&vec, vd, sz))) {
+	return NULL;
+    }
+    return *vec;
 }
 
 #ifdef __UINT64_T__

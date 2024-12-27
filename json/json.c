@@ -147,7 +147,7 @@ static __inline__ __FORCE_INLINE__ void *getFromStack(objStack **top) {
 typedef unsigned long VEC_szType;
 #define VEC_PREALLOC ((VEC_szType)LONG_MAX + 1)
 #define VEC_META_DATA_SZ sizeof(VEC_szType)
-#define VEC_DATA_START VEC_META_DATA_SZ
+#define VEC_DATA_START 1
 #define VEC_ALLOC_SZ 1024
 #define VEC_APPEND 268
 #define VEC_VECTOR 2
@@ -180,7 +180,7 @@ static __inline__ void **vecT(void) {
     if (VEC_ALLOC_SZ > 1) {
 	sz |= VEC_PREALLOC;
     }
-     memcpy(vec_0, &sz, sizeof(sz));
+    memcpy(vec_0, &sz, sizeof(sz));
 
     return vec_0 ? vec_0 + VEC_DATA_START : NULL;
 }
@@ -205,7 +205,6 @@ static __inline__  __NONNULL__ void **vecAppend(void ***vec, void *new, VEC_szTy
 #define NUMBER_OF_PREALLOC_FROM_SZ(sz) (((sz / VEC_ALLOC_SZ) + !!(sz % VEC_ALLOC_SZ)) * VEC_ALLOC_SZ)
 
 static __inline__  __NONNULL__ void **vecExpand(void ***vec, void *vd, ssize_t index, ssize_t vflag) {
-    void *v0;
     VEC_szType sz, fl;
 
     memcpy(&sz, *vec - VEC_DATA_START, sizeof sz);
@@ -216,7 +215,7 @@ static __inline__  __NONNULL__ void **vecExpand(void ***vec, void *vd, ssize_t i
     else if (index < sz)
     	(*vec)[index] = vd;
     else if (fl && (index < (NUMBER_OF_PREALLOC_FROM_SZ(sz)))) {
-	(*vec)[index - 1] = vd;
+	(*vec)[index] = vd;
 	sz = (sz + 1) | fl;
 	memcpy(*vec - VEC_DATA_START, &sz, sizeof(VEC_szType));
     }

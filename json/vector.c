@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stddef.h>
 #include <assert.h>
 
 #define __FORCE_INLINE__ __attribute__((always_inline))
@@ -11,15 +12,15 @@
 #define CHOOSE_EXPR(cExpr, tVal, fVal)		\
     __builtin_choose_expr(cExpr, tVal, fVal)
 
-typedef unsigned long VEC_szType;
-#define VEC_PREALLOC ((VEC_szType)LONG_MAX + 1)
-#define VEC_META_DATA_SZ sizeof(VEC_szType)
+typedef uint32_t VEC_szType; 
+#define VEC_PREALLOC (uint32_t)0x80000000 /* 2 ^ 31 */
+#define VEC_META_DATA_SZ 4 /*sizeof (uint32) */
 #define VEC_DATA_START 1
 #define VEC_ALLOC_SZ 1024
 #define VEC_APPEND 268
 #define VEC_VECTOR 2
 
-static __inline__ __FORCE_INLINE__ void *VEC_szcpy(void *dest, void *src, ssize_t sz) {
+static __inline__ __FORCE_INLINE__ void *VEC_szcpy(void *dest, void *src, size_t sz) {
     if (sz == sizeof(VEC_szType)) {
         /* We are assuming memory alignment of src and dest to be same */
 	*(VEC_szType *)dest = *(VEC_szType *)src;
@@ -70,7 +71,7 @@ static __inline__  __NONNULL__ void **vecAppend(void ***vec, void *new, VEC_szTy
 /* The sum of preallocated block: ((sz / pre_alloc_sz) + (1 or 0)) * pre_alloc_sz; where the +1 accounts for the effect of the remainder when sz is not a multiple of pre_alloc_sz */
 #define NUMBER_OF_PREALLOC_FROM_SZ(sz) (((sz / VEC_ALLOC_SZ) + !!(sz % VEC_ALLOC_SZ)) * VEC_ALLOC_SZ)
 
-static __inline__  __NONNULL__ void **vecExpand(void ***vec, void *vd, ssize_t index, ssize_t vflag) {
+static __inline__  __NONNULL__ void **vecExpand(void ***vec, void *vd, size_t index, size_t vflag) {
     void *v0;
     VEC_szType sz, fl;
 
@@ -95,15 +96,17 @@ static __inline__  __NONNULL__ void **vecExpand(void ***vec, void *vd, ssize_t i
     return *vec;
 }
 
-static __inline__ __NONNULL__ void *vec_ADD(void ***vec, void *vd, ssize_t bytesz, ssize_t sz, ssize_t index) {
+static __inline__ __NONNULL__ void *vec_ADD(void ***vec, void *vd, size_t bytesz, size_t sz, size_t index) {
     void **v0;
-    ssize_t nalloc;
+    size_t nalloc;
 
-    nalloc = bytesz * sz;
-    if (! (*vec == NULL || nalloc < 1 || (v0 = vecT()) || (*v0 = malloc(nalloc)))) {
+    nalloc = bytesz * (sz + (bytesz > VEC_META_DATA_SZ) ? 1 : bytesz / VEC_META_DATA_SZ); /* sizeof(vd) * (n + prealloc) */
+    if (*vec == NULL || nalloc == 1 || !(v0 = vecT()) || !(*v0 = malloc(nalloc))) {
 	return NULL;
     }
-    memcpy(*v0, vd, nalloc);
+    *(VEC_szType *)*v0 = (VEC_szType)sz;
+    *v0 = *v0 + VEC_META_DATA_SZ;
+    memcpy(*v0, vd, (bytesz * sz));
     return vecExpand(vec, v0, index, VEC_APPEND);
 }
 
@@ -136,10 +139,10 @@ int main(void) {
 	puts("null");
 	exit(2);
     }
-    memcpy(&x, vec - VEC_DATA_START, sizeof(long));
+    memcpy(&x, vec - VEC_DATA_START, sizeof(VEC_szType));
     printf("%lu\n", (long)x & ~VEC_PREALLOC);
     free(vec - VEC_DATA_START);
-    printf("%ld\n", sizeof(void *) * INT_MAX);
+    printf("%ld\n", (long)0);
 }
 
 

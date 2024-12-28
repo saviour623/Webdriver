@@ -148,7 +148,9 @@ typedef unsigned long VEC_szType;
 #define VEC_PREALLOC ((VEC_szType)LONG_MAX + 1)
 #define VEC_META_DATA_SZ sizeof(VEC_szType)
 #define VEC_DATA_START 1
-#define VEC_ALLOC_SZ 1024
+#define VEC_ALLOC_WD 10 /* 1024 */
+#define VEC_ALLOC_MIN (VEC_szType)1
+#define VEC_ALLOC_SZ (VEC_ALLOC_MIN << VEC_ALLOC_WD)
 #define VEC_APPEND 268
 #define VEC_VECTOR 2
 
@@ -201,8 +203,10 @@ static __inline__  __NONNULL__ void **vecAppend(void ***vec, void *new, VEC_szTy
     *vec += VEC_DATA_START;
 }
 
-/* The sum of preallocated block: ((sz / pre_alloc_sz) + (1 or 0)) * pre_alloc_sz; where the +1 accounts for the effect of the remainder when sz is not a multiple of pre_alloc_sz */
-#define NUMBER_OF_PREALLOC_FROM_SZ(sz) (((sz / VEC_ALLOC_SZ) + !!(sz % VEC_ALLOC_SZ)) * VEC_ALLOC_SZ)
+/* The sum of preallocated block: ((sz / pre_alloc_sz) + (1 or 0)) * pre_alloc_sz; where the +1 accounts for the effect of the remainder when sz is not a multiple of pre_alloc_sz
+ * (((sz / VEC_ALLOC_SZ) + !!(sz % VEC_ALLOC_SZ)) * VEC_ALLOC_SZ)
+ */
+#define NUMBER_OF_PREALLOC_FROM_SZ(sz) (((sz >> VEC_ALLOC_WD) + !!(sz & (VEC_ALLOC_SZ - 1))) << VEC_ALLOC_WD)
 
 static __inline__  __NONNULL__ void **vecExpand(void ***vec, void *vd, ssize_t index, ssize_t vflag) {
     VEC_szType sz, fl;
@@ -219,10 +223,21 @@ static __inline__  __NONNULL__ void **vecExpand(void ***vec, void *vd, ssize_t i
 	sz = (sz + 1) | fl;
 	memcpy(*vec - VEC_DATA_START, &sz, sizeof(VEC_szType));
     }
-    else if (! ((vflag & VEC_APPEND) && vecAppend(&vec, vd, sz))) {
+    else if (! ((vflag & VEC_APPEND) && vecAppend(vec, vd, sz))) {
 	return NULL;
     }
     return *vec;
+}
+static __inline__ __NONNULL__ void *vec_ADD(void ***vec, void *vd, ssize_t bytesz, ssize_t sz, ssize_t index) {
+    void **v0;
+    ssize_t nalloc;
+
+    nalloc = bytesz * sz;
+    if (! (*vec == NULL || nalloc < 1 || (v0 = vecT()) || (*v0 = malloc(nalloc)))) {
+	return NULL;
+    }
+    memcpy(*v0, vd, nalloc);
+    return vecExpand(vec, v0, index, VEC_APPEND);
 }
 
 #ifdef __UINT64_T__
@@ -695,7 +710,7 @@ void static __inline__ __jsonError__(int errn, char * __restrict line, char * __
 }
 
 int main(int argc, char **argv) {
-    int fd;
+    /*int fd;
     char bf[1025];
     ssize_t nr;
 
@@ -707,7 +722,40 @@ int main(int argc, char **argv) {
 	perror("");
     }
     JsonData d;
-    puts((d = myjson->remove(myjson, "debug")) ? d->__str : (void *)"null");;
+    puts((d = myjson->remove(myjson, "debug")) ? d->__str : (void *)"null");
+    */
+    int num[1024];
+    VEC_szType x, p;
+    void **vec = vecT();
+
+    
+    if (vec == NULL)
+	{
+	    puts("null");
+	    exit(-1);
+	}
+    while (p < 1024) {
+	num[p] = p;
+	p++;
+    }
+    p = 0;
+    while (p < 1024) {
+	if (vecExpand(&vec, num+p, p, VEC_APPEND) == NULL) {
+	    puts("error");
+	    exit(-1);
+	}
+	p++;
+    }
+    p = 0; 
+    if (vec == NULL) {
+	puts("null");
+	exit(2);
+    }
+    memcpy(&x, vec - VEC_DATA_START, sizeof(long));
+    printf("%lu\n", (long)x & ~VEC_PREALLOC);
+    free(vec - VEC_DATA_START);
+
+    printf("sz: %lu\n", (long)NUMBER_OF_PREALLOC_FROM_SZ(1023));
     return 0;
 }
 

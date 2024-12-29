@@ -15,10 +15,13 @@
 typedef uint32_t VEC_szType; 
 #define VEC_PREALLOC (uint32_t)0x80000000 /* 2 ^ 31 */
 #define VEC_META_DATA_SZ 4 /*sizeof (uint32) */
-#define VEC_DATA_START 1
+#define VEC_DATA_START 4
 #define VEC_ALLOC_SZ 1024
 #define VEC_APPEND 268
 #define VEC_VECTOR 2
+
+#define VEC_READ_META_DATA(vec, to) memcpy((to), (uint8_t *)(vec) - VEC_DATA_START, VEC_META_DATA_SZ)
+#define VEC_WRITE_META_DATA(vec, to) memcpy((uint8_t *)(vec) - VEC_DATA_START, (to), VEC_META_DATA_SZ)
 
 static __inline__ __FORCE_INLINE__ void *VEC_szcpy(void *dest, void *src, size_t sz) {
     if (sz == sizeof(VEC_szType)) {
@@ -36,36 +39,32 @@ static __inline__ __FORCE_INLINE__ void *VEC_szcpy(void *dest, void *src, size_t
 }
 
 static __inline__ void **vecT(void) {
-    void **vec_0;
+    void *vec_0;
     VEC_szType sz;
 
-    vec_0 = malloc((sizeof(void *) * VEC_ALLOC_SZ) + VEC_META_DATA_SZ);
-
-    if (vec_0 == NULL)
+    if (! (vec_0 = malloc((sizeof(void *) * VEC_ALLOC_SZ) + VEC_META_DATA_SZ)))
 	return NULL;
-    *(vec_0 + VEC_DATA_START) = NULL;
-    sz = 1;
-    if (VEC_ALLOC_SZ > 1) {
-	sz |= VEC_PREALLOC;
-    }
-    memcpy(vec_0, &sz, sizeof(sz)); 
-    return vec_0 ? vec_0 + VEC_DATA_START : NULL;
+    sz = VEC_ALLOC_SZ > 1 ? (1 | VEC_PREALLOC) : 1;
+    vec_0 = (uint8_t *)vec_0 + VEC_DATA_START;
+    VEC_WRITE_META_DATA(vec_0, &sz);
+    *(void **)vec_0 = NULL;
+    return vec_0;
 }
 
 static __inline__  __NONNULL__ void **vecAppend(void ***vec, void *new, VEC_szType sz) {
-    void **v0;
+    void *v0;
 
-    v0 = *vec ? realloc(*vec - VEC_DATA_START, (sz & ~VEC_PREALLOC) + VEC_ALLOC_SZ + VEC_META_DATA_SZ) : NULL;
+    v0 = *vec ? realloc((uint8_t *)*vec - VEC_DATA_START, (sizeof (void *) * ((sz & ~VEC_PREALLOC) + VEC_ALLOC_SZ) + VEC_META_DATA_SZ)) : NULL;
     if ((v0 == NULL) || (sz < 0))
 	return (void **)NULL;
-    *vec = v0;
-    (*vec + VEC_DATA_START)[sz] = new;
+    *vec = (void **)((uint8_t *)v0 + VEC_DATA_START);
+    (*vec)[sz - 1] = new;
     sz += VEC_ALLOC_SZ;
     if (VEC_ALLOC_SZ > 1) {
 	sz |= VEC_PREALLOC;
     }
-    memcpy(*vec, &sz, sizeof(VEC_szType));
-    *vec += VEC_DATA_START;
+    VEC_WRITE_META_DATA(*vec, &sz);
+    return *vec;
 }
 
 /* The sum of preallocated block: ((sz / pre_alloc_sz) + (1 or 0)) * pre_alloc_sz; where the +1 accounts for the effect of the remainder when sz is not a multiple of pre_alloc_sz */
@@ -75,11 +74,11 @@ static __inline__  __NONNULL__ void **vecExpand(void ***vec, void *vd, size_t in
     void *v0;
     VEC_szType sz, fl;
 
-    memcpy(&sz, *vec - VEC_DATA_START, sizeof sz);
+    VEC_READ_META_DATA(*vec, &sz);
     fl = sz & VEC_PREALLOC;
     sz = sz & ~VEC_PREALLOC;
-    if ((*vec)[0] == NULL){
-        (*vec)[0] = vd;
+    if (**vec == NULL){
+        **vec = vd;
 	sz++;
     }
     else if (index < sz) {
@@ -88,9 +87,9 @@ static __inline__  __NONNULL__ void **vecExpand(void ***vec, void *vd, size_t in
     else if (fl && (index < (NUMBER_OF_PREALLOC_FROM_SZ(sz)))) {
 	(*vec)[index] = vd;
 	sz = (sz + 1) | fl;
-	memcpy(*vec - VEC_DATA_START, &sz, sizeof(VEC_szType));
+	VEC_WRITE_META_DATA(*vec, &sz);
     }
-    else if (! ((vflag & VEC_APPEND) && vecAppend(vec, vd, sz))) {
+    else if (! ((vflag & VEC_APPEND) && (*vec = vecAppend(vec, vd, sz)))) {
 	return NULL;
     }
     return *vec;
@@ -100,14 +99,16 @@ static __inline__ __NONNULL__ void *vec_ADD(void ***vec, void *vd, size_t bytesz
     void **v0;
     size_t nalloc;
 
-    nalloc = bytesz * (sz + (bytesz > VEC_META_DATA_SZ) ? 1 : bytesz / VEC_META_DATA_SZ); /* sizeof(vd) * (n + prealloc) */
-    if (*vec == NULL || nalloc == 1 || !(v0 = vecT()) || !(*v0 = malloc(nalloc))) {
+    nalloc = bytesz * sz; /* sizeof(vd) * (n + prealloc) */
+    if (*vec == NULL || nalloc == 1 || !(v0 = vecT()) || !(*v0 = malloc(nalloc + VEC_META_DATA_SZ))) {
 	return NULL;
     }
     *(VEC_szType *)*v0 = (VEC_szType)sz;
-    *v0 = *v0 + VEC_META_DATA_SZ;
-    memcpy(*v0, vd, (bytesz * sz));
+    *v0 = (uint8_t *)*v0 + VEC_META_DATA_SZ;
+    memcpy(*v0, vd, nalloc);
     return vecExpand(vec, v0, index, VEC_APPEND);
+}
+static __inline__ __NONNULL__ void *vec_DELETE(void ***vec, void *vd, size_t bytesz, size_t sz, size_t index) {
 }
 
 int main(void) {
@@ -139,10 +140,14 @@ int main(void) {
 	puts("null");
 	exit(2);
     }
-    memcpy(&x, vec - VEC_DATA_START, sizeof(VEC_szType));
+    //vecAppend(&vec, num, 1);
+    //vecAppend(&vec, num, 2);
+    //vecAppend(&vec, num, 3);
+    //vecAppend(&vec, num, 4);
+    memcpy(&x, (char *)vec - VEC_DATA_START, sizeof(VEC_szType));
     printf("%lu\n", (long)x & ~VEC_PREALLOC);
-    free(vec - VEC_DATA_START);
-    printf("%ld\n", (long)0);
+    free((char *)vec - VEC_DATA_START);
+    //printf("%ld\n", (long)0);
 }
 
 

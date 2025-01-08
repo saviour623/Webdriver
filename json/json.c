@@ -749,30 +749,11 @@ void static __inline__ __jsonError__(int errn, char * __restrict line, char * __
 }
 
 int main(int argc, char **argv) {
-    /*int fd;
-    char bf[1025];
-    ssize_t nr;
-
-    if (argc != 2) {
-	return -1;
-    }
-    JsonObject myjson = JsonOpen(argv[1]);
-    if (myjson == NULL) {
-	perror("");
-    }
-    JsonData d;
-    puts((d = myjson->remove(myjson, "debug")) ? d->__str : (void *)"null");
-    */
     int num[1024];
     VEC_szType x, p;
     void **vec;
 
-    vec = VEC_create();
-
-    //*vec = "helloc";
-    //vec[1] = "stop";
-    // printf("%s\n", ((char **)vec)[1]);
-    
+    vec = VEC_create();    
     if (vec == NULL)
 	{
 	    puts("null");

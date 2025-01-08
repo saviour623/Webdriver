@@ -144,121 +144,140 @@ static __inline__ __FORCE_INLINE__ void *getFromStack(objStack **top) {
 /*
  * vector
  */
-typedef uint32_t VEC_szType; /* vector size type */
+typedef uint32_t VEC_szType;
 #define VEC_PREALLOC (uint32_t)0x80000000 /* 2 ^ 31 */
-#define VEC_META_DATA_SZ 4 /* sizeof (uint32) */
-#define VEC_DATA_START 4
-#define VEC_ALLOC_WD 0 /* exponent of size pre-allocation (1 << VEC_ALLOC_WD) */
-#define VEC_ALLOC_MIN (VEC_szType)1
-#define VEC_ALLOC_SZ (VEC_ALLOC_MIN << VEC_ALLOC_WD)
-#define VEC_APPEND 268 /* force append data to end of vector array */
-#define VEC_READ_META_DATA(vec, to) memcpy((to), (uint8_t *)(vec) - VEC_DATA_START, VEC_META_DATA_SZ)
-#define VEC_WRITE_META_DATA(vec, to) memcpy((uint8_t *)(vec) - VEC_DATA_START, (to), VEC_META_DATA_SZ)
+#define VEC_BYTE_SZ 4
+#define VEC_DATA_BLOCK_SZ (sizeof (void *))
+#define VEC_META_DATA_SZ 5/*VEC_BYTE_SZ + 1 */
+#define VEC_DATA_START 5
+#define VEC_ALLOC_SZ 1
+#define VEC_APPEND 268
+#define VEC_VECTOR 32
+#define VEC_ARRAY 64
 
-/* 
- * vector - memcpy
- */
-static __inline__ __FORCE_INLINE__ void *VEC_szcpy(void *dest, void *src, size_t sz) {
-    if (sz == sizeof(VEC_szType)) {
-        /* We are assuming memory alignment of src and dest to be same */
-        *(VEC_szType *)dest = *(VEC_szType *)src;
-    }
-    else {
-        unsigned char *_dest, *_src;
+/* remove the type alignment of bytes so that each block can be addressed like a byte array */
+#define VEC_ACCESS(_addr) ((uint8_t *)(void *)(_addr))
 
-        _dest = (unsigned char *)dest, _src = (unsigned char *)src;
-        while (sz--)
-            *_dest++ = *_src++; 
-    }
-    return dest;
+/* write vec_meta_data_sz bytes to a vector/vector-child block */
+#define VEC_WRITE_META_DATA(vec, to) VEC_copyMetaData(VEC_ACCESS(vec) - VEC_DATA_START, (to))
+/* copy vec_meta_data_sz bytes from vector/vector-child block to a different block */
+#define VEC_COPY_META_DATA(vec, to) VEC_copyMetaData((to), VEC_ACCESS(vec) - VEC_DATA_START)
+ /* copy size from meta-data block */
+#define VEC_COPY_SZ(to, from) (*(VEC_szType *)(void *)(to) = *(VEC_szType *)(void *)(from))
+/* copy other informations stored at the last byte of meta-block */
+#define VEC_COPY_DT(to, from) (*(uint8_t *)(void *)(to) = (*(uint8_t *)(void*)(from)) + VEC_BYTE_SZ)
+ /* move pointer ahead of the meta-data block */
+#define VEC_MOVTO_DATA(vec) ((vec) = VEC_ACCESS(vec) + VEC_META_DATA_SZ)
+
+/* copy both size and other info of meta-block to another dest */
+static __inline__ __FORCE_INLINE__ void *VEC_copyMetaData(void *__restrict to, void *__restrict from) {
+    uint8_t *_to, *_from;
+
+    _to = to; _from = from;
+    /* @to and @from must both be VEC_META_DATA_SZ aligned */
+    *(VEC_szType *)_to = *(VEC_szType *)_from;
+    *(_to + VEC_BYTE_SZ) = *(_from + VEC_BYTE_SZ);
+    return _to;
 }
 
-/* 
- * vector - init 
- */
-static __inline__ void **vecInit(void) {
-    void *vec_0;
+static __inline__ void **VEC_create(void) {
+    void *vec;
     VEC_szType sz;
 
-    if (! (vec_0 = malloc((sizeof(void *) * VEC_ALLOC_SZ) + VEC_META_DATA_SZ)))
+    if (! (vec = malloc((VEC_DATA_BLOCK_SZ * VEC_ALLOC_SZ) + VEC_META_DATA_SZ)))
 	return NULL;
-    sz = VEC_ALLOC_SZ > 1 ? (1 | VEC_PREALLOC) : 1;
-    vec_0 = (uint8_t *)vec_0 + VEC_DATA_START;
-    VEC_WRITE_META_DATA(vec_0, &sz);
-    *(void **)vec_0 = NULL;
-    return vec_0;
+    sz = (VEC_ALLOC_SZ > 1) ? ((VEC_szType)VEC_PREALLOC | 1) : 1;
+    VEC_COPY_SZ(vec, &sz);
+    /* move pointer to end of the meta-data block, which is the actual address of vec allowed to store data */
+    VEC_MOVTO_DATA(vec);
+/*
+ * initializing the first block to 0. This indicates that a vector is empty.
+ * A way to check if a vector is empty is to assert if its of size 1 and its first member is null
+ */
+    *(void **)vec = NULL;
+    return vec;
 }
 
-/*
- * vector - push to bottom
- */
-static __inline__  __NONNULL__ void **vecAppend(void ***vec, void *new, VEC_szType sz) {
+static __inline__  __NONNULL__ void **VEC_append(void ***vec, void *new, VEC_szType sz) {
     void *v0;
 
-    v0 = *vec ? realloc((uint8_t *)*vec - VEC_DATA_START, (sizeof (void *) * ((sz & ~VEC_PREALLOC) + VEC_ALLOC_SZ) + VEC_META_DATA_SZ)) : NULL;
-    if ((v0 == NULL) || (sz < 0))
+    sz &= ~VEC_PREALLOC;
+    /* dynamically resize vector to accomodate a new data */
+    v0 = *vec ? realloc(VEC_ACCESS(*vec) - VEC_DATA_START, (VEC_DATA_BLOCK_SZ * (sz + VEC_ALLOC_SZ)) + VEC_META_DATA_SZ) : NULL;
+
+    if (v0 == NULL)
 	return (void **)NULL;
-    *vec = (void **)((uint8_t *)v0 + VEC_DATA_START);
-    (*vec)[sz - 1] = new;
-    sz += VEC_ALLOC_SZ;
+    sz += 1;
     if (VEC_ALLOC_SZ > 1) {
 	sz |= VEC_PREALLOC;
     }
-    VEC_WRITE_META_DATA(*vec, &sz);
-    return *vec;
-}
-/* The sum of preallocated block: ((sz / pre_alloc_sz) + (1 or 0)) * pre_alloc_sz; where the +1 accounts for the effect of the remainder when sz is not a multiple of pre_alloc_sz
- * (((sz / VEC_ALLOC_SZ) + !!(sz % VEC_ALLOC_SZ)) * VEC_ALLOC_SZ)
- */
-#define NUMBER_OF_PREALLOC_FROM_SZ(sz) (((sz >> VEC_ALLOC_WD) + !!(sz & (VEC_ALLOC_SZ - 1))) << VEC_ALLOC_WD)
-
-/* 
- * vector - push to index
- * @vflag - append to the vector's tail if index is greater than the vector size
- */
-static __inline__  __NONNULL__ void **vecExpand(void ***vec, void *vd, size_t index, size_t vflag) {
-    void *v0;
-    VEC_szType sz, fl;
-
-    VEC_READ_META_DATA(*vec, &sz);
-    fl = sz & VEC_PREALLOC;
-    sz = sz & ~VEC_PREALLOC;
-    if (**vec == NULL){
-        **vec = vd;
-	sz++;
-    }
-    else if (index < sz) {
-    	(*vec)[index] = vd;
-    }
-    else if (fl && (index < (NUMBER_OF_PREALLOC_FROM_SZ(sz)))) {
-	(*vec)[index] = vd;
-	sz = (sz + 1) | fl;
-	VEC_WRITE_META_DATA(*vec, &sz);
-    }
-    else if (! ((vflag & VEC_APPEND) && (*vec = vecAppend(vec, vd, sz)))) {
-	return NULL;
-    }
+    VEC_COPY_SZ(v0, &sz);
+    *vec = VEC_MOVTO_DATA(v0);
+    (*vec)[sz - 1] = new;
     return *vec;
 }
 
 /*
- * vector - add
+ * The sum of preallocated block: ((sz / pre_alloc_sz) + (1 or 0))
+ * pre_alloc_sz; where the +1 accounts for the effect of the remainder when sz is not a multiple of pre_alloc_sz
+ * If sz is lesser than pre_alloc_sz, then there is only a single pre-allocation. if sz falls in the range of pre_alloc_sz and (n * pre_alloc_sz) then n allocations has been done
  */
+#define NUMBER_OF_PREALLOC_FROM_SZ(sz) (((sz / VEC_ALLOC_SZ) + !!(sz % VEC_ALLOC_SZ)) * VEC_ALLOC_SZ)
 
-static __inline__ __NONNULL__ void *vec_ADD(void ***vec, void *vd, size_t bytesz, size_t sz, size_t index) {
-    void **v0;
+static __inline__  __NONNULL__ void **VEC_expand(void ***vec, void *vd, size_t index, size_t vflag) {
+    void *v0;
+    VEC_szType sz, fl;
+
+    VEC_COPY_SZ(&sz, VEC_ACCESS(*vec) - VEC_DATA_START); /* read size into sz */
+    fl = sz & VEC_PREALLOC; /* This is set if a preallocation for vector was made */
+    sz = sz & ~VEC_PREALLOC;
+    /* vector is empty. Index is ignored if non-zero */
+    if ((*vec)[0] == NULL){
+	(*vec)[0] = vd;
+    }
+    else if (index < sz) {
+	    (*vec)[index] = vd;
+    }
+    else if (fl && (index < (NUMBER_OF_PREALLOC_FROM_SZ(sz)))) {
+	/* vec has a preallocated sz */
+	(*vec)[index] = vd;
+	sz = (sz + 1) | fl;
+	VEC_COPY_SZ(VEC_ACCESS(*vec) - VEC_DATA_START, &sz);
+    }
+    else if (! ((vflag & VEC_APPEND) && (*vec = VEC_append(vec, vd, sz)))) {
+	return NULL;
+    }
+    return *vec;
+}
+
+static __inline__ __NONNULL__ void *VEC_add(void ***vec, void *vd, size_t bytesz, size_t sz, size_t index, uint8_t type) {
+    void *v0 /* ptr to memory block */, **v00 /* ptr to vector */;
+    uint8_t metaData[VEC_META_DATA_SZ];
     size_t nalloc;
 
     nalloc = bytesz * sz; /* sizeof(vd) * sz */
-    if (*vec == NULL || nalloc == 1 || !(v0 = vecInit()) || !(*v0 = malloc(nalloc + VEC_META_DATA_SZ))) {
+    if (*vec == NULL || nalloc < 1 
+	|| /* block alloc  */ !(v0 = malloc(nalloc + VEC_META_DATA_SZ))) {
 	return NULL;
     }
-    memcpy(v0, &sz, VEC_META_DATA_SZ);
-    *v0 = (uint8_t *)*v0 + VEC_META_DATA_SZ; /* move pointer ahead of internal meta-data block */
-    memcpy(*v0, vd, nalloc);
-    return vecExpand(vec, v0, index, VEC_APPEND);
+    VEC_COPY_SZ(metaData, &sz);
+    metaData[VEC_META_DATA_SZ - 1] = type;
+
+    VEC_MOVTO_DATA(v0);
+     /* copy data to memory including its meta-data */
+    memcpy(v0, vd, nalloc);
+    VEC_WRITE_META_DATA(v0, metaData);
+
+    /* if the vec_vector type is specified, create a new vector */
+    if ((type & VEC_VECTOR) && (v00 = VEC_create())) {
+	/* initialize its first member with the data */
+	*v00 = v0;
+	/* retain a generic reference for both non-vector or vector using a void ptr */
+	v0 = v00;
+    }
+    return v00 && VEC_expand(vec, v0, index, VEC_APPEND) ? v0 : NULL;
 }
-static __inline__ __NONNULL__ void *vec_DELETE(void ***vec) {
+static __inline__ __NONNULL__ void *VEC_delete(void ***vec) {
 }
 #ifdef __UINT64_T__
 #define HASH_int uint64_t
@@ -748,7 +767,7 @@ int main(int argc, char **argv) {
     VEC_szType x, p;
     void **vec;
 
-    vec = vecInit();
+    vec = VEC_create();
 
     //*vec = "helloc";
     //vec[1] = "stop";
@@ -765,7 +784,7 @@ int main(int argc, char **argv) {
     }
     p = 0;
     while (p < 1024) {
-	if (vecExpand(&vec, num+p, p, VEC_APPEND) == NULL) {
+	if (VEC_expand(&vec, num+p, p, VEC_APPEND) == NULL) {
 	    puts("error");
 	    exit(-1);
 	}

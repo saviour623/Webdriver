@@ -34,14 +34,14 @@ declare -A global_set=(\
        --mode 0 --overwrite 0 --set 0\
     )
 
-### utility functions 
+### utility functions
 function END_IFJMP {
     return 0 ;
 }
 function __is_integer {
-    test -z `echo -n "$1" | sed -n -r '/^[0-9]+$/'p` ; echo -n $? 
+    test -z ` sed -n -r '/^[0-9]+$/p' <<< ${1:- $NULL}` ; echo -n $?
 }
-function __getopt {    
+function __getopt {
     echo 1 ;
 }
 
@@ -54,7 +54,7 @@ function __program_usage {
 ###
 
 function __init {
-    declare -a varargs=(a b -p 1 c d o k)
+    declare -a varargs=( ${@} )
     local filename=$NULL
     local argc=${#varargs[*]}
 
@@ -62,10 +62,10 @@ function __init {
 	__program_usage $ER_NOARGS ;
 	exit 1 ;
     fi
-
+    filename=${varargs[-1]}
     ### prepare options
-    # extract option-like arguments; returns (option, index; ...) 
-    # option-index pair is delimited by SEP_OPTARGS 
+    # extract option-like arguments; returns (option, index; ...)
+    # option-index pair is delimited by SEP_OPTARGS
 
     IFS=$SEP_OPTARGS
 
@@ -78,16 +78,16 @@ function __init {
 
     for ((N=0; N < argc; N++)) ; do
 	# mapnext is a map of an option as a key to its successor as a value. Assuming (-b true),  mapnext[-b] would be 'true'
-	mapnext[$N]="${varargs[$((N + 1))]:- 0}" ;
+	mapnext[$N]="${varargs[$((N + 1))]:- $NULL}" ;
     done
-    
+
     # get and set valid options to the 'global option set array'
     # Disclaimer: This code is ambigous and unreadable. see C34 in doc
     IFS=$SEP_DEFAULT
 
     for (( N=0 ; N < ${#fopts[*]} ; N++ )) ; do
 	declare -a expd=( ${fopts[$N]} ) ;
-	typeset -i index=${expd[1]}
+	typeset -i index=$((expd[1] - 1))
 
 	case "${global_options[$expd]:- $NULL}" in
 	    '0')
@@ -110,7 +110,7 @@ function __init {
 
 		    global_set[$expd]=${mapnext[$index]} ;
 		    unset varargs[$index] ;
-		    unset varargs[$((index + 1)] ;
+		    unset varargs[$((index + 1))] ;
 		    ((argc -= 2)) ;
 
 		    END_IFJMP LABEL_SET_GLOBAL_OPTION_AND_DEL ;
@@ -126,26 +126,75 @@ function __init {
 	esac
     done
 
-
     ### prepare input file
-    filename=$varargs ;
 
     if [ $argc -ne 1 ] ; then
 	__program_usage $ER_SOURCE ;
 	exit 1 ;
-    elif ! [[ -f $filename && -r $filename && -s $filename ]] ; then
+    elif [[ ${varargs[-1]} != $filename ]] || ! [[ -f $filename && -r $filename && -s $filename ]] ; then
 	__program_usage $ER_TYPE ;
 	exit 1 ;
     fi
-    # return 1 (success)
     echo "$filename" ;
 }
 
 function main () {
-    filename=$( __init $@ ) ;
+    filename=$( __init $@ )
+    if [[ $filename == [0-9]* ]]; then
+	echo error $filename
+	exit 1
+    fi
+    content=`awk '
+	BEGIN {
+	      RS="\n([ \t]*\n)*";
+	      action = null
+	      files[0] = "(\n"
+	      setcmd[0] = "(\n"
+	}
+	/^__.{,6}[[:space:]]->[[:space:]]\{$/, /\}/{
+		if ($0 ~ /^__files*/) {
+		   action = "files"
+		   i = 1
+		   next
+		}
+		else if ($0 ~ /^__action*/) {
+		     action = "cmd"
+		     i = 1
+		     next
+		}
+		if (action == "files") {
+		   files[i] = $0
+		}
+		else if ((action == "cmd") && ($0 ~ /^[[:space:]]|\{*(set .*)|(create .*)/))
+		     setcmd[i] = $0
+		else if (! ($0 == "}")) {
+		     printf "%s %s\n", "[ERR]:", $0
+		     exit 1
+		}
+		i += 1
+	}
+	function rprint(arr) {
+	    i = length(arr) + 1
+	    arr[i - 1] = ")"
+	    for (j = 0; j < i; j++)
+	    	print arr[j]
+	}
+	END {
+	    rprint(files)
+	    print "@"
+	    rprint(setcmd)
+	}' $filename`
 
-    echo $filename ;
-    return 0 ;
+    if [[ $content == $NULL ]]; then
+	echo "((auto)): no instruction to process in '$filename'" ;
+    fi
+    # remove the set keyword, semi-colon and quotes
+    sed -E 's/[;|\"*]//' <<< $content
+    #content=${content//'set'/$NULL}
+    #content=${content//'}'/$NULL}
+    #content=${content//''/$NULL}
+    #echo $content
+     return 0 ;
 }
 main $@
-
+#^__files[[:space:]]*->[[:space:]]*\{[[:alnum:]]*\}/p

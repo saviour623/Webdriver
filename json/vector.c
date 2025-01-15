@@ -165,7 +165,7 @@ static __inline__  __NONNULL__ void **VEC_expand(void ***vec, void *vd, size_t i
 	/* ++sz */
 	VEC_SZ_INCR(VEC_BLOCK_START(*vec, fl), fl);
     }
-    else if (! ((vflag & VEC_APPEND) && (*vec = VEC_append(vec, vd, sz, fl)))) {
+    else if (! ((vflag & VEC_APPEND) && VEC_append(vec, vd, sz, fl))) {
 	return NULL;
     }
     return *vec;

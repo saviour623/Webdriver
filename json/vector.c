@@ -79,19 +79,19 @@ static void **VEC_create(size_t vecSize) {
 
     if ( !vecSize )
 	vecSize = VEC_LEAST_SZ;
-    /* meta data size */
+    /* meta-data size */
     mSz = VEC_META_DATA_SZ(VEC_SZEOF(vecSize));
  
     if (! (vec = malloc((VEC_DATA_BLOCK_SZ * vecSize) + mSz)))
 	return NULL;
-    /* initial size to zero */
+    /* initialize size to zero */
     memset(vec, 0, --mSz);
 
-    /* update meta-data: prealloc | type / n bytes allocated for sz*/
+    /* update meta-data: prealloc | type | n bytes allocated for sz ([1100 0001] for size == 1) */
     VEC_ACCESS(vec)[mSz] = ((word8)(vecSize > VEC_LEAST_SZ) << 6) | VEC_VECTOR | mSz;
     /* mov ahead meta-data block (main) */
     VEC_MOVTO_DATA_START(vec, mSz);
-/* initializing the first block (main) to 0 (block is empty) */
+/* initialize the first block (main) to 0 [vector is empty] */
     *(void **)vec = 0;
 
     return vec;

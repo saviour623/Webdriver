@@ -12,7 +12,7 @@
 #define CHOOSE_EXPR(cExpr, tVal, fVal)                \
     __builtin_choose_expr(cExpr, tVal, fVal)
 /* fprintf(stderr, "[vector] " "An attempt to add '%p' at index %lu to an object of size %lu failed\n", vd, (long)index, (long)sz);*/
-#define throwError(...)
+#define throwError(...) fprintf(stderr, "[vector] " "An attempt to add '%p' to index %lu of (object: %p) of size %lu failed\n", vd, (long)index + 1, vec, (long)sz)
 
 /*
  * vector
@@ -25,7 +25,7 @@ typedef uint8_t word8;
 #define VEC_LEAST_SZ 1
 #define VEC_ALWYS_PREALLOC 0x40
 #define VEC_ALLOC_SZ 1
-#define VEC_APPEND 268
+#define VEC_APPEND 0xde
 #define VEC_VECTOR 0x80
 #define VEC_ARRAY 0
 #define VEC_SAFE_INDEX_CHECK 1
@@ -56,27 +56,28 @@ typedef uint8_t word8;
 #define VEC_MOVTO_DATA_START(vec, fl)				\
     ((vec) = (void *)(VEC_ACCESS(vec) + VEC_META_DATA_SZ(fl)))
 
-static __inline__ __FORCE_INLINE__ void VEC_getSize(void *vec, void *to) {
+static __inline__ __FORCE_INLINE__ void *VEC_getSize(void *vec, void *to) {
     register word8 *s, *v, i;
 
     v = vec, s = to;
 
     i = *--v & 0x0f; /* n bytes of vec size */
-    v -= i + 1; /* mov v to block start */
+    v -= i; /* mov v to block start */
 
     while ( i-- ) {
 	*s++ = *v++;
     }
+    return to;
 }
 
 /*
  * vector_create
  */
-static __inline__ void **VEC_create(ssize_t vecSize) {
+static void **VEC_create(size_t vecSize) {
     void *vec;
     word8 mSz;
 
-    if (vecSize < 1)
+    if ( !vecSize )
 	vecSize = VEC_LEAST_SZ;
     /* meta data size */
     mSz = VEC_META_DATA_SZ(VEC_SZEOF(vecSize));
@@ -145,10 +146,9 @@ static __inline__  __NONNULL__ void **VEC_append(void ***vec, void *new, VEC_szT
  * vec_expand: add new data to vector
  */
 static __inline__  __NONNULL__ void **VEC_expand(void ***vec, void *vd, size_t index, size_t vflag) {
-    
-    VEC_szType sz = 0, fl;
+    VEC_szType sz, fl;
 
-    VEC_getSize(*vec, &sz);
+    (sz = 0) || VEC_getSize(*vec, &sz);
 
     fl = (VEC_ACCESS(*vec) - 1)[0];
 
@@ -167,43 +167,40 @@ static __inline__  __NONNULL__ void **VEC_expand(void ***vec, void *vd, size_t i
     else if (index < sz) {
 	(*vec)[index] = vd;
     }
-    else if (! ((vflag & VEC_APPEND) && VEC_append(vec, vd, sz, fl))) {
-	/* insufficient memory */
-	return NULL;
-    }
-    else {
-	/* out of bound */
+    else if (! ((vflag & VEC_APPEND) && VEC_append(vec, vd, sz, fl))) {	
+	/* out of bound // insufficient memory */
     err_outOfBound:
 #if VEC_ALW_WARNING
-	fprintf(stderr, "[vector] " "An attempt to add '%p' to index %lu of (object: %p) of size %lu failed\n", vd, (long)index, vec, (long)sz);
-	throwError(EROUT_OF_BOUND, vec, vd, index, sz);
+	vflag & VEC_APPEND && throwError(EROUT_OF_BOUND, vec, vd, index + 1, sz);
 #endif
 	return NULL;
     }
     return *vec;
 }
 
-static __inline__ __NONNULL__ void *VEC_add(void ***vec, void *vd, size_t bytesz, size_t sz, size_t index, word8 type) {
+static  __NONNULL__ void *VEC_add(void ***vec, void *vd, size_t bytesz, size_t sz, size_t index, word8 type) {
     void *v0 /* ptr to memory block */, **v00 /* ptr to vector */;
     word8 meta;
     size_t nalloc;
 
-    meta = type | VEC_SZEOF(sz);
+    v00 = (void *)1; /* prevent unsed v00 folding to 0 */
 
+    meta = type | VEC_SZEOF(sz);
     nalloc = bytesz * sz; /* sizeof(vd) * sz */
+
     if (*vec == NULL || nalloc < 1
 	|| /* block alloc  */ !(v0 = malloc(nalloc + VEC_META_DATA_SZ(meta)))) {
 	return NULL;
     }
     memcpy(v0, &sz, meta & 0x0f);
     /* */
+    VEC_MOVTO_DATA_START(v0, meta);
     (VEC_ACCESS(v0) - 1)[0] = meta;
-
-     /* copy data to memory including its meta-data */
+    /* copy data to memory including its meta-data */
     memcpy(v0, vd, nalloc);
 
     /* if the vec_vector type is specified, create a new vector */
-    if ((type & VEC_VECTOR) && (v00 = VEC_create(1))) {
+    if ((type & VEC_VECTOR) && (v00 = VEC_create(VEC_LEAST_SZ))) {
 	/* initialize its first member with the data */
 	*v00 = v0;
 	/* reuse v0 to retain a generic referencing for both non-vector or vector using a void ptr */
@@ -226,10 +223,8 @@ int main(void) {
 	{20, 40, 60, 80, 100, 120}, {50, 100, 150, 200, 250, 300},
 	{0, 0, 0, 0, 0, 0}, {1, 1, 1, 1, 1, 1}
     };
-    //  vec_ADD(vec_ADD(void ***vec, void *vd, size_t bytesz, size_t sz, size_t index, uint8_t type) {)
-    VEC_add(&vec, data[0], sizeof(int), sizeof data[0], 0, VEC_ARRAY);
-    VEC_add(&vec, data[1], sizeof(int), sizeof data[1], 1, VEC_ARRAY);
-
+    VEC_add(&vec, data[0], sizeof(int), 6, 0, VEC_ARRAY);
+    VEC_add(&vec, data[1], sizeof(int), 6, 1, VEC_ARRAY);
     new = VEC_add(&vec, data[2], sizeof(int), sizeof data[2], 2, VEC_VECTOR);
     if (new != 0)
 	VEC_add(&new, data[3], sizeof(int), sizeof data[3], 1, VEC_ARRAY);
@@ -237,12 +232,12 @@ int main(void) {
     new = VEC_add(&new, data[4], sizeof(int), sizeof data[4], 3, VEC_VECTOR);
     if (new != 0)
 	VEC_add(&new, data[5], sizeof(int), sizeof data[5], 1, VEC_ARRAY);
-    p =  (VEC_ACCESS(vec) - 1)[0] & 0x0f;
     
+    p =  (VEC_ACCESS(vec) - 1)[0] & 0x0f;
     memcpy(&x, VEC_BLOCK_START(vec, p), p);
     printf("%u\n", x);
 
     p = 3;
     VEC_SZ_INCR(&p, sizeof p);
-    printf("%d\n", new == 0);
+    printf("%d\n", vec == 0);
 }

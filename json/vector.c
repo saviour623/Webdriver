@@ -85,14 +85,13 @@ static void **VEC_create(size_t vecSize) {
     if (! (vec = malloc((VEC_DATA_BLOCK_SZ * vecSize) + mSz)))
 	return NULL;
     /* initial size to zero */
-    memset(vec, 0, mSz - 1);
+    memset(vec, 0, --mSz);
 
-    /* prealloc | n bytes allocated for sz */
-    VEC_ACCESS(vec)[mSz - 1] = ((word8)(vecSize > VEC_LEAST_SZ) << 6) | (mSz - 1);
-    
-    /* move pointer to end of the meta-data block, which is the actual ad/dress of vec allowed to store data */
-    vec = VEC_ACCESS(vec) + mSz;
-/* initializing the first block to 0 (block is empty)*/
+    /* update meta-data: prealloc | type / n bytes allocated for sz*/
+    VEC_ACCESS(vec)[mSz] = ((word8)(vecSize > VEC_LEAST_SZ) << 6) | VEC_VECTOR | mSz;
+    /* mov ahead meta-data block (main) */
+    VEC_MOVTO_DATA_START(vec, mSz);
+/* initializing the first block (main) to 0 (block is empty) */
     *(void **)vec = 0;
 
     return vec;

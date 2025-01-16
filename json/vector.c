@@ -11,20 +11,26 @@
 #define __NONNULL__ __attribute__((nonnull))
 #define CHOOSE_EXPR(cExpr, tVal, fVal)                \
     __builtin_choose_expr(cExpr, tVal, fVal)
+/* fprintf(stderr, "[vector] " "An attempt to add '%p' at index %lu to an object of size %lu failed\n", vd, (long)index, (long)sz);*/
+#define throwError(...)
 
 /*
  * vector
  */
 typedef uint32_t VEC_szType;
 typedef uint8_t word8;
-#define VEC_PREALLOC 0x40 /* 2 ^ 7 */
 
 #define VEC_DATA_BLOCK_SZ (sizeof (void *))
-#define VEC_META_DATA_SZ(_pre_sz) ((_pre_sz & 0x0f) + 1) /*VEC_BYTE_SZ + 1 */
+#define VEC_META_DATA_SZ(_pre_sz) ((_pre_sz & 0x0f) + 1) /*vector_byte_size and 1 byte for other meta-info */
+#define VEC_LEAST_SZ 1
+#define VEC_ALWYS_PREALLOC 0x40
 #define VEC_ALLOC_SZ 1
 #define VEC_APPEND 268
 #define VEC_VECTOR 0x80
 #define VEC_ARRAY 0
+#define VEC_SAFE_INDEX_CHECK 1
+#define VEC_ALW_WARNING 1
+#define VEC_EROUT_OF_BOUND 0x3b
 
 /* remove the type alignment of bytes so that each block can be addressed like a byte array */
 #define VEC_ACCESS(_addr) ((word8 *)(void *)(_addr))
@@ -66,20 +72,22 @@ static __inline__ __FORCE_INLINE__ void VEC_getSize(void *vec, void *to) {
 /*
  * vector_create
  */
-static __inline__ void **VEC_create(void) {
+static __inline__ void **VEC_create(ssize_t vecSize) {
     void *vec;
     word8 mSz;
 
+    if (vecSize < 1)
+	vecSize = VEC_LEAST_SZ;
     /* meta data size */
-    mSz = VEC_META_DATA_SZ(VEC_SZEOF(VEC_ALLOC_SZ));
+    mSz = VEC_META_DATA_SZ(VEC_SZEOF(vecSize));
  
-    if (! (vec = malloc((VEC_DATA_BLOCK_SZ * VEC_ALLOC_SZ) + mSz)))
+    if (! (vec = malloc((VEC_DATA_BLOCK_SZ * vecSize) + mSz)))
 	return NULL;
     /* initial size to zero */
     memset(vec, 0, mSz - 1);
 
     /* prealloc | n bytes allocated for sz */
-    VEC_ACCESS(vec)[mSz - 1] = ((word8)(VEC_ALLOC_SZ > 1) << 6) | (mSz - 1);
+    VEC_ACCESS(vec)[mSz - 1] = ((word8)(vecSize > VEC_LEAST_SZ) << 6) | (mSz - 1);
     
     /* move pointer to end of the meta-data block, which is the actual ad/dress of vec allowed to store data */
     vec = VEC_ACCESS(vec) + mSz;
@@ -134,13 +142,6 @@ static __inline__  __NONNULL__ void **VEC_append(void ***vec, void *new, VEC_szT
 }
 
 /*
- * The sum of preallocated block: ((sz / pre_alloc_sz) + (1 or 0))
- * pre_alloc_sz; where the +1 accounts for the effect of the remainder when sz is not a multiple of pre_alloc_sz
- * If sz is lesser than pre_alloc_sz, then there is only a single pre-allocation. if sz falls in the range of pre_alloc_sz and (n * pre_alloc_sz) then n allocations has been done
- */
-#define NPREALLOC_FROM_SZ(sz) (((sz / VEC_ALLOC_SZ) + !!(sz % VEC_ALLOC_SZ)) * VEC_ALLOC_SZ)
-
-/*
  * vec_expand: add new data to vector
  */
 static __inline__  __NONNULL__ void **VEC_expand(void ***vec, void *vd, size_t index, size_t vflag) {
@@ -152,7 +153,13 @@ static __inline__  __NONNULL__ void **VEC_expand(void ***vec, void *vd, size_t i
     fl = (VEC_ACCESS(*vec) - 1)[0];
 
     if (! (*vec)[0] ) {
-	/* Ignore index and initialize empty vector with new data */
+#if VEC_SAFE_INDEX_CHECK || VEC_ALW_WARNING
+	if ((index != 0) || (vflag != VEC_APPEND)) {
+	    /* throw out-of-bound error */
+	    goto err_outOfBound;
+	}
+#endif
+	/* ignore index || index is 0 */
 	(*vec)[index] = vd;
 	/* ++sz */
 	VEC_SZ_INCR(VEC_BLOCK_START(*vec, fl), fl);
@@ -160,12 +167,17 @@ static __inline__  __NONNULL__ void **VEC_expand(void ***vec, void *vd, size_t i
     else if (index < sz) {
 	(*vec)[index] = vd;
     }
-    else if ((fl & VEC_PREALLOC) && (index < (NPREALLOC_FROM_SZ(sz)))) {
-	(*vec)[index] = vd;
-	/* ++sz */
-	VEC_SZ_INCR(VEC_BLOCK_START(*vec, fl), fl);
-    }
     else if (! ((vflag & VEC_APPEND) && VEC_append(vec, vd, sz, fl))) {
+	/* insufficient memory */
+	return NULL;
+    }
+    else {
+	/* out of bound */
+    err_outOfBound:
+#if VEC_ALW_WARNING
+	fprintf(stderr, "[vector] " "An attempt to add '%p' to index %lu of (object: %p) of size %lu failed\n", vd, (long)index, vec, (long)sz);
+	throwError(EROUT_OF_BOUND, vec, vd, index, sz);
+#endif
 	return NULL;
     }
     return *vec;
@@ -191,44 +203,20 @@ static __inline__ __NONNULL__ void *VEC_add(void ***vec, void *vd, size_t bytesz
     memcpy(v0, vd, nalloc);
 
     /* if the vec_vector type is specified, create a new vector */
-    if ((type & VEC_VECTOR) && (v00 = VEC_create())) {
+    if ((type & VEC_VECTOR) && (v00 = VEC_create(1))) {
 	/* initialize its first member with the data */
 	*v00 = v0;
-	/* retain a generic reference for both non-vector or vector using a void ptr */
+	/* reuse v0 to retain a generic referencing for both non-vector or vector using a void ptr */
 	v0 = v00;
     }
     return v00 && VEC_expand(vec, v0, index, VEC_APPEND) ? v0 : NULL;
 }
-/*
-#define DELETE(p) (void)0
-static __inline__ __NONNULL__ void vec_DELETE(void ***vec) {
-    VEC_szType sz, otherVecInfo, i;
-    void **v0;
 
-    if (! (v0 = *vec))
-	return;
-    VEC_COPY_SZ(&sz, VEC_ACCESS(v0) - VEC_DATA_START);
-    sz &= ~VEC_PREALLOC;
-    for (i = 0; i < sz; i++) {
-	if (v0[i] == NULL)
-	    continue;
-	VEC_COPY_DT(&otherVecInfo, v0[i]);
-	if (otherVecInfo & VEC_ARRAY) {
-	    free(VEC_ACCESS(v0[i]) - VEC_DATA_START);
-	}
-	v0 += i;
-	vec_DELETE(&v0);
-	v0 -= i;
-    }
-    free(VEC_ACCESS(*vec) - VEC_DATA_START);
-    *vec = NULL;
-}
-*/
 int main(void) {
     int num[1024] = {0};
     int p = 0;
     VEC_szType x;
-    void **vec = VEC_create();
+    void **vec = VEC_create(1);
     void **new;
     int data[][6] = {
 	{0, 2, 4, 6, 8, 10}, {1, 3, 5, 7, 9, 11},
@@ -252,22 +240,9 @@ int main(void) {
     p =  (VEC_ACCESS(vec) - 1)[0] & 0x0f;
     
     memcpy(&x, VEC_BLOCK_START(vec, p), p);
-    printf("%u\n", x & ~VEC_PREALLOC);
+    printf("%u\n", x);
 
     p = 3;
     VEC_SZ_INCR(&p, sizeof p);
     printf("%d\n", new == 0);
-    //free((char *)vec - VEC_DATA_START);
-    //vec = (void *)((char *)vec);
-    //vec_DELETE(&vec);
-    //printf("%ld\n", (long)0);
 }
-/*
-[
- [c, c, c], [c, c, c], [
-			 [c, c, c], [c, c, c], [
-					  [c, c, c], [c, c, c]
-					      ]
-		       ]
-];
-*/

@@ -12,8 +12,7 @@
 #define CHOOSE_EXPR(cExpr, tVal, fVal)                \
     __builtin_choose_expr(cExpr, tVal, fVal)
 /* fprintf(stderr, "[vector] " "An attempt to add '%p' at index %lu to an object of size %lu failed\n", vd, (long)index, (long)sz);*/
-#define throwError(...) fprintf(stderr, "[vector] " "An attempt to add '%p' to index %lu of (object: %p) of size %lu failed\n", vd, (long)index + 1, vec, (long)sz)
-
+#define throwError(...) (void *)0
 /*
  * vector
  */
@@ -207,7 +206,34 @@ static  __NONNULL__ void *VEC_add(void ***vec, void *vd, size_t bytesz, size_t s
     }
     return v00 && VEC_expand(vec, v0, index, VEC_APPEND) ? v0 : NULL;
 }
+static __NONNULL__ __inline__ __attribute__((always_inline, pure)) void *VEC_getVectorItem(void **vec, ssize_t index) {
+    size_t sz;
 
+    (sz = 0) || VEC_getSize(*vec, &sz);
+    index = sz + ( index < 0 ? index : 0 );
+
+    if (index > sz || index < 0) {
+#if VEC_ALW_WARNING
+	throwError(ERGOUT_OUT_OF_BOUND, *vec, sz, index);
+#endif
+	return NULL;
+    }
+    return vec[index];
+}
+static __NONNULL__ __inline__ __FORCE_INLINE__ void *VEC_getVectorItemAt(void ***vec, ssize_t index, ssize_t at) {
+    void *itemAt;
+
+    itemAt = VEC_getVectorItem(*vec, at);
+    return itemAt ? VEC_getVectorItem(&itemAt, index) : NULL;
+}
+static __inline__ __FORCE_INLINE__  __NONNULL__ uint8_t VEC_getType(void *vec) {
+    /* v & VEC_VECTOR == 0 (array) */
+    return ( (VEC_ACCESS(vec) - 1)[0] & VEC_VECTOR );
+}
+static __NONNULL__ void *VEC_remove(void ***vec, ssize_t index) {
+}
+static __NONNULL__ void *VEC_delete(void ***vec, ssize_t index) {
+}
 int main(void) {
     int num[1024] = {0};
     int p = 0;
@@ -233,10 +259,12 @@ int main(void) {
 	VEC_add(&new, data[5], sizeof(int), sizeof data[5], 1, VEC_ARRAY);
     
     p =  (VEC_ACCESS(vec) - 1)[0] & 0x0f;
+    x = 0;
+
     memcpy(&x, VEC_BLOCK_START(vec, p), p);
     printf("%u\n", x);
 
     p = 3;
     VEC_SZ_INCR(&p, sizeof p);
-    printf("%d\n", vec == 0);
+    printf("%d\n", new == 0);
 }

@@ -232,7 +232,62 @@ static __inline__ __FORCE_INLINE__  __NONNULL__ uint8_t VEC_getType(void *vec) {
 }
 static __NONNULL__ void *VEC_remove(void ***vec, ssize_t index) {
 }
-static __NONNULL__ void *VEC_delete(void ***vec, ssize_t index) {
+
+#define VEC_INCR_STACK_CNTER(stkc)(++(stkc))
+#define VEC_DECR_STACK_CNTER(stkc)(--(stkc))
+#define VEC_RECURS_DEPTH 1000
+#define STACK_init(...)(void)0
+#define addToStack(...)(void )0
+
+static __NONNULL__ void *VEC_internalDelete(void ***vec, uint16_t stackCt){
+    uint8_t extMeta;
+    size_t sz, luptrk, i;
+    void *vPtr, *dynStack;
+
+    sz = 0;
+    luptrk = 1;
+    do {
+	if (*vec == NULL)
+	    return NULL;
+	extMeta = (VEC_ACCESS(*vec) - 1)[0];
+	if ( !(extMeta & VEC_VECTOR) ) {
+	    /* just a vector array */
+	    break;
+	}
+	VEC_getSize(*vec, &sz);
+	for (i = 0; i < sz; i++) {
+	    vPtr = (*vec)[i];
+
+	    if (VEC_getType(vPtr) == VEC_VECTOR) {
+		if (stackCt == VEC_RECURS_DEPTH) {
+#ifdef VEC_USE_LOCAL_STACK
+		    /* dynamic stack */
+		    lupbrk += 1;
+#else
+		    /* throw error exceed stack limit */
+#endif
+		    break;
+		}
+		VEC_INCR_STACK_CNTER(stackCt);
+		/* call del recursively on vec [i] */
+		VEC_internalDelete(vPtr, stackCt);
+		VEC_DECR_STACK_CNTER(stackCt);
+		continue;
+	    }
+	    free(VEC_BLOCK_START(vPtr, (VEC_ACCESS(*vec) - 1)[0]));
+	}
+    } while (--luptrk);
+
+    free(VEC_BLOCK_START(*vec, extMeta));
+}
+/*
+  in using local stack, we need to remember our current index
+ */
+
+static __NONNULL__ void *VEC_delete(void ***vec) {
+    uint16_t stackCounter;
+    stackCounter = 0;
+    return VEC_internalDelete(vec, stackCounter);
 }
 int main(void) {
     int num[1024] = {0};
@@ -266,5 +321,6 @@ int main(void) {
 
     p = 3;
     VEC_SZ_INCR(&p, sizeof p);
+    VEC_delete(&vec);
     printf("%d\n", new == 0);
 }

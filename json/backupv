@@ -278,22 +278,24 @@ static __NONNULL__ void *VEC_internalDelete(void ***vec, uint16_t stackCt){
 	    break;
 	}
 	VEC_getSize(*vec, &sz);
-	for (i = 0, ptrv = *vec; i < sz; i++, ++ptrv) {
-	    if (VEC_getType(*ptrv) == VEC_VECTOR) {
-		push(ptrv);
-		ptrv = *ptrv;
-		continue;
-	    }
-	    if (++i == sz) {
-		pop(ptrv);
+	for (i = 0; i < sz; i++) {
+	    ptrv = (*vec)[i];
 
+	    if (VEC_getType(ptrv) == VEC_VECTOR) {
+		if (stackCt == VEC_RECURS_DEPTH) {
+#ifdef VEC_USE_LOCAL_STACK
+		    /* dynamic stack */
+		    lupbrk += 1;
+#else
+		    /* throw error exceed stack limit */
+#endif
+		    break;
+		}
+		VEC_INCR_STACK_CNTER(stackCt);
+		/* call del recursively on vec [i] */
+		VEC_internalDelete(ptrv, stackCt);
+		VEC_DECR_STACK_CNTER(stackCt);
 		continue;
-	    }
-	    VEC_INCR_STACK_CNTER(stackCt);
-	    /* call del recursively on vec [i] */
-	    VEC_internalDelete(ptrv, stackCt);
-	    VEC_DECR_STACK_CNTER(stackCt);
-	    continue;
 	    }
 	    free(VEC_BLOCK_START(ptrv, (VEC_ACCESS(*vec) - 1)[0]));
 	}

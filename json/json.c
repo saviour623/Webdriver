@@ -123,6 +123,10 @@ __NONNULL__ ssize_t dumpbf(JsonObject, printfmt *);
 static __inline__ __FORCE_INLINE__ objStack *popFromStack(objStack **top) {
     objStack *remTop;
 
+    
+    /* (TODO)
+     * return previous frame (eliminating the need for  subsequent call to getFromStack)
+     */
     return top && *top ?
 	(remTop = *top),
 	(*top = (*top)->stk_mov), remTop : (objStack *)NULL;

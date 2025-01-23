@@ -16,8 +16,23 @@
 /*
  * vector
  */
-typedef uint32_t VEC_szType;
-typedef uint8_t word8;
+#ifdef __GNUC__
+#define __MAY_ALIAS__ __attribute__((may_alias))
+#else
+#define __MAY_ALIAS__
+#endif
+
+typedef uint64_t VEC_szType;
+typedef void ** vec_t;
+typedef uint8_t word0;
+typedef union {
+	void *nword;
+	uint8_t word0;
+	uint16_t word2;
+	uint32_t word4;
+	uint64_t word8;
+	uintmax_t wordx;
+    } _inttype_t;
 
 #define VEC_DATA_BLOCK_SZ (sizeof (void *))
 #define VEC_META_DATA_SZ(_pre_sz) ((_pre_sz & 0x0f) + 1) /*vector_byte_size and 1 byte for other meta-info */
@@ -32,31 +47,26 @@ typedef uint8_t word8;
 #define VEC_EROUT_OF_BOUND 0x3b
 
 /* remove the type alignment of bytes so that each block can be addressed like a byte array */
-#define VEC_ACCESS(_addr) ((word8 *)(void *)(_addr))
+#define VEC_ACCESS(_addr) ((word0 *)(void *)(_addr))
+#define VoCAST(type, addr) *(volatile type *)(addr)
 
-#define VEC_SZ_INCR(vec, fl)			\
+#define VEC_SZ_INCR(sz, fl)					\
     switch ((fl) & 0x0f) {					\
-    case 0x01: *(volatile word8 *)(vec) += 1; break;		\
-    case 0x02: *(volatile uint16_t *)(vec) += 1; break;		\
-    case 0x03: *(volatile uint32_t *)(vec) += 1; break;		\
-    case 0x04: *(volatile uint64_t *)(vec) += 1; break;		\
+    case 0x01: VCAST(word0, sz) += 1; break;		\
+    case 0x02: VCAST(uint16_t, sz) += 1; break;		\
+    case 0x03: VCAST(uint32_t, sz) += 1; break;		\
+    case 0x04: VCAST(uint64_t, sz) += 1; break;		\
     } (void)0
 
-#define VEC_SZEOF(_SZ)				\
-    ((_SZ) > UINT8_MAX ?			\
-     (_SZ) > UINT16_MAX ?			\
-     (_SZ) > UINT32_MAX ?			\
-     (_SZ) > UINT64_MAX ?			\
-     0x05 : 0x04 : 0x03 : 0x02 : 0x01		\
-     )
+#define VEC_SZEOF(_SZ) VEC_ssizeof(_SZ)
 #define VEC_BLOCK_START(vec, fl)\
     (VEC_ACCESS(vec) - (((fl) & 0x0f) + 1))
 
 #define VEC_MOVTO_DATA_START(vec, fl)				\
     ((vec) = (void *)(VEC_ACCESS(vec) + VEC_META_DATA_SZ(fl)))
 
-static __inline__ __FORCE_INLINE__ void *VEC_getSize(void *vec, void *to) {
-    register word8 *s, *v, i;
+static __inline__ __FORCE_INLINE__ uint8_t VEC_getSize(void *vec, void *to) {
+    register word0 *s, *v, i;
 
     v = vec, s = to;
 
@@ -66,28 +76,44 @@ static __inline__ __FORCE_INLINE__ void *VEC_getSize(void *vec, void *to) {
     while ( i-- ) {
 	*s++ = *v++;
     }
-    return to;
+    return 0;
 }
+static __inline__ __FORCE_INLINE__ void VEC_putSize(void *d, void *s, uint8_t fl) {
+    _inttype *_d __MAY_ALIAS__, *_s __MAY_ALIAS__;
 
+    _d = d, _s = s;
+    switch (fl & 0x0f) {
+    case 0x01: _d->word0 = _s->word0; break;
+    case 0x02: _d->word2 = _s->word2; break;
+    case 0x03: _d->word4 = _s->word4; break;
+    case 0x04: _d->word8 = _s->word8; break;
+    }
+    return 0;
+}
+static __inline__ __FORCE_INLINE__ uint8_t VEC_ssizeof(uint64_t sz) {
+    return ( sz > UINT8_MAX ? sz > UINT16_MAX ?
+	    sz > UINT32_MAX ? sz > UINT64_MAX ?
+	    0x05 : 0x04 : 0x03 : 0x02 : 0x01 );
+}
 /*
  * vector_create
  */
 static void **VEC_create(size_t vecSize) {
     void *vec;
-    word8 mSz;
+    word0 mSz;
 
     if ( !vecSize )
 	vecSize = VEC_LEAST_SZ;
     /* meta-data size */
     mSz = VEC_META_DATA_SZ(VEC_SZEOF(vecSize));
- 
+
     if (! (vec = malloc((VEC_DATA_BLOCK_SZ * vecSize) + mSz)))
 	return NULL;
     /* initialize size to zero */
     memset(vec, 0, --mSz);
 
     /* update meta-data: prealloc | type | n bytes allocated for sz ([1100 0001] for size == 1) */
-    VEC_ACCESS(vec)[mSz] = ((word8)(vecSize > VEC_LEAST_SZ) << 6) | VEC_VECTOR | mSz;
+    VEC_ACCESS(vec)[mSz] = ((word0)(vecSize > VEC_LEAST_SZ) << 6) | VEC_VECTOR | mSz;
     /* mov ahead meta-data block (main) */
     VEC_MOVTO_DATA_START(vec, mSz);
 /* initialize the first block (main) to 0 [vector is empty] */
@@ -99,9 +125,9 @@ static void **VEC_create(size_t vecSize) {
 /*
  * vector_append: add to last; realloc/copy vector if neccessary
  */
-static __inline__  __NONNULL__ void **VEC_append(void ***vec, void *new, VEC_szType sz, word8 meta) {
+static __inline__  __NONNULL__ void **VEC_append(void ***vec, void *new, VEC_szType sz, word0 meta) {
     void *v0;
-    register word8 sb, pb;
+    register word0 sb, pb;
     register uintmax_t memtb;
 
     sb = false; /* True if size reqires an additional block */
@@ -127,13 +153,13 @@ static __inline__  __NONNULL__ void **VEC_append(void ***vec, void *new, VEC_szT
 
 	/* (local realloc)
 	 * This is a trade-off of performance and may be changed in future review.
-	 */ 
+	 */
 	memcpy(v0 + meta + 1, *vec, sz * VEC_DATA_BLOCK_SZ);
 	free(VEC_BLOCK_START(*vec, meta));
     }
     /* ++sz */
     VEC_SZ_INCR(v0, meta);
-    
+
     *vec = (void *)(VEC_ACCESS(v0) + pb + 1);
     (*vec)[sz] = new; /* implicit [sz - 1] */
 
@@ -146,7 +172,7 @@ static __inline__  __NONNULL__ void **VEC_append(void ***vec, void *new, VEC_szT
 static __inline__  __NONNULL__ void **VEC_expand(void ***vec, void *vd, size_t index, size_t vflag) {
     VEC_szType sz, fl;
 
-    (sz = 0) || VEC_getSize(*vec, &sz);
+    (sz = 0) | VEC_getSize(*vec, &sz);
 
     fl = (VEC_ACCESS(*vec) - 1)[0];
 
@@ -165,7 +191,7 @@ static __inline__  __NONNULL__ void **VEC_expand(void ***vec, void *vd, size_t i
     else if (index < sz) {
 	(*vec)[index] = vd;
     }
-    else if (! ((vflag & VEC_APPEND) && VEC_append(vec, vd, sz, fl))) {	
+    else if (! ((vflag & VEC_APPEND) && VEC_append(vec, vd, sz, fl))) {
 	/* out of bound // insufficient memory */
     err_outOfBound:
 #if VEC_ALW_WARNING
@@ -176,9 +202,9 @@ static __inline__  __NONNULL__ void **VEC_expand(void ***vec, void *vd, size_t i
     return *vec;
 }
 
-static  __NONNULL__ void *VEC_add(void ***vec, void *vd, size_t bytesz, size_t sz, size_t index, word8 type) {
+static  __NONNULL__ void *VEC_add(void ***vec, void *vd, size_t bytesz, size_t sz, size_t index, word0 type) {
     void *v0 /* ptr to memory block */, **v00 /* ptr to vector */;
-    word8 meta;
+    word0 meta;
     size_t nalloc;
 
     v00 = (void *)1; /* prevent unsed v00 folding to 0 */
@@ -209,7 +235,7 @@ static  __NONNULL__ void *VEC_add(void ***vec, void *vd, size_t bytesz, size_t s
 static __NONNULL__ __inline__ __attribute__((always_inline, pure)) void *VEC_getVectorItem(void **vec, ssize_t index) {
     size_t sz;
 
-    (sz = 0) || VEC_getSize(*vec, &sz);
+    (sz = 0) | VEC_getSize(*vec, &sz);
     index = sz + ( index < 0 ? index : 0 );
 
     if (index > sz || index < 0) {
@@ -233,81 +259,76 @@ static __inline__ __FORCE_INLINE__  __NONNULL__ uint8_t VEC_getType(void *vec) {
 static __NONNULL__ void *VEC_remove(void ***vec, ssize_t index) {
 }
 
-#define VEC_INCR_STACK_CNTER(stkc)(++(stkc))
-#define VEC_DECR_STACK_CNTER(stkc)(--(stkc))
-#define VEC_RECURS_DEPTH 1000
-#define STACK_init(...)(void)0
-#define pushToStack(...)(void )0
-#define popToStack(...)(void )0
-#define STACK_INTERNAL_ERROR 124
-typedef intmax_t _stframe_t;
+
+#define NEXT_MEMB_OF(ve) (++(void **)(ve))
+#define VECTMP_ASSGN(tmp, swp1, swp2) (((tmp) = (swp1)), ((swp1) = (swp2)))
 
 static __NONNULL__ void *VEC_internalDelete(void ***vec, uint16_t stackCt){
-    uint8_t extMeta;
-    size_t sz, luptrk, i;
-    void *ptrv, *dynStack;
+    register uint8_t vmtData;
+    size_t sz;
+    void *lCurrt /* ptr a */, *lTmp /* ptr b */, *lNext/* ptr c */;
 
-#if !VEC_OPTMZ_NOSTACK && defined(VEC_STACK_LIM) && ((VEC_STACK_SZ > 0) && (VEC_STACK_SZ < VEC_STACK_MLIMIT)
+    if (*vec == NULL) {
+	return 0;
+    }
+    /*
+     *            Transform to a linkedList
+     * A -> A1[<- A] -> A2[<- A1] -> ...An[<- A(n-1)]
+     * where:
+     * A[n - 1] --> A if A != 0 (quick access to block 0 of A)
+     * ___
+     * let a --> A[n], b --> A[n], c --> A[n][0]
+     * let s = size(a)
+     *
+     * LOOP <-> --s
+     *
+     * if c :- vector
+     *   size(a) --> s (save the decremented size of a)
+     *  A[n - 1] --> a (previous index preserves the address of 'a' for quick access since its free)
+     *
+     *  b --> c[0] (c[0] will be overwritten, save it's current value )
+     *  c[0] --> a (c[0] overwritten: 1st address of c i.e c[0] now acts as our 'prev' pointer (to 'a'))
 
-    void *_locStackvr[VEC_STACK_LIM];
-    register _stframe_t _tframe;
+     *  a = c; (the now current vector)
+     *  c = b; (first member of current 'a' )
+     *  b = a; (preserve first block of a)
+     * (process repeats for: c --> any n vector of a)
+     */
 
-    _trackframe = -1;
-    
-#define push(val)\
-    ((_locStackvr)[VEC_INCR_STACK_FRAME(_tframe)] = (val))
-#define pop(...)\
-    (_rmframe(_locStackvr[_tframe]),\
-     _locStackvr[VEC_DECR_STACK_FRAME(_tframe)])
-#else
-    objStack _locStackvr = STACK_init();
+    lCurrt = lTmp = *vec, lNext = (*vec)[0];
 
-#define push(val)\
-    pushToStack(_locStackvr, (val) || throwError(STACK_INTERNAL_ERROR)
-#define pop(...)\
-    (popFromStack(_locStackvr), getFromStack(_locStackvr))
-#endif
-    sz = 0;
-    luptrk = 1;
-    do {
-	if (*vec == NULL)
-	    return NULL;
-	extMeta = (VEC_ACCESS(*vec) - 1)[0];
-	if ( !(extMeta & VEC_VECTOR) ) {
-	    /* just a vector array */
-	    break;
+    /* Head -> prev */
+    (*vec)[0] = NULL;
+
+    (sz = 0) | VEC_getSize(lCurrt, &sz);
+    while ( sz ) {
+	if ( ! --sz ) {
+	    lNext = (lNext - VEC_DATA_BLOCK_SZ)[0];
+	    lCurrt = lNext[0];
+	    /* free */
+	    free(VEC_BLOCK_START(lNext));
+
+	    lNext = lCurrt[0];
+	    (sz = 0) | VEC_getSize(lCurrt, &sz);
 	}
-	VEC_getSize(*vec, &sz);
-	for (i = 0, ptrv = *vec; i < sz; i++, ++ptrv) {
-	    if (VEC_getType(*ptrv) == VEC_VECTOR) {
-		push(ptrv);
-		ptrv = *ptrv;
-		continue;
-	    }
-	    if (++i == sz) {
-		pop(ptrv);
+	if (lNext && (VEC_getType(lNext) & VEC_VECTOR)) {
+	    /* */
+	    vmtData = (VEC_ACCESS(lTmp) - 1)[0];
+	    /* update the decrease in size */
+	    VEC_putSize(iTmp - VEC_META_DATA_SZ(vmtData), &sz, vmtData);
+	    (lCurrt - VEC_DATA_BLOCK_SZ)[0] = lTmp; /* TODO write as (void **)lCurrt - 1 */
+	    VECTMP_ASSGN(lTmp, lNext[0], lCurrt);
+	    VECTMP_ASSGN(lCurrt, lNext, lTmp);
 
-		continue;
-	    }
-	    VEC_INCR_STACK_CNTER(stackCt);
-	    /* call del recursively on vec [i] */
-	    VEC_internalDelete(ptrv, stackCt);
-	    VEC_DECR_STACK_CNTER(stackCt);
+	    lTmp = lCurrt;
 	    continue;
-	    }
-	    free(VEC_BLOCK_START(ptrv, (VEC_ACCESS(*vec) - 1)[0]));
 	}
-    } while (--luptrk);
+	free(VEC_BLOCK_START(lNext));
 
-    free(VEC_BLOCK_START(*vec, extMeta));
+	lNext = NEXT_MEMB_OF(lCurrt);
+    }
 }
 
-/*
-  ptrv = vec[i]
-  if (ptrv =  )
-  if ptrv == 
-  in using local stack, we need to remember our current index
- */
 
 static __NONNULL__ void *VEC_delete(void ***vec) {
     uint16_t stackCounter;
@@ -337,7 +358,7 @@ int main(void) {
     new = VEC_add(&new, data[4], sizeof(int), sizeof data[4], 3, VEC_VECTOR);
     if (new != 0)
 	VEC_add(&new, data[5], sizeof(int), sizeof data[5], 1, VEC_ARRAY);
-    
+
     p =  (VEC_ACCESS(vec) - 1)[0] & 0x0f;
     x = 0;
 

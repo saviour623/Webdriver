@@ -18,6 +18,7 @@
  */
 #ifdef __GNUC__
 #define __MAY_ALIAS__ __attribute__((may_alias))
+#define __EXPR_UNEXPECTED__ builtin_unexpected
 #else
 #define __MAY_ALIAS__
 #endif
@@ -41,6 +42,7 @@ typedef union {
 #define VEC_ALLOC_SZ 1
 #define VEC_APPEND 0xde
 #define VEC_VECTOR 0x80
+#define VEC_INDIRECT_DEL 0x20
 #define VEC_ARRAY 0
 #define VEC_SAFE_INDEX_CHECK 1
 #define VEC_ALW_WARNING 1
@@ -48,7 +50,7 @@ typedef union {
 
 /* remove the type alignment of bytes so that each block can be addressed like a byte array */
 #define VEC_ACCESS(_addr) ((word0 *)(void *)(_addr))
-#define VoCAST(type, addr) *(volatile type *)(addr)
+#define VCAST(type, addr) *(volatile type *)(addr)
 
 #define VEC_SZ_INCR(sz, fl)					\
     switch ((fl) & 0x0f) {					\
@@ -76,7 +78,7 @@ static __inline__ __FORCE_INLINE__ uint8_t VEC_getSize(void *vec, void *to) {
     while ( i-- ) {
 	*s++ = *v++;
     }
-    return 0;
+    return i;
 }
 static __inline__ __FORCE_INLINE__ void VEC_putSize(void *d, void *s, uint8_t fl) {
     _inttype *_d __MAY_ALIAS__, *_s __MAY_ALIAS__;
@@ -261,74 +263,85 @@ static __NONNULL__ void *VEC_remove(void ***vec, ssize_t index) {
 
 
 #define NEXT_MEMB_OF(ve) (++(void **)(ve))
-#define VECTMP_ASSGN(tmp, swp1, swp2) (((tmp) = (swp1)), ((swp1) = (swp2)))
+#define VEC_preserveAndAssign(tmp, swp1, swp2) (((tmp) = (swp1)), ((swp1) = (swp2)))
+void static inline __NONNULL__ __FORCE_INLINE__ VEC_deletePush(vec_t curr, vec_t currTmp, vec_t descdant, uint8_t ifl) {
+    void *tmp __attribute__((unused));
+    /* A whole lot of assignment and reassignent */
+    ifl ? (tmp = *currTmp, *curr = currTmp, *(vec_t)(*curr) = tmp)
+	: curr = currTmp;
+    VEC_preserveAndAssign(currTmp, *descdant, curr);
+    VEC_preserveAndAssign( curr, descdant, currTmp);
+    currTmp = curr;
+}
+void static inline __NONNULL__ __FORCE_INLINE__ VEC_deletePop(vec_t curr, vec_t currTmp, uint8_t fl) {
+    curr = (fl & VEC_INDIRECT_DEL) ? *(vec_t)(*currTmp) : *currTmp;
+    free(VEC_BLOCK_START(currTmp, fl));
+}
+static __NONNULL__ void *VEC_internalDelete(vec_t *vec, uint16_t stackCt){
+    register uint8_t fl, vecIndirectPrev;
+    size_t sz, stackCounter;
 
-static __NONNULL__ void *VEC_internalDelete(void ***vec, uint16_t stackCt){
-    register uint8_t vmtData;
-    size_t sz;
-    void *lCurrt /* ptr a */, *lTmp /* ptr b */, *lNext/* ptr c */;
+    /**
+     *            List Transform (forced stack)
+     * V -> V1[<- V] -> V2[<- V1] -> ...Vn[<- V(n-1)]
+     * where:
+     * V[n - 1] --> V if V != 0
+     *
+     *
+     * V -› [i: NULL] V0   ---------------› [i: V0]   V0.0 
+     *          ↑     ↓                        ↑        ↓
+     *      [r: V0]  V1 --› [r: V1]  V1.0   [r: V0.0] V0.1
+     *          ↑     ↓        ↑       ↓       ↑        ↓
+     *      [r: V0]  Vn...  [r: V1.0] V1.1  [r: V0.0] V0.n...
+     *                         ↑       ↓
+     *                      [r: v1.0] V1.n...
+     * [
+     *    r: replaced on reach
+     *    i: replaced immediately. it's value is preserved
+     *       in a pointer (usually the first child)
+     * ]
+     * see doc@vector_delete
+     */
+    void **lCurrt /* x */, *lTmp /* y */, *lNext /* z */, lfTmp;
 
-    if (*vec == NULL) {
+    if (__EXPR_UNEXPECTED__(!*vec)) {
 	return 0;
     }
-    /*
-     *            Transform to a linkedList
-     * A -> A1[<- A] -> A2[<- A1] -> ...An[<- A(n-1)]
-     * where:
-     * A[n - 1] --> A if A != 0 (quick access to block 0 of A)
-     * ___
-     * let a --> A[n], b --> A[n], c --> A[n][0]
-     * let s = size(a)
-     *
-     * LOOP <-> --s
-     *
-     * if c :- vector
-     *   size(a) --> s (save the decremented size of a)
-     *  A[n - 1] --> a (previous index preserves the address of 'a' for quick access since its free)
-     *
-     *  b --> c[0] (c[0] will be overwritten, save it's current value )
-     *  c[0] --> a (c[0] overwritten: 1st address of c i.e c[0] now acts as our 'prev' pointer (to 'a'))
-
-     *  a = c; (the now current vector)
-     *  c = b; (first member of current 'a' )
-     *  b = a; (preserve first block of a)
-     * (process repeats for: c --> any n vector of a)
-     */
-
+    /* [1] x --> A, y --> A, z --> A[child_1] */
     lCurrt = lTmp = *vec, lNext = (*vec)[0];
-
-    /* Head -> prev */
+    /* A [<- NULL] */
     (*vec)[0] = NULL;
-
+    vecIndirectPrev = VEC_INDIRECT_DEL;
     (sz = 0) | VEC_getSize(lCurrt, &sz);
-    while ( sz ) {
-	if ( ! --sz ) {
-	    lNext = (lNext - VEC_DATA_BLOCK_SZ)[0];
-	    lCurrt = lNext[0];
-	    /* free */
-	    free(VEC_BLOCK_START(lNext));
-
-	    lNext = lCurrt[0];
+    /* */
+    /* A: 1[1] - 2[2] - 3[0] - 4 */
+    while  ( sz < 0 ) {
+	if (  ! sz-- ) {
+	    /*
+	     * pop from stack
+	     */
+	    VEC_deletePop(lcurrt, lTmp, fl);
 	    (sz = 0) | VEC_getSize(lCurrt, &sz);
+	    if ( !sz ) {
+		fl = (VEC_ACCESS(lCurrt) - 1)[0];
+		free(VEC_BLOCK_START(lCurrt, fl));
+		break;
+	    }
+	    lTmp = lCurrt[0];
+	    lNext = NEXT_MEMB_OF(lCurrt);
 	}
 	if (lNext && (VEC_getType(lNext) & VEC_VECTOR)) {
-	    /* */
-	    vmtData = (VEC_ACCESS(lTmp) - 1)[0];
-	    /* update the decrease in size */
-	    VEC_putSize(iTmp - VEC_META_DATA_SZ(vmtData), &sz, vmtData);
-	    (lCurrt - VEC_DATA_BLOCK_SZ)[0] = lTmp; /* TODO write as (void **)lCurrt - 1 */
-	    VECTMP_ASSGN(lTmp, lNext[0], lCurrt);
-	    VECTMP_ASSGN(lCurrt, lNext, lTmp);
-
-	    lTmp = lCurrt;
+	    fl = (VEC_ACCESS(lTmp) - 1)[0] |= vecIndirectPrev;
+	    VEC_putSize(VEC_BLOCK_START(lTmp, fl), &sz, fl);
+	    VEC_deletePush(lcurr, lTmp, lNext, vecIndirectPrev);
+	    vecIndirectPrev = VEC_INDIRECT_DEL;
 	    continue;
 	}
-	free(VEC_BLOCK_START(lNext));
-
+	lNext && free(VEC_BLOCK_START(lNext, fl));
 	lNext = NEXT_MEMB_OF(lCurrt);
+	vecIndirectPrev = 0;
     }
 }
-
 
 static __NONNULL__ void *VEC_delete(void ***vec) {
     uint16_t stackCounter;
@@ -370,3 +383,13 @@ int main(void) {
     VEC_delete(&vec);
     printf("%d\n", new == 0);
 }
+
+/*
+  AX +
+     +
+     A1X +
+         +
+	 A2X
+     A2X[0] --> A1X
+     A2X ptr --> A2X[0]
+ */

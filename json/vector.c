@@ -7,7 +7,13 @@
 #include <stddef.h>
 #include <assert.h>
 
+#if defined(__GNUC__) || defined(__clang__) 
 #define __FORCE_INLINE__ __attribute__((always_inline))
+#elif defined(MSVER) || defined(WIN32)
+#define __FORCE_INLINE__ __ForceInline
+#else
+#define __FORCE_INLINE__
+#endif
 #define __NONNULL__ __attribute__((nonnull))
 #define CHOOSE_EXPR(cExpr, tVal, fVal)                \
     __builtin_choose_expr(cExpr, tVal, fVal)
@@ -18,22 +24,24 @@
  */
 #ifdef __GNUC__
 #define __MAY_ALIAS__ __attribute__((may_alias))
-#define __EXPR_UNEXPECTED__ builtin_unexpected
+#define __EXPR_LIKELY__(T, L) __builtin_expect(T, L)
 #else
 #define __MAY_ALIAS__
+#define __EXPR_LIKELY__(T, L) T
 #endif
+#define __STATIC_FORCE_INLINE_F static __inline__ __FORCE_INLINE__
 
 typedef uint64_t VEC_szType;
 typedef void ** vec_t;
 typedef uint8_t word0;
 typedef union {
-	void *nword;
-	uint8_t word0;
-	uint16_t word2;
-	uint32_t word4;
-	uint64_t word8;
-	uintmax_t wordx;
-    } _inttype_t;
+    void *nword;
+    uintmax_t wordx;
+    uint64_t word8;
+    uint32_t word4;
+    uint16_t word2;
+    uint8_t word0;
+} _inttype_t;
 
 #define VEC_DATA_BLOCK_SZ (sizeof (void *))
 #define VEC_META_DATA_SZ(_pre_sz) ((_pre_sz & 0x0f) + 1) /*vector_byte_size and 1 byte for other meta-info */
@@ -42,7 +50,6 @@ typedef union {
 #define VEC_ALLOC_SZ 1
 #define VEC_APPEND 0xde
 #define VEC_VECTOR 0x80
-#define VEC_INDIRECT_DEL 0x20
 #define VEC_ARRAY 0
 #define VEC_SAFE_INDEX_CHECK 1
 #define VEC_ALW_WARNING 1
@@ -80,8 +87,8 @@ static __inline__ __FORCE_INLINE__ uint8_t VEC_getSize(void *vec, void *to) {
     }
     return i;
 }
-static __inline__ __FORCE_INLINE__ void VEC_putSize(void *d, void *s, uint8_t fl) {
-    _inttype *_d __MAY_ALIAS__, *_s __MAY_ALIAS__;
+static __inline__ __FORCE_INLINE__ uint8_t VEC_putSize(void *d, void *s, uint8_t fl) {
+    _inttype_t *_d __MAY_ALIAS__, *_s __MAY_ALIAS__;
 
     _d = d, _s = s;
     switch (fl & 0x0f) {
@@ -248,13 +255,13 @@ static __NONNULL__ __inline__ __attribute__((always_inline, pure)) void *VEC_get
     }
     return vec[index];
 }
-static __NONNULL__ __inline__ __FORCE_INLINE__ void *VEC_getVectorItemAt(void ***vec, ssize_t index, ssize_t at) {
+__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_getVectorItemAt(void ***vec, ssize_t index, ssize_t at) {
     void *itemAt;
 
     itemAt = VEC_getVectorItem(*vec, at);
     return itemAt ? VEC_getVectorItem(&itemAt, index) : NULL;
 }
-static __inline__ __FORCE_INLINE__  __NONNULL__ uint8_t VEC_getType(void *vec) {
+ __STATIC_FORCE_INLINE_F __NONNULL__ uint8_t VEC_getType(void *vec) {
     /* v & VEC_VECTOR == 0 (array) */
     return ( (VEC_ACCESS(vec) - 1)[0] & VEC_VECTOR );
 }
@@ -262,85 +269,62 @@ static __NONNULL__ void *VEC_remove(void ***vec, ssize_t index) {
 }
 
 
-#define NEXT_MEMB_OF(ve) (++(void **)(ve))
-#define VEC_preserveAndAssign(tmp, swp1, swp2) (((tmp) = (swp1)), ((swp1) = (swp2)))
-void static inline __NONNULL__ __FORCE_INLINE__ VEC_deletePush(vec_t curr, vec_t currTmp, vec_t descdant, uint8_t ifl) {
+#define NEXT_MEMB_OF(ve) (++*(void ***)(&ve))
+#define VEC_preserveAndAssign(tmp, _1, _2) (((tmp) = (_1)), ((_1) = (_2)))
+
+#define VEC_CURR_STATE 0x10
+#define VEC_PREV_STATE 0x20
+
+#define VEC_DEF_NWSTATE_R(fmr, nw, _cur)			\
+    ((fmr) = (nw) |= _cur | (((fmr) & _cur) << 1))
+#define VEC_DEF_NWSTATE(fmr, nw)\
+    VEC_DEF_NWSTATE_R(fmr, nw, VEC_CURR_STATE)
+#define VEC_REM_CURSTATE(fmr) ((fmr) &= ~VEC_CURR_STATE)
+
+__STATIC_FORCE_INLINE_F __NONNULL__ void VEC_deletePush(vec_t curr, vec_t currTmp, vec_t descdant, uint8_t fl) {
     void *tmp __attribute__((unused));
     /* A whole lot of assignment and reassignent */
-    ifl ? (tmp = *currTmp, *curr = currTmp, *(vec_t)(*curr) = tmp)
-	: curr = currTmp;
+    curr = currTmp;
     VEC_preserveAndAssign(currTmp, *descdant, curr);
     VEC_preserveAndAssign( curr, descdant, currTmp);
     currTmp = curr;
 }
-void static inline __NONNULL__ __FORCE_INLINE__ VEC_deletePop(vec_t curr, vec_t currTmp, uint8_t fl) {
-    curr = (fl & VEC_INDIRECT_DEL) ? *(vec_t)(*currTmp) : *currTmp;
+__STATIC_FORCE_INLINE_F __NONNULL__ void VEC_deletePop(vec_t curr, vec_t currTmp, uint8_t fl) {
+    curr = *currTmp;
     free(VEC_BLOCK_START(currTmp, fl));
+    currTmp = fl & VEC_PREV_STATE ? curr : *curr; 
 }
-static __NONNULL__ void *VEC_internalDelete(vec_t *vec, uint16_t stackCt){
-    register uint8_t fl, vecIndirectPrev;
-    size_t sz, stackCounter;
 
-    /**
-     *            List Transform (forced stack)
-     * V -> V1[<- V] -> V2[<- V1] -> ...Vn[<- V(n-1)]
-     * where:
-     * V[n - 1] --> V if V != 0
-     *
-     *
-     * V -› [i: NULL] V0   ---------------› [i: V0]   V0.0 
-     *          ↑     ↓                        ↑        ↓
-     *      [r: V0]  V1 --› [r: V1]  V1.0   [r: V0.0] V0.1
-     *          ↑     ↓        ↑       ↓       ↑        ↓
-     *      [r: V0]  Vn...  [r: V1.0] V1.1  [r: V0.0] V0.n...
-     *                         ↑       ↓
-     *                      [r: v1.0] V1.n...
-     * [
-     *    r: replaced on reach
-     *    i: replaced immediately. it's value is preserved
-     *       in a pointer (usually the first child)
-     * ]
-     * see doc@vector_delete
-     */
-    void **lCurrt /* x */, *lTmp /* y */, *lNext /* z */, lfTmp;
+static __NONNULL__ void *VEC_internalDelete(vec_t *vec){
+    void *lCurrt, *lTmp, *lNext;
+    size_t sz;
+    register uint8_t fl;
 
-    if (__EXPR_UNEXPECTED__(!*vec)) {
+    if (__EXPR_LIKELY__(!*vec, 0)) {
 	return 0;
     }
-    /* [1] x --> A, y --> A, z --> A[child_1] */
+    
     lCurrt = lTmp = *vec, lNext = (*vec)[0];
-    /* A [<- NULL] */
-    (*vec)[0] = NULL;
-    vecIndirectPrev = VEC_INDIRECT_DEL;
     (sz = 0) | VEC_getSize(lCurrt, &sz);
-    /* */
-    /* A: 1[1] - 2[2] - 3[0] - 4 */
+    fl = (VEC_ACCESS(lCurrt) - 1)[0];
+
     while  ( sz < 0 ) {
 	if (  ! sz-- ) {
-	    /*
-	     * pop from stack
-	     */
-	    VEC_deletePop(lcurrt, lTmp, fl);
-	    (sz = 0) | VEC_getSize(lCurrt, &sz);
-	    if ( !sz ) {
-		fl = (VEC_ACCESS(lCurrt) - 1)[0];
-		free(VEC_BLOCK_START(lCurrt, fl));
-		break;
-	    }
-	    lTmp = lCurrt[0];
-	    lNext = NEXT_MEMB_OF(lCurrt);
+	    VEC_deletePop(lCurrt, lTmp, fl);
+	    fl = (VEC_ACCESS(lTmp) - 1)[0];
+	    (sz = 0) | VEC_getSize(lTmp, &sz);
 	}
 	if (lNext && (VEC_getType(lNext) & VEC_VECTOR)) {
-	    fl = (VEC_ACCESS(lTmp) - 1)[0] |= vecIndirectPrev;
 	    VEC_putSize(VEC_BLOCK_START(lTmp, fl), &sz, fl);
-	    VEC_deletePush(lcurr, lTmp, lNext, vecIndirectPrev);
-	    vecIndirectPrev = VEC_INDIRECT_DEL;
+	    VEC_deletePush(lCurrt, lTmp, lNext, fl);
+	    VEC_DEF_NWSTATE(fl, (VEC_ACCESS(lCurrt) - 1)[0]);
 	    continue;
 	}
-	lNext && free(VEC_BLOCK_START(lNext, fl));
+	lNext ? free(VEC_BLOCK_START(lNext, fl)) : (void)0;
 	lNext = NEXT_MEMB_OF(lCurrt);
-	vecIndirectPrev = 0;
+	VEC_REM_CURSTATE(fl);
     }
+    vec = NULL;
 }
 
 static __NONNULL__ void *VEC_delete(void ***vec) {
@@ -348,6 +332,19 @@ static __NONNULL__ void *VEC_delete(void ***vec) {
     stackCounter = 0;
     return VEC_internalDelete(vec, stackCounter);
 }
+
+/**
+   if ( !sz ) {
+		fl = (VEC_ACCESS(lCurrt) - 1)[0];
+		free(VEC_BLOCK_START(lCurrt, fl));
+		break;
+	    }
+	    lTmp = lCurrt[0];
+	    lNext = NEXT_MEMB_OF(lCurrt);
+
+	      fl & VEC_INDIRECT_DEL ? (tmp = *currTmp, *curr = currTmp, *(vec_t)(*curr) = tmp)
+	: 
+*/
 int main(void) {
     int num[1024] = {0};
     int p = 0;

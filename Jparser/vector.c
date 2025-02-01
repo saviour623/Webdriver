@@ -25,9 +25,11 @@
 #ifdef __GNUC__
 #define __MAY_ALIAS__ __attribute__((may_alias))
 #define __EXPR_LIKELY__(T, L) __builtin_expect(T, L)
+#define __MB_UNUSED__ __attribute__((unused))
 #else
 #define __MAY_ALIAS__
 #define __EXPR_LIKELY__(T, L) T
+#define __MB_UNUSED__
 #endif
 #define __STATIC_FORCE_INLINE_F static __inline__ __FORCE_INLINE__
 
@@ -295,9 +297,8 @@ __STATIC_FORCE_INLINE_F __NONNULL__ bool VEC_deleteInit(vec_t vec, vec_t curr, v
 }
 
 static __NONNULL__ void *VEC_internalDelete(vec_t *vec){
-    void *lCurrt, *lTmp;
-    void *lNext;
-    size_t sz;
+    void *lCurrt, *lTmp, *lNext;
+    size_t sz __MB_UNUSED__;
     register uint8_t *fl, *ul;
 
     if (! VEC_deleteInit(*vec, &lCurrt, &lTmp, &lNext, &sz))

@@ -323,16 +323,12 @@ static __NONNULL__ void *VEC_internalDelete(vec_t *vec){
 	    (sz = 0) | VEC_getSize(lNext, &sz);
 
 	    if (!(*fl & VEC_CURR_STATE)) {
-		puts("forbidden");
 		(( vec_t )lCurrt)[0] = lTmp;
 	    }
-	    printf("(...) lTmp %p, lCurrt %p\n", lTmp, lCurrt);
 	    VEC_preserveAndAssign(lTmp, (( vec_t )lNext)[0], lCurrt);
 	    VEC_preserveAndAssign(lCurrt, lNext, lTmp);
 	    lTmp = lCurrt;
-	    printf("(old) fl %u, ul %u\n", *fl, *ul);
 	    VEC_DEF_NWSTATE(*fl, *ul);
-	    printf("(new) fl %u, ul %u\n", *fl, *ul);
 	    continue;
 	}
 	lNext ? free(VEC_BLOCK_START(lNext, ul[0])) : ( void )0;

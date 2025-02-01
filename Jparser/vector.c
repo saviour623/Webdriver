@@ -310,7 +310,7 @@ static __NONNULL__ void *VEC_internalDelete(vec_t *vec){
 		lCurrt = (( vec_t )lTmp)[0];
 		free(VEC_BLOCK_START(lTmp, *fl));
 		if (lCurrt == VEC_EOV)
-		    goto _del_end;
+		   goto _del_end;
 		lTmp = *fl & VEC_PREV_STATE ? lCurrt : (( vec_t )lCurrt)[0];
 		(sz = 0) | VEC_getSize(lTmp, &sz);
 	    } while ( !sz-- );

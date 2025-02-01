@@ -299,7 +299,7 @@ static __NONNULL__ void *VEC_internalDelete(vec_t *vec){
     void *lNext;
     size_t sz;
     register uint8_t *fl, *ul;
-    int k = 0;
+
     if (! VEC_deleteInit(*vec, &lCurrt, &lTmp, &lNext, &sz))
 	return 0;
     *(fl = (VEC_ACCESS(lCurrt) - 1)) |= VEC_CURR_STATE;

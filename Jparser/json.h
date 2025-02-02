@@ -36,7 +36,7 @@ enum {
       ESYNTAX = 256,
       EINIT = 257
 };
-
+#define IGNORE_EXPR(expr) ((void)(expr))
 /*________________________________________________
 //                                                |
 //                 RSWITCH (8 bits)               |

@@ -460,7 +460,6 @@ __NONNULL__ void *addToJsonObject (JsonObject self, JsonString key, void *value,
  _end:
     return self;
 }
-#define IGNORE_EXPR(expr) ((void)(expr))
 __NONNULL__ void *removeFromJsonObject (JsonObject self, JsonString key) {
     register size_t _fromIndex;
     JsonData iterItems;

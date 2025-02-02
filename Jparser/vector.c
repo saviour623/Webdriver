@@ -109,28 +109,29 @@ static __inline__ __FORCE_INLINE__ uint8_t VEC_ssizeof(uint64_t sz) {
 /*
  * vector_create
  */
-static void **VEC_create(size_t vecSize) {
+static void **VEC_create(size_t sz) {
     void *vec;
     word0 mSz;
 
-    if ( !vecSize )
-	vecSize = VEC_LEAST_SZ;
+    if ( !sz )
+	sz = VEC_LEAST_SZ;
     /* meta-data size */
-    mSz = VEC_META_DATA_SZ(VEC_SZEOF(vecSize));
+    mSz = VEC_META_DATA_SZ(VEC_SZEOF(sz));
 
-    if (! (vec = malloc((VEC_DATA_BLOCK_SZ * vecSize) + mSz)))
+    if (! (vec = malloc((VEC_DATA_BLOCK_SZ * sz) + mSz)))
 	return NULL;
     /* initialize size to zero */
-    memset(vec, 0, --mSz);
+    memset(vec, 0, (VEC_DATA_BLOCK_SZ * sz) + mSz);
+    VEC_putSize(vec, &sz, --mSz);
 
     /* update meta-data: prealloc | type | n bytes allocated for sz ([1100 0001] for size == 1) */
-    VEC_ACCESS(vec)[mSz] = ((word0)(vecSize > VEC_LEAST_SZ) << 6) | VEC_VECTOR | mSz;
+    VEC_ACCESS(vec)[mSz] = ((word0)(sz > VEC_LEAST_SZ) << 6) | VEC_VECTOR | mSz;
     /* mov ahead meta-data block (main) */
     VEC_MOVTO_DATA_START(vec, mSz);
 /* initialize the first block (main) to 0 [vector is empty] */
-    *(void **)vec = 0;
+     *(void **)vec = 0;
 
-    return vec;
+     return vec;
 }
 
 /*
@@ -172,7 +173,7 @@ static __inline__  __NONNULL__ void **VEC_append(void ***vec, void *newdt, VEC_s
     VEC_SZ_INCR(v0, meta);
 
     *vec = (void *)(VEC_ACCESS(v0) + pb + 1);
-    (*vec)[sz] = newdt; /* implicit [sz - 1] */
+    (*vec)[sz] = newdt;
 
     return *vec;
 }
@@ -299,41 +300,45 @@ __STATIC_FORCE_INLINE_F __NONNULL__ bool VEC_deleteInit(vec_t vec, vec_t curr, v
 static __NONNULL__ void *VEC_internalDelete(vec_t *vec){
     void *lCurrt, *lTmp, *lNext;
     size_t sz __MB_UNUSED__;
-    register uint8_t *fl, *ul;
+    register uint8_t fl, *ul;
 
     if (! VEC_deleteInit(*vec, &lCurrt, &lTmp, &lNext, &sz))
 	return 0;
-    *(fl = (VEC_ACCESS(lCurrt) - 1)) |= VEC_CURR_STATE;
+    fl = (VEC_ACCESS(lCurrt) - 1)[0] |= VEC_CURR_STATE;
 
+    printf("(addr: lTmp)%p\n", lTmp);
     while  (! (sz < 0) ) {
 	if (  ! sz-- ) {
 	    do {
 		lCurrt = (( vec_t )lTmp)[0];
-		free(VEC_BLOCK_START(lTmp, *fl));
+		free(VEC_BLOCK_START(lTmp, fl));
+		lTmp = NULL;
+
 		if (lCurrt == VEC_EOV)
 		   goto _del_end;
-		lTmp = *fl & VEC_PREV_STATE ? lCurrt : (( vec_t )lCurrt)[0];
+		lTmp = fl & VEC_PREV_STATE ? lCurrt : (( vec_t )lCurrt)[0];
 		(sz = 0) | VEC_getSize(lTmp, &sz);
 	    } while ( !sz-- );
-	    fl = (VEC_ACCESS(lTmp) - 1);
+	    fl = VEC_REM_CURSTATE((VEC_ACCESS(lTmp) - 1)[0]);
 	    lNext = NEXT_MEMB_OF(lCurrt);
 	}
 	if (lNext && ((ul = (VEC_ACCESS(lNext) - 1))[0] & VEC_VECTOR)) {
-	    VEC_putSize(VEC_BLOCK_START(lTmp, *fl), &sz, *fl);
+	    VEC_putSize(VEC_BLOCK_START(lTmp, fl), &sz, fl);
 	    (sz = 0) | VEC_getSize(lNext, &sz);
 
-	    if (!(*fl & VEC_CURR_STATE)) {
+	    if (!(fl & VEC_CURR_STATE)) {;
 		(( vec_t )lCurrt)[0] = lTmp;
 	    }
 	    VEC_preserveAndAssign(lTmp, (( vec_t )lNext)[0], lCurrt);
 	    VEC_preserveAndAssign(lCurrt, lNext, lTmp);
 	    lTmp = lCurrt;
-	    VEC_DEF_NWSTATE(*fl, *ul);
+
+	    VEC_DEF_NWSTATE(fl, *ul);
 	    continue;
 	}
 	lNext ? free(VEC_BLOCK_START(lNext, ul[0])) : ( void )0;
-	lNext = NEXT_MEMB_OF(lCurrt);
-	VEC_REM_CURSTATE(*fl);
+	sz && (lNext = NEXT_MEMB_OF(lCurrt));
+	VEC_REM_CURSTATE(fl);
     }
  _del_end:
     vec = NULL;
@@ -346,35 +351,27 @@ static __NONNULL__ void *VEC_delete(void ***vec) {
 int main(void) {
     int num[1024] = {0};
     int p = 0;
-    VEC_szType x;
+    VEC_szType x = 0;
     void **vec = VEC_create(1);
-    void **new;
+ 
     int data[][6] = {
 	{0, 2, 4, 6, 8, 10}, {1, 3, 5, 7, 9, 11},
 	{2, 3, 5, 7, 11, 13}, {4, 16, 32, 64, 128},
-	{3, 6, 9, 12, 15, 18}, {7, 14, 21, 28, 35, 42},
-	{10, 20, 30, 40, 50, 60}, {15, 45, 60, 75, 90, 105},
-	{20, 40, 60, 80, 100, 120}, {50, 100, 150, 200, 250, 300},
-	{0, 0, 0, 0, 0, 0}, {1, 1, 1, 1, 1, 1}
     };
-    VEC_add(&vec, data[0], sizeof(int), 6, 0, VEC_VECTOR);
-    VEC_add(&vec, data[1], sizeof(int), 6, 1, VEC_ARRAY);
-    //   new = VEC_add(&vec, data[2], sizeof(int), 6, 2, VEC_VECTOR);
-    //VEC_add(&new, data[3], sizeof(int), 6, 1, VEC_ARRAY);
-    //VEC_add(&new, data[4], sizeof(int), 6, 2, VEC_VECTOR);
+    *vec = VEC_create(1);
+    /*
+    void *ptr = malloc((sizeof(int) * 6) + 2);
+    *(int *)ptr++ = 6;
+    *(int *)ptr++ = VEC_ARRAY | 1;
+    *(vec + 1) = ptr;*/
+  
+    //VEC_add(&vec, data[0], sizeof(int), 6, 0, VEC_VECTOR);
+    //VEC_add(&vec, data[1], sizeof(int), 6, 1, VEC_ARRAY);
+
+    //memcpy(&x, VEC_BLOCK_START(vec, (VEC_ACCESS(vec) - 1)[0] & 0x0f), (VEC_ACCESS(vec) - 1)[0] & 0x0f);
+    //printf("%lu\n", x);
     //
-    //VEC_add(&new, data[5], sizeof(int), 6, 1, VEC_ARRAY);
-    
-    p =  (VEC_ACCESS(vec) - 1)[0] & 0x0f;
-    x = 0;
-
-    memcpy(&x, VEC_BLOCK_START(vec, p), p);
-    printf("%lu\n", x);
-
-    p = 3;
-    VEC_SZ_INCR(&p, sizeof p);
     VEC_delete(&vec);
-    //printf("%d\n", new == 0);
 }
 
 /*

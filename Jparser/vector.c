@@ -33,6 +33,44 @@
 #endif
 #define __STATIC_FORCE_INLINE_F static __inline__ __FORCE_INLINE__
 
+    /*
+     *                       Vector Information
+     *
+     * <[ptr] --------------------+
+     *                            |
+     *                            +
+     * [size]<->[meta-data]<->[Block 1]...[Block N]
+     * |              |           |
+     * +> BLOCK-START |           +> [Block 1] - meta_data_size --> meta-data
+     *                |
+     *                +> [meta-data] & 0x0f --> BLOCK-START
+     *
+     *               
+     * <[size]
+     *      min: 1B, max: sizeof (size_t) or 8
+     *
+     * <[meta-data: 1B]
+     * 
+     *      1      1      1      1      1      1      1      1
+     *      |      |      |      |______|      |_____________|
+     *      |      |      |         |                 |
+     *    (type)   |  (member type) |                 |
+     *             |                |                 |
+     *         (pre-alloc)     (misc. bits)     (sizeof size: 0x0f)
+     *
+     * <[sizeof size] -> byte count. 
+     *                   It doesn't interpret to be the exact number of bytes that can fit size,
+     *                   rather it is the number of shifts of 4 (bits), that can fit the value of size.
+     *
+     * MIN: 0x01/0b001, MAX: 0x0f/0b111
+     * BYTES: 4 << 1  -> 8B  (1 byte)
+     *        4 << 10 -> 16B (2 byte)
+     *        4 << 11 -> 32B (4 byte)
+     *                  ...
+     *
+     * <[member type] -> this is only set if vector's type is an object.
+     * 
+     */
 typedef uint64_t VEC_szType;
 typedef void ** vec_t;
 typedef uint8_t word0;
@@ -98,6 +136,15 @@ static __inline__ __FORCE_INLINE__ uint8_t VEC_putSize(void *d, void *s, uint8_t
     case 0x02: _d->word2 = _s->word2; break;
     case 0x03: _d->word4 = _s->word4; break;
     case 0x04: _d->word8 = _s->word8; break;
+    }
+    return 0;
+}
+static __inline__ __FORCE_INLINE__ uint8_t VEC_preIncr(void *d, uint8_t fl) {
+    switch (fl & 0x0f) {
+    case 0x01: ((_inttype_t * __MAY_ALIAS__)(VEC_BLOCK_START(d, fl)))->word0 += 1;
+    case 0x02: ((_inttype_t * __MAY_ALIAS__)(VEC_BLOCK_START(d, fl)))->word2 += 1;
+    case 0x03: ((_inttype_t * __MAY_ALIAS__)(VEC_BLOCK_START(d, fl)))->word4 += 1;
+    case 0x04: ((_inttype_t * __MAY_ALIAS__)(VEC_BLOCK_START(d, fl)))->word8 += 1;
     }
     return 0;
 }
@@ -188,7 +235,7 @@ static __inline__  __NONNULL__ void **VEC_expand(void ***vec, void *vd, size_t i
 
     fl = (VEC_ACCESS(*vec) - 1)[0];
 
-    if (! (*vec)[0] ) {
+    if (sz == 0) {
 #if VEC_SAFE_INDEX_CHECK || VEC_ALW_WARNING
 	if ((index != 0) || (vflag != VEC_APPEND)) {
 	    /* throw out-of-bound error */
@@ -207,7 +254,7 @@ static __inline__  __NONNULL__ void **VEC_expand(void ***vec, void *vd, size_t i
 	/* out of bound // insufficient memory */
     err_outOfBound:
 #if VEC_ALW_WARNING
-	vflag & VEC_APPEND && throwError(EROUT_OF_BOUND, vec, vd, index + 1, sz);
+	(vflag & VEC_APPEND) && throwError(EROUT_OF_BOUND, vec, vd, index + 1, sz);
 #endif
 	return NULL;
     }
@@ -229,22 +276,18 @@ static  __NONNULL__ void *VEC_add(void ***vec, void *vd, size_t bytesz, size_t s
 	return NULL;
     }
     VEC_putSize(newdt, &sz, fl & 0x0f);
-    newdt = newdt + 2;
-    //VEC_MOVTO_DATA_START(newdt, fl);
+    VEC_MOVTO_DATA_START(newdt, fl);
     (VEC_ACCESS(newdt) - 1)[0] = fl;
-    printf("%d\n", (VEC_ACCESS(newdt) - 2)[0]);
     memcpy(newdt, vd, nalloc);
 
     /* if the vec_vector type is specified, create a new vector */
     if ((type & VEC_VECTOR) && (newvec = VEC_create(VEC_LEAST_SZ))) {
-	/* initialize its first member with the data */
 	*newvec = newdt;
 	fl = (VEC_ACCESS(newvec) - 1)[0];
 	VEC_SZ_INCR(VEC_BLOCK_START(newvec, fl), fl);
-	/* reuse newdt to retain a generic referencing for both non-vector or vector using a void ptr */
 	newdt = newvec;
     }
-    //return newvec && VEC_expand(vec, newdt, index, VEC_APPEND) ? newdt : NULL;
+    return newvec && VEC_expand(vec, newdt, index, VEC_APPEND) ? newdt : NULL;
 }
 static __NONNULL__ __inline__ __attribute__((always_inline, pure)) void *VEC_getVectorItem(void **vec, ssize_t index) {
     size_t sz;

@@ -6,8 +6,9 @@
 #include <string.h>
 #include <stddef.h>
 #include <assert.h>
+#include <stdarg.h>
 
-#if defined(__GNUC__) || defined(__clang__) 
+#if defined(__GNUC__) || defined(__clang__)
 #define __FORCE_INLINE__ __attribute__((always_inline))
 #elif defined(_MS_VER) || defined(WIN32)
 #define __FORCE_INLINE__ __ForceInline
@@ -45,12 +46,12 @@
      *                |
      *                +> [meta-data] & 0x0f --> BLOCK-START
      *
-     *               
+     *
      * <[size]
      *      min: 1B, max: sizeof (size_t) or 8
      *
      * <[meta-data: 1B]
-     * 
+     *
      *      1      1      1      1      1      1      1      1
      *      |      |      |      |______|      |_____________|
      *      |      |      |         |                 |
@@ -58,7 +59,7 @@
      *             |                |                 |
      *         (pre-alloc)     (misc. bits)     (sizeof size: 0x0f)
      *
-     * <[sizeof size] -> byte count. 
+     * <[sizeof size] -> byte count.
      *                   It doesn't interpret to be the exact number of bytes that can fit size,
      *                   rather it is the number of shifts of 4 (bits), that can fit the value of size.
      *
@@ -69,7 +70,7 @@
      *                  ...
      *
      * <[member type] -> this is only set if vector's type is an object.
-     * 
+     *
      */
 typedef uint64_t VEC_szType;
 typedef void ** vec_t;
@@ -153,10 +154,20 @@ static __inline__ __FORCE_INLINE__ uint8_t VEC_ssizeof(uint64_t sz) {
 	    sz > UINT32_MAX ? sz > UINT64_MAX ?
 	    0x05 : 0x04 : 0x03 : 0x02 : 0x01 );
 }
+typedef struct {
+    uint8_t native; /* readonly is set only for members, ntracksize: false; optimize: true */
+    uint8_t readOnly;
+    uint8_t memReadOnly;
+    uint8_t recurseSet; /* parent setting is inherited by members */
+    uint8_t ntrackSize;
+    uint8_t optimize;
+} VEC_set;
 /*
  * vector_create
  */
-static void **VEC_create(size_t sz) {
+ #define VEC_new(size_t_sz, ...) VEC_create(size_t_sz, # __VA_ARGS__ "[")
+
+static void **VEC_create(size_t sz, const char *npf, ...) {
     void *vec;
     word0 mSz;
 
@@ -171,6 +182,16 @@ static void **VEC_create(size_t sz) {
     memset(vec, 0, (VEC_DATA_BLOCK_SZ * sz) + mSz);
     VEC_putSize(vec, &sz, --mSz);
 
+    if (*npf == '['){
+        va_list _vnpf;
+        va_start(_vnpf, npf);
+        const VEC_set *vnpf = va_arg(_vnpf, VEC_set *);
+
+        if (! vnpf->native) {
+            mSz |= !(uint8_t)!vnpf->readOnly << 4 | !(uint8_t)!vnpf->ntrackSize << 4;
+        }
+
+    }
     /* update meta-data: prealloc | type | n bytes allocated for sz ([1100 0001] for size == 1) */
     VEC_ACCESS(vec)[mSz] = ((word0)(sz > VEC_LEAST_SZ) << 6) | VEC_VECTOR | mSz;
     /* mov ahead meta-data block (main) */
@@ -281,7 +302,7 @@ static  __NONNULL__ void *VEC_add(void ***vec, void *vd, size_t bytesz, size_t s
     memcpy(newdt, vd, nalloc);
 
     /* if the vec_vector type is specified, create a new vector */
-    if ((type & VEC_VECTOR) && (newvec = VEC_create(VEC_LEAST_SZ))) {
+    if ((type & VEC_VECTOR) && (newvec = VEC_new(VEC_LEAST_SZ))) {
 	*newvec = newdt;
 	fl = (VEC_ACCESS(newvec) - 1)[0];
 	VEC_SZ_INCR(VEC_BLOCK_START(newvec, fl), fl);
@@ -395,51 +416,13 @@ static __NONNULL__ void *VEC_delete(void ***vec) {
 int main(void) {
     size_t x;
     void *ptr;
-    void **vec = VEC_create(1);
- 
+    void **vec = VEC_new(1);
+
     int data[][6] = {
 	{0, 2, 4, 6, 8, 10}, {1, 3, 5, 7, 9, 11},
 	{2, 3, 5, 7, 11, 13}, {4, 16, 32, 64, 128},
     };
     VEC_add(&vec, data[1], sizeof(int), 6, 0, VEC_ARRAY);
-    /*
-    *vec = VEC_create(1);
-    ptr = malloc((sizeof(int) * 6) + 2);
-    *(int *)ptr++ = 6;
-    *(int *)ptr++ = VEC_ARRAY | 1;
-    *(void **)(*vec) = ptr;
-    */
-    /*
-    *(void **)*vec = VEC_create(1);
 
-     void *ptr = malloc((sizeof(int) * 6) + 2);
-    *(int *)ptr++ = 6;
-    *(int *)ptr++ = VEC_ARRAY | 1;
-    *(void **)*(void **)*vec = ptr;
-
-     ptr = malloc((sizeof(int) * 6) + 2);
-    *(int *)ptr++ = 6;
-    *(int *)ptr++ = VEC_ARRAY | 1;
-
-    *(vec + 1) = ptr;
-    *(vec + 2) = VEC_create(1);
-    */
-  
-    //VEC_add(&vec, data[0], sizeof(int), 6, 0, VEC_VECTOR);
-    //
-
-    //memcpy(&x, VEC_BLOCK_START(vec, (VEC_ACCESS(vec) - 1)[0] & 0x0f), (VEC_ACCESS(vec) - 1)[0] & 0x0f);
-    //printf("%lu\n", x);
-    //
     VEC_delete(&vec);
 }
-
-/*
-  AX +
-     +
-     A1X +
-         +
-	 A2X
-     A2X[0] --> A1X
-     A2X ptr --> A2X[0]
- */

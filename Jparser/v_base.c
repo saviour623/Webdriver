@@ -20,7 +20,7 @@
   __builtin_choose_expr(cExpr, tVal, fVal)
 /* fprintf(stderr, "[vector] " "An attempt to add '%p' at index %lu to an object of size %lu failed\n", new, (long)index, (long)sz);*/
 #define throwError(...) (void *)0
-#define puti(i) printf("%lld\n", (long long int)i)
+#define puti(i) printf("%lld\n", (long long int)(i))
 /*
  * vector
  */
@@ -76,7 +76,7 @@
  * <[member type] -> this is only set if vector's type is an object.
  *
  */
-typedef uint64_t VEC_szType;
+  typedef uint64_t VEC_szType;
 typedef void ** vec_t;
 typedef uint8_t word0;
 
@@ -195,7 +195,7 @@ static void **VEC_create(size_t sz, const uint8_t npf, ...) {
 		TODO: NOTRACKSIZE SHOULD HAVE THE SAME EFFECT AS READONLY
 	  */
 	  fl |= (uint8_t)!!vnpf->readOnly << 4 | !(uint8_t)!vnpf->ntrackSize << 4;
-	  fl = vnpf->optimize && /* not */ vnpf->readOnly ? 0x04 /* maximum supported bit size */ : VEC_META_DATA_SZ(VEC_SZEOF(sz));
+	  fl = vnpf->optimize && /* not */ vnpf->readOnly ? 0x04 /* maximum supported bit size */ : VEC_SZEOF(sz) + 1;
 	}
   }
   else {
@@ -204,11 +204,11 @@ static void **VEC_create(size_t sz, const uint8_t npf, ...) {
   if (! (vec = malloc((VEC_DATA_BLOCK_SZ * sz) + /* bytes required by size */ VEC_META_DATA_SZ(fl) + /* 1 byte for meta-data */ 1)))
 	return NULL;
   VEC_putSize(vec, &sz, fl);
-
-  /* update meta-data: prealloc | type | n bytes allocated for sz ([1100 0001] for size == 1) */
-  VEC_ACCESS(vec)[fl] = VEC_VECTOR | fl;
+  
   /* mov ahead meta-data block (main) */
   VEC_MOVTO_DATA_START(vec, fl);
+  /* update meta-data: prealloc | type | n bytes allocated for sz ([1100 0001] for size == 1) */
+  (VEC_ACCESS(vec) - 1)[0] = VEC_VECTOR | fl;
   /* initialize the first block (main) to 0 [vector is empty] */
   *(void **)vec = 0;
 
@@ -218,21 +218,20 @@ static void **VEC_create(size_t sz, const uint8_t npf, ...) {
 /*
  * vector_append: add to last; realloc/copy vector if neccessary
  */
-static __inline__  __NONNULL__ void **VEC_append(vec_t *vec, void *_new, VEC_szType sz, VEC_szType index, word0 meta) {
+static __inline__  __NONNULL__ void **VEC_append(vec_t *vec, void *_new, VEC_szType sz, VEC_szType index, word0 _vecMetaData) {
   void *v0;
   register _Bool gt, sb;
   register uint8_t pb;
-  register uintmax_t memtb;
-
+  register uintmax_t memPtr;
 
   sb = false; /* True if size reqires an additional block */
-  pb = meta & 0x0f; /* n bytes of current size */;
+  pb = _vecMetaData & 0x0f; /* n bytes of current size */;
   gt = index > sz;
 
   /* shifting pb bytes should result to 0 if (sz + 1) <= the maximum number pb bytes can represent */
-  if (!(meta & VEC_READONLY) && (index) >> (4ul << pb)) {
-	(VEC_ACCESS(*vec) - 1)[0] = pb = (meta & ~pb) | VEC_ssizeof(index);
-	sb = (meta & (VEC_NON_NATIVE | VEC_NO_TRACK_SIZE));
+  if (!(_vecMetaData & VEC_READONLY) && (index) >> (4ul << pb)) {
+	(VEC_ACCESS(*vec) - 1)[0] = pb = (_vecMetaData & ~pb) | VEC_ssizeof(index);
+	sb = (_vecMetaData & (VEC_NON_NATIVE | VEC_NO_TRACK_SIZE));
   }
   else {
 	/* error: attempt to modify a readonly container */
@@ -240,9 +239,9 @@ static __inline__  __NONNULL__ void **VEC_append(vec_t *vec, void *_new, VEC_szT
 	return (void **)NULL;
   }
   /* resize vector || allocate an entire new block */
-  memtb = (VEC_DATA_BLOCK_SZ * (gt ? index : sz + VEC_ALLOC_SZ)) + VEC_META_DATA_SZ(meta);
+  memPtr = (VEC_DATA_BLOCK_SZ * (gt ? index : sz + VEC_ALLOC_SZ)) + VEC_META_DATA_SZ(_vecMetaData);
 
-  v0 = *vec ? (sb == false) ? realloc(VEC_BLOCK_START(*vec, meta), memtb) : malloc(memtb + 1) : NULL;
+  v0 = *vec ? (sb == false) ? realloc(VEC_BLOCK_START(*vec, _vecMetaData), memPtr) : malloc(memPtr + 1) : NULL;
   suppress_unused_warning( gt && memset(v0 + sz, 0, VEC_DATA_BLOCK_SZ * (index - sz)) );
 
   if (v0 == NULL)
@@ -251,15 +250,15 @@ static __inline__  __NONNULL__ void **VEC_append(vec_t *vec, void *_new, VEC_szT
   if (__EXPR_LIKELY__(sb, false)) {
 	/* We are here because we want to pad a new block for size */
 	memcpy(v0, &sz, pb);
-	(VEC_ACCESS(v0) + pb)[0] = meta;
+	(VEC_ACCESS(v0) + pb)[0] = _vecMetaData;
 
 	/* (local realloc)
 	 * This is a trade-off of performance and may be changed in future review.
 	 */
-	memcpy(v0 + meta + 1, *vec, sz * VEC_DATA_BLOCK_SZ);
-	free(VEC_BLOCK_START(*vec, meta));
+	memcpy(v0 + _vecMetaData + 1, *vec, sz * VEC_DATA_BLOCK_SZ);
+	free(VEC_BLOCK_START(*vec, _vecMetaData));
   }
-  suppress_unused_warning( gt ? VEC_putSize(v0, &index, meta) : VEC_Incr(v0, meta) );
+  suppress_unused_warning( gt ? VEC_putSize(v0, &index, _vecMetaData) : VEC_Incr(v0, _vecMetaData) );
 
   *vec = (void *)(VEC_ACCESS(v0) + pb + 1);
   (*vec)[index - 1] = _new;
@@ -271,51 +270,50 @@ static __inline__  __NONNULL__ void **VEC_append(vec_t *vec, void *_new, VEC_szT
  * vec_expand: add new data to vector
  */
 static __inline__  __NONNULL__ void **VEC_expand(vec_t *vec, void *new, size_t index) {
-  VEC_szType sz, fl;
+  VEC_szType sz, _vecMetaData;
 
-  fl = (VEC_ACCESS(*vec) - 1)[0];
-  suppress_unused_warning( (sz = 0) | VEC_getSize(*vec, &sz)  );
-  puti(fl & 0x0f);
-  if (sz > index) {
-	puts("here");
+  _vecMetaData = (VEC_ACCESS(*vec) - 1)[0];
+  suppress_unused_warning( (sz = 0) | VEC_putSize(&sz, VEC_BLOCK_START(*vec, _vecMetaData), _vecMetaData)  );
+
+  if (sz > index)
 	(*vec)[index] = new;
-  }
-  else if (! (!(fl & VEC_READONLY) && VEC_append(vec, new, sz, index, fl)) ) {
+  else if (! (!(_vecMetaData & VEC_READONLY) && VEC_append(vec, new, sz, index, _vecMetaData)) ) {
 	/* out of bound // insufficient memory */
   err_outOfBound:
 #if VEC_ALW_WARNING
-	(fl & VEC_READONLY) && throwError(EROUT_OF_BOUND, vec, new, index + 1, sz);
+	(_vecMetaData & VEC_READONLY) && throwError(EROUT_OF_BOUND);
 #endif
-	puts("error");
 	return NULL;
   }
   return *vec;
 }
-
+/*
+ * VEC_add
+ */
 static  __NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytesz, size_t sz, size_t index, word0 type) {
   void *_new /* ptr to memory block */, **newvec /* ptr to vector */;
-  word0 fl;
+  word0 _vecMetaData;
   size_t nalloc;
 
   newvec = (void *)1; /* prevent unsed newvec folding to 0 */
 
-  fl = VEC_ARRAY | VEC_SZEOF(sz);
+  _vecMetaData = VEC_ARRAY | VEC_SZEOF(sz);
   nalloc = bytesz * sz; /* sizeof(new) * sz */
 
   if ((*vec == NULL) || (nalloc < 1)
-	  || !(_new = malloc(nalloc + VEC_META_DATA_SZ(fl)))) {
+	  || !(_new = malloc(nalloc + VEC_META_DATA_SZ(_vecMetaData)))) {
 	return NULL;
   }
-  VEC_putSize(_new, &sz, fl & 0x0f);
-  VEC_MOVTO_DATA_START(_new, fl);
-  (VEC_ACCESS(_new) - 1)[0] = fl;
+  VEC_putSize(_new, &sz, _vecMetaData & 0x0f);
+  VEC_MOVTO_DATA_START(_new, _vecMetaData);
+  (VEC_ACCESS(_new) - 1)[0] = _vecMetaData;
   memcpy(_new, new, nalloc);
 
   /* if the vec_vector type is specified, create a new vector */
   if ((type & VEC_VECTOR) && (newvec = VEC_new(VEC_LEAST_SZ))) {
 	*newvec = _new;
-	fl = (VEC_ACCESS(newvec) - 1)[0];
-	VEC_SZ_INCR(VEC_BLOCK_START(newvec, fl), fl);
+	_vecMetaData = (VEC_ACCESS(newvec) - 1)[0];
+	VEC_SZ_INCR(VEC_BLOCK_START(newvec, _vecMetaData), _vecMetaData);
 	_new = newvec;
   }
   return newvec && VEC_expand(vec, _new, index) ? _new : NULL;
@@ -378,42 +376,42 @@ __STATIC_FORCE_INLINE_F __NONNULL__ bool VEC_deleteInit(vec_t vec, vec_t curr, v
 static __NONNULL__ void *VEC_internalDelete(vec_t *vec){
   void *lCurrt, *lTmp, *lNext;
   size_t sz __MB_UNUSED__;
-  register uint8_t fl, *ul;
+  register uint8_t _vecMetaData, *ul;
 
   if (! VEC_deleteInit(*vec, &lCurrt, &lTmp, &lNext, &sz))
 	return 0;
-  fl = (VEC_ACCESS(lCurrt) - 1)[0] |= VEC_CURR_STATE;
+  _vecMetaData = (VEC_ACCESS(lCurrt) - 1)[0] |= VEC_CURR_STATE;
 
   while  (! (sz < 0) ) {
 	if (  ! sz-- ) {
 	  do {
 		lCurrt = (( vec_t )lTmp)[0];
-		free(VEC_BLOCK_START(lTmp, fl));
+		free(VEC_BLOCK_START(lTmp, _vecMetaData));
 		if (lCurrt == VEC_EOV)
 		  goto _del_end;
-		lTmp = fl & VEC_PREV_STATE ? lCurrt : (( vec_t )lCurrt)[0];
+		lTmp = _vecMetaData & VEC_PREV_STATE ? lCurrt : (( vec_t )lCurrt)[0];
 		(sz = 0) | VEC_getSize(lTmp, &sz);
 	  } while ( !sz-- );
-	  fl = VEC_REM_CURSTATE((VEC_ACCESS(lTmp) - 1)[0]);
+	  _vecMetaData = VEC_REM_CURSTATE((VEC_ACCESS(lTmp) - 1)[0]);
 	  lNext = NEXT_MEMB_OF(lCurrt);
 	}
 	if (lNext && ((ul = (VEC_ACCESS(lNext) - 1))[0] & VEC_VECTOR)) {
-	  VEC_putSize(VEC_BLOCK_START(lTmp, fl), &sz, fl);
+	  VEC_putSize(VEC_BLOCK_START(lTmp, _vecMetaData), &sz, _vecMetaData);
 	  (sz = 0) | VEC_getSize(lNext, &sz);
 
-	  if (!(fl & VEC_CURR_STATE)) {
+	  if (!(_vecMetaData & VEC_CURR_STATE)) {
 		(( vec_t )lCurrt)[0] = lTmp;
 	  }
 	  VEC_preserveAndAssign(lTmp, (( vec_t )lNext)[0], lCurrt);
 	  VEC_preserveAndAssign(lCurrt, lNext, lTmp);
 	  lTmp = lCurrt;
 
-	  VEC_DEF_NWSTATE(fl, *ul);
+	  VEC_DEF_NWSTATE(_vecMetaData, *ul);
 	  continue;
 	}
 	lNext && VEC_free(VEC_BLOCK_START(lNext, ul[0]));
 	sz && (lNext = NEXT_MEMB_OF(lCurrt));
-	VEC_REM_CURSTATE(fl);
+	VEC_REM_CURSTATE(_vecMetaData);
   }
  _del_end:
   vec = NULL;
@@ -426,13 +424,13 @@ static __NONNULL__ void *VEC_delete(vec_t *vec) {
 int main(void) {
   size_t x;
   void *ptr;
-  void **vec = VEC_new(1);
+  void **vec = VEC_new(0);
 
   int data[][6] = {
 				   {0, 2, 4, 6, 8, 10}, {1, 3, 5, 7, 9, 11},
 				   {2, 3, 5, 7, 11, 13}, {4, 16, 32, 64, 128},
   };
-  //VEC_add(&vec, data[0], sizeof(int), 6, 0, VEC_ARRAY);
+  VEC_add(&vec, data[0], sizeof(int), 6, 1, VEC_ARRAY);
   // VEC_add(&vec, data[1], sizeof(int), 6, 1, VEC_ARRAY);
 
   //ptr = *(vec + 1);

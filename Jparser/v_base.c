@@ -259,7 +259,6 @@ static __inline__  __NONNULL__ void **VEC_append(vec_t *vec, void *_new, VEC_szT
 	free(VEC_BLOCK_START(*vec, _vecMetaData));
   }
   suppress_unused_warning( gt ? VEC_putSize(v0, &index, _vecMetaData) : VEC_Incr(v0, _vecMetaData) );
-
   *vec = (void *)(VEC_ACCESS(v0) + pb + 1);
   (*vec)[index - 1] = _new;
 

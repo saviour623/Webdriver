@@ -76,7 +76,7 @@
  * <[member type] -> this is only set if vector's type is an object.
  *
  */
-  typedef uint64_t VEC_szType;
+	typedef uint64_t VEC_szType;
 typedef void ** vec_t;
 typedef uint8_t word0;
 
@@ -89,8 +89,36 @@ typedef union {
   uint8_t word0;
 } _inttype_t;
 
+
+/* @MACR_NON_EMPTY
+ * Safely assert if a pareameter is given an argument
+ * Returns the argument if provided, else implemation defined (Nothing by default)
+ * Redefining @MACR_EMPTY_PARAM sets a new return value when the assertion fails
+ * Note: The value must be followed after a ’0,’ inside the new definition
+ * Undefining it, resets the returned value of the failed assertion to default (Nothing)
+ */
+
+#define MACR_EMPTY_PARAM(...) 0,
+#define MACR_INDIRECT_EVAL(a, ...) MACR_ACCEPT_FIRST(__VA_ARGS__)
+#define MACR_ACCEPT_FIRST(a, ...) a
+#define MACR_IGNORE_FIRST(...) MACR_INDIRECT_EVAL(__VA_ARGS__)
+#define MACR_NON_EMPTY(...) MACR_IGNORE_FIRST(MACR_EMPTY_PARAM  __VA_ARGS__(), 1)
+# /* MACR_IF_EMPTY_0 -> empty */
+#define MACR_IF_EMPTY_0(a, ...) __VA_ARGS__
+# /* or */
+#define MACR_IF_EMPTY_(a, ...) __VA_ARGS__
+#
+#define MACR_IF_EMPTY_1(a, ...) a
+#
+#define MACR_CAT(A, A1) MACR_INDIRECT_CAT(A, A1)
+#define MACR_INDIRECT_CAT(A, A1) A ## A1
+#define MACR_DO_ELSE(_true, _false, ...) MACR_CAT(MACR_IF_EMPTY_, MACR_NON_EMPTY(__VA_ARGS__))(_true, _false)
+# /* end */
+#
+#define VEC_GETMETADATA(vec, ...) (MACR_DO_ELSE(__VA_ARGS__ =,,__VA_ARGS__) (VEC_ACCESS(vec) - 1)[0])
 #define VEC_DATA_BLOCK_SZ (sizeof (vec_t))
-#define VEC_META_DATA_SZ(_fl) ( (1 << ( ((_fl) & 0x0f) - 1 )) + 1) /*vector_byte_size and 1 byte for other meta-info */
+/*vector_byte_size and 1 byte for other meta-info */
+#define VEC_META_DATA_SZ(_fl) ( (1 << ( ((_fl) & 0x0f) - 1 )) + 1)
 #define VEC_LEAST_SZ 1
 #define VEC_ALLOC_SZ 1
 #define VEC_VECTOR 0x80
@@ -101,43 +129,24 @@ typedef union {
 #define VEC_READONLY 0x08
 #define VEC_NON_NATIVE 0x18
 #define VEC_NO_TRACK_SIZE 0x20
+#
 #define suppress_unused_warning(...) (void) (__VA_ARGS__)
-
-/* remove the type alignment of bytes so that each block can be addressed like a byte array */
+#
+/* reinterpret as pointer of bytes */
 #define VEC_ACCESS(_addr) ((word0 *)(void *)(_addr))
-#define VCAST(type, addr) *(volatile type *)(addr)
-
-#define VEC_SZ_INCR(sz, fl)						\
-  switch ((fl) & 0x0f) {						\
-  case 0x01: VCAST(word0, sz) += 1; break;		\
-  case 0x02: VCAST(uint16_t, sz) += 1; break;	\
-  case 0x03: VCAST(uint32_t, sz) += 1; break;	\
-  case 0x04: VCAST(uint64_t, sz) += 1; break;	\
-  } (void)0
-
+#
 #define VEC_SZEOF(_SZ) VEC_ssizeof(_SZ)
+#
 #define VEC_BLOCK_START(vec, fl)				\
   (VEC_ACCESS(vec) - VEC_META_DATA_SZ(fl))
-
+#
 #define VEC_MOVTO_DATA_START(vec, fl)							\
   ((vec) = (void *)(VEC_ACCESS(vec) + VEC_META_DATA_SZ(fl)))
 
 static __inline__ __FORCE_INLINE__ intmax_t VEC_abs(intmax_t a) {
   return a < 0 ? -a : a;
 }
-static __inline__ __FORCE_INLINE__ uint8_t VEC_getSize(void *vec, void *to) {
-  register word0 *s, *v, i;
 
-  v = vec, s = to;
-
-  i = *--v & 0x0f; /* n bytes of vec size */
-  v -= i; /* mov v to block start */
-
-  while ( i-- ) {
-	*s++ = *v++;
-  }
-  return i;
-}
 static __inline__ __FORCE_INLINE__ uint8_t VEC_putSize(void *d, void *s, uint8_t fl) {
   _inttype_t *_d __MAY_ALIAS__, *_s __MAY_ALIAS__;
 
@@ -174,37 +183,31 @@ typedef struct {
   uint8_t optimize;
 } VEC_set;
 /*
- * vector_create
+ * vector_new (alias to VEC_create)
  */
-#define VEC_new(size_t_sz, ...) VEC_create(size_t_sz, *(const char *)# __VA_ARGS__ "[")
 
-static void **VEC_create(size_t sz, const uint8_t npf, ...) {
+#define VEC_new(size_t_sz, ...)\
+  MACR_DO_ELSE(VEC_create(size_t_sz, MACR_DO_ELSE((__VA_ARGS__), NULL, __VA_ARGS__)), (throwError(NULL)), size_t_sz)
+
+static void **VEC_create(size_t sz, const VEC_set *vnpf) {
   void *vec;
   word0 fl;
 
   if ( !sz )
 	sz = VEC_LEAST_SZ;
-
-  if (npf != '['){
-	va_list _vnpf;
-	va_start(_vnpf, npf);
-	const VEC_set *vnpf = va_arg(_vnpf, VEC_set *);
-
-	if (! vnpf->native) {
-	  /*
-		TODO: NOTRACKSIZE SHOULD HAVE THE SAME EFFECT AS READONLY
-	  */
-	  fl |= (uint8_t)!!vnpf->readOnly << 4 | !(uint8_t)!vnpf->ntrackSize << 4;
-	  fl = vnpf->optimize && /* not */ vnpf->readOnly ? 0x04 /* maximum supported bit size */ : VEC_SZEOF(sz) + 1;
-	}
+  fl = 0x04; /* default -> native */
+  if (vnpf && !vnpf->native) {
+	/*
+	  TODO: NOTRACKSIZE SHOULD HAVE THE SAME EFFECT AS READONLY
+	*/
+	fl = vnpf->optimize && /* not */ vnpf->readOnly ? 0x04 /* maximum supported bit size */ : VEC_SZEOF(sz) + 1;
+	fl |= (uint8_t)!!vnpf->readOnly << 4 | !(uint8_t)!vnpf->ntrackSize << 4;
   }
-  else {
-	fl = 0x04;
-  }
+
   if (! (vec = malloc((VEC_DATA_BLOCK_SZ * sz) + /* bytes required by size */ VEC_META_DATA_SZ(fl) + /* 1 byte for meta-data */ 1)))
 	return NULL;
   VEC_putSize(vec, &sz, fl);
-  
+
   /* mov ahead meta-data block (main) */
   VEC_MOVTO_DATA_START(vec, fl);
   /* update meta-data: prealloc | type | n bytes allocated for sz ([1100 0001] for size == 1) */
@@ -229,7 +232,7 @@ static __inline__  __NONNULL__ void **VEC_append(vec_t *vec, void *_new, VEC_szT
   gt = index > sz;
 
   /* shifting pb bytes should result to 0 if (sz + 1) <= the maximum number pb bytes can represent */
-  if (!(_vecMetaData & VEC_READONLY) && (index) >> (4ul << pb)) {
+  if (!(_vecMetaData & VEC_READONLY) && (index >> (4ul << pb))) {
 	(VEC_ACCESS(*vec) - 1)[0] = pb = (_vecMetaData & ~pb) | VEC_ssizeof(index);
 	sb = (_vecMetaData & (VEC_NON_NATIVE | VEC_NO_TRACK_SIZE));
   }
@@ -273,7 +276,7 @@ static __inline__  __NONNULL__ void **VEC_expand(vec_t *vec, void *new, size_t i
 
   _vecMetaData = (VEC_ACCESS(*vec) - 1)[0];
   suppress_unused_warning( (sz = 0) | VEC_putSize(&sz, VEC_BLOCK_START(*vec, _vecMetaData), _vecMetaData)  );
-
+  puti(sz);
   if (sz > index)
 	(*vec)[index] = new;
   else if (! (!(_vecMetaData & VEC_READONLY) && VEC_append(vec, new, sz, index, _vecMetaData)) ) {
@@ -312,15 +315,16 @@ static  __NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytesz, size_t s
   if ((type & VEC_VECTOR) && (newvec = VEC_new(VEC_LEAST_SZ))) {
 	*newvec = _new;
 	_vecMetaData = (VEC_ACCESS(newvec) - 1)[0];
-	VEC_SZ_INCR(VEC_BLOCK_START(newvec, _vecMetaData), _vecMetaData);
 	_new = newvec;
   }
   return newvec && VEC_expand(vec, _new, index) ? _new : NULL;
 }
 static __NONNULL__ __inline__ __attribute__((always_inline, pure)) void *VEC_getVectorItem(vec_t vec, ssize_t index) {
   size_t sz;
+  uint8_t _vecMetaData;
 
-  (sz = 0) | VEC_getSize(*vec, &sz);
+  _vecMetaData = VEC_GETMETADATA(vec);
+  (sz = 0) | VEC_putSize(&sz, VEC_BLOCK_START(vec, _vecMetaData), _vecMetaData);
   index = sz + ( index < 0 ? index : 0 );
 
   if (index > sz || index < 0) {
@@ -361,87 +365,78 @@ __STATIC_FORCE_INLINE_F bool VEC_free(void *ptr) {
   VEC_DEF_NWSTATE_R(fmr, nw, VEC_CURR_STATE)
 #define VEC_REM_CURSTATE(fmr) ((fmr) &= ~VEC_CURR_STATE)
 
-__STATIC_FORCE_INLINE_F __NONNULL__ bool VEC_deleteInit(vec_t vec, vec_t curr, vec_t currTmp, vec_t descdant, size_t *sz) {
-  *sz = 0;
-  if (__EXPR_LIKELY__(vec && (VEC_getSize(vec, sz), sz), 1) ) {
-	*curr = *currTmp = vec;
-	*descdant = *vec, *vec = VEC_EOV;
-	return 1;
-  }
-  free(vec);
-  return 0;
-}
+  __STATIC_FORCE_INLINE_F __NONNULL__ bool VEC_deleteInit(vec_t vec, vec_t curr, vec_t currTmp, vec_t descdant, size_t *sz) {
+	uint8_t _vecMetaData;
 
-static __NONNULL__ void *VEC_internalDelete(vec_t *vec){
-  void *lCurrt, *lTmp, *lNext;
-  size_t sz __MB_UNUSED__;
-  register uint8_t _vecMetaData, *ul;
-
-  if (! VEC_deleteInit(*vec, &lCurrt, &lTmp, &lNext, &sz))
-	return 0;
-  _vecMetaData = (VEC_ACCESS(lCurrt) - 1)[0] |= VEC_CURR_STATE;
-
-  while  (! (sz < 0) ) {
-	if (  ! sz-- ) {
-	  do {
-		lCurrt = (( vec_t )lTmp)[0];
-		free(VEC_BLOCK_START(lTmp, _vecMetaData));
-		if (lCurrt == VEC_EOV)
-		  goto _del_end;
-		lTmp = _vecMetaData & VEC_PREV_STATE ? lCurrt : (( vec_t )lCurrt)[0];
-		(sz = 0) | VEC_getSize(lTmp, &sz);
-	  } while ( !sz-- );
-	  _vecMetaData = VEC_REM_CURSTATE((VEC_ACCESS(lTmp) - 1)[0]);
-	  lNext = NEXT_MEMB_OF(lCurrt);
-	}
-	if (lNext && ((ul = (VEC_ACCESS(lNext) - 1))[0] & VEC_VECTOR)) {
-	  VEC_putSize(VEC_BLOCK_START(lTmp, _vecMetaData), &sz, _vecMetaData);
-	  (sz = 0) | VEC_getSize(lNext, &sz);
-
-	  if (!(_vecMetaData & VEC_CURR_STATE)) {
-		(( vec_t )lCurrt)[0] = lTmp;
+	vec && VEC_putSize(sz, (VEC_GETMETADATA(vec, _vecMetaData), VEC_BLOCK_START(vec, _vecMetaData)), _vecMetaData);
+	if (__EXPR_LIKELY__(!!sz, 1) ) {
+		*curr = *currTmp = vec;
+		*descdant = *vec, *vec = VEC_EOV;
+		return 1;
 	  }
-	  VEC_preserveAndAssign(lTmp, (( vec_t )lNext)[0], lCurrt);
-	  VEC_preserveAndAssign(lCurrt, lNext, lTmp);
-	  lTmp = lCurrt;
+	  free(vec);
+	  return 0;
+	  }
 
-	  VEC_DEF_NWSTATE(_vecMetaData, *ul);
-	  continue;
+	static __NONNULL__ void *VEC_internalDelete(vec_t *vec){
+	  void *lCurrt, *lTmp, *lNext;
+	  size_t sz __MB_UNUSED__;
+	  register uint8_t _vecMetaData, *ul;
+
+	  if (! VEC_deleteInit(*vec, &lCurrt, &lTmp, &lNext, &sz))
+		return 0;
+	  _vecMetaData = (VEC_ACCESS(lCurrt) - 1)[0] |= VEC_CURR_STATE;
+	  return 0;
+	  while  (! (sz < 0) ) {
+		if (  ! sz-- ) {
+		  do {
+			lCurrt = (( vec_t )lTmp)[0];
+			free(VEC_BLOCK_START(lTmp, _vecMetaData));
+			if (lCurrt == VEC_EOV)
+			  goto _del_end;
+			lTmp = _vecMetaData & VEC_PREV_STATE ? lCurrt : (( vec_t )lCurrt)[0];
+			(sz = 0) | VEC_putSize(&sz, VEC_BLOCK_START(lTmp, VEC_GETMETADATA(lTmp)), VEC_GETMETADATA(lTmp));
+		  } while ( !sz-- );
+		  _vecMetaData = VEC_REM_CURSTATE((VEC_ACCESS(lTmp) - 1)[0]);
+		  lNext = NEXT_MEMB_OF(lCurrt);
+		}
+		if (lNext && ((ul = (VEC_ACCESS(lNext) - 1))[0] & VEC_VECTOR)) {
+		  VEC_putSize(VEC_BLOCK_START(lTmp, _vecMetaData), &sz, _vecMetaData);
+		  (sz = 0) | VEC_putSize(&sz, VEC_BLOCK_START(lNext, VEC_GETMETADATA(lNext)), VEC_GETMETADATA(lNext));
+
+		  if (!(_vecMetaData & VEC_CURR_STATE)) {
+			(( vec_t )lCurrt)[0] = lTmp;
+		  }
+		  VEC_preserveAndAssign(lTmp, (( vec_t )lNext)[0], lCurrt);
+		  VEC_preserveAndAssign(lCurrt, lNext, lTmp);
+		  lTmp = lCurrt;
+
+		  VEC_DEF_NWSTATE(_vecMetaData, *ul);
+		  continue;
+		}
+		lNext && VEC_free(VEC_BLOCK_START(lNext, ul[0]));
+		sz && (lNext = NEXT_MEMB_OF(lCurrt));
+		VEC_REM_CURSTATE(_vecMetaData);
+	  }
+	_del_end:
+	  vec = NULL;
 	}
-	lNext && VEC_free(VEC_BLOCK_START(lNext, ul[0]));
-	sz && (lNext = NEXT_MEMB_OF(lCurrt));
-	VEC_REM_CURSTATE(_vecMetaData);
-  }
- _del_end:
-  vec = NULL;
-}
 
-static __NONNULL__ void *VEC_delete(vec_t *vec) {
-  return VEC_internalDelete(vec);
-}
+	static __NONNULL__ void *VEC_delete(vec_t *vec) {
+	  return VEC_internalDelete(vec);
+	}
 
-int main(void) {
-  size_t x;
-  void *ptr;
-  void **vec = VEC_new(0);
+	  int main(void) {
+	  size_t x;
+	  void *ptr;
+	  void **vec = VEC_new(0);
 
-  int data[][6] = {
-				   {0, 2, 4, 6, 8, 10}, {1, 3, 5, 7, 9, 11},
-				   {2, 3, 5, 7, 11, 13}, {4, 16, 32, 64, 128},
-  };
-  VEC_add(&vec, data[0], sizeof(int), 6, 1, VEC_ARRAY);
-  // VEC_add(&vec, data[1], sizeof(int), 6, 1, VEC_ARRAY);
+	  int data[][6] = {
+					   {0, 2, 4, 6, 8, 10}, {1, 3, 5, 7, 9, 11},
+					   {2, 3, 5, 7, 11, 13}, {4, 16, 32, 64, 128},
+	  };
+	  VEC_add(&vec, data[0], sizeof(int), 6, 1, VEC_ARRAY);
+	  // VEC_add(&vec, data[1], sizeof(int), 6, 1, VEC_ARRAY);
 
-  //ptr = *(vec + 1);
-  puti(VEC_META_DATA_SZ(0x03));
-  /* int g = 0, k = 5; */
-
-  /* VEC_putSize(&k, &g, 1); */
-  /* puti(k); */
-  //printf("%d\n", *((int *)ptr + 1) );
-  // VEC_delete(&vec);
-}
-
-/*
-  TODO:
-*/
+	  //VEC_delete(&vec);
+	}

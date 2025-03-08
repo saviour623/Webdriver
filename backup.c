@@ -35,6 +35,8 @@
 #endif
 #define __STATIC_FORCE_INLINE_F static __inline__ __FORCE_INLINE__
 
+  #define VEC_TRACE_DEL
+
 /**
  *                       Vector Information
  *
@@ -93,6 +95,9 @@ typedef struct {
   size_t vhcap;
   uint8_t vCapSize;
   uint8_t *vnxtv;
+#ifdef VEC_TRACE_DEL
+  void *vdelStack;
+#endif
 } vecMetaDataHeader;
 /*
  * Prototypes
@@ -326,10 +331,25 @@ __STATIC_FORCE_INLINE_F __NONNULL__ uint8_t VEC_getType(void *vec) {
    */
   return VEC_GETMETADATA(vec) & VEC_VECTOR;
 }
+
+/**
+ * VEC_remove
+ */
 static __NONNULL__ void *VEC_remove(vec_t *vec, ssize_t reqAt) {
 
-  /* NOT IMPLEMENTED*/
+#ifdef VEC_TRACE_DEL
+  vec_t remve, delStack;
 
+  delStack = &(((vecMetaDataHeader *)VEC_peekBlockStart(*vec))->vdelStack);
+  remve = *vec + reqAt;
+  (*remve != VEC_EOV) && (free(*remve), 1);
+  *remve = VEC_EOV;
+
+  *remve = (! *delStack) ? VEC_EOV : *delStack;
+  *delStack = remve;
+
+  VEC_getMagnitude(*vec) -= 1;
+  #endif
   return NULL;
 }
 __STATIC_FORCE_INLINE_F bool VEC_free(void *ptr) {
@@ -337,101 +357,38 @@ __STATIC_FORCE_INLINE_F bool VEC_free(void *ptr) {
   return 0;
 }
 
-#define NEXT_MEMB_OF(ve) (++*(vec_t *)&(ve))[0]
-#define VEC_preserveAndAssign(tmp, _1, _2) (((tmp) = (_1)), ((_1) = (_2)))
-
-#define VEC_CURR_STATE 0x10
-#define VEC_PREV_STATE 0x20
-
-#define VEC_DEF_NWSTATE_R(fmr, nw, _cur)			\
-  ((fmr) = (nw) |= _cur | (((fmr) & _cur) << 1))
-#define VEC_DEF_NWSTATE(fmr, nw)				\
-  VEC_DEF_NWSTATE_R(fmr, nw, VEC_CURR_STATE)
-#define VEC_REM_CURSTATE(fmr) ((fmr) &= ~VEC_CURR_STATE)
-
-__STATIC_FORCE_INLINE_F __NONNULL__ bool VEC_deleteInit(vec_t vec, vec_t curr, vec_t currTmp, vec_t descdant, size_t *sz) {
-  uint8_t _vecMetaData;
-
-  vec && VEC_putSize(sz, (VEC_GETMETADATA(vec, _vecMetaData), VEC_BLOCK_START(vec, _vecMetaData)), _vecMetaData);
-  if (__EXPR_LIKELY__(!!sz, 1) ) {
-	*curr = *currTmp = vec;
-	*descdant = *vec, *vec = VEC_EOV;
-	return 1;
-  }
-  free(vec);
-  return 0;
-}
-
-static __NONNULL__ void *VEC_internalDelete(vec_t *vec){
-  void *lCurrt, *lTmp, *lNext;
-  size_t sz __MB_UNUSED__;
-  register uint8_t _vecMetaData, *ul;
-
-  if (! VEC_deleteInit(*vec, &lCurrt, &lTmp, &lNext, &sz))
-	return 0;
-  _vecMetaData = (VEC_ACCESS(lCurrt) - 1)[0] |= VEC_CURR_STATE;
-  return 0;
-  while  (! (sz < 0) ) {
-	if (  ! sz-- ) {
-	  do {
-		lCurrt = (( vec_t )lTmp)[0];
-		free(VEC_BLOCK_START(lTmp, _vecMetaData));
-		if (lCurrt == VEC_EOV)
-		  goto _del_end;
-		lTmp = _vecMetaData & VEC_PREV_STATE ? lCurrt : (( vec_t )lCurrt)[0];
-		(sz = 0) | VEC_putSize(&sz, VEC_BLOCK_START(lTmp, VEC_GETMETADATA(lTmp)), VEC_GETMETADATA(lTmp));
-	  } while ( !sz-- );
-	  _vecMetaData = VEC_REM_CURSTATE((VEC_ACCESS(lTmp) - 1)[0]);
-	  lNext = NEXT_MEMB_OF(lCurrt);
-	}
-	if (lNext && ((ul = (VEC_ACCESS(lNext) - 1))[0] & VEC_VECTOR)) {
-	  VEC_putSize(VEC_BLOCK_START(lTmp, _vecMetaData), &sz, _vecMetaData);
-	  (sz = 0) | VEC_putSize(&sz, VEC_BLOCK_START(lNext, VEC_GETMETADATA(lNext)), VEC_GETMETADATA(lNext));
-
-	  if (!(_vecMetaData & VEC_CURR_STATE)) {
-		(( vec_t )lCurrt)[0] = lTmp;
-	  }
-	  VEC_preserveAndAssign(lTmp, (( vec_t )lNext)[0], lCurrt);
-	  VEC_preserveAndAssign(lCurrt, lNext, lTmp);
-	  lTmp = lCurrt;
-
-	  VEC_DEF_NWSTATE(_vecMetaData, *ul);
-	  continue;
-	}
-	lNext && VEC_free(VEC_BLOCK_START(lNext, ul[0]));
-	sz && (lNext = NEXT_MEMB_OF(lCurrt));
-	VEC_REM_CURSTATE(_vecMetaData);
-  }
- _del_end:
-  vec = NULL;
-}
-
+/**
+ *  VEC_delete
+ */
 static __NONNULL__ void *VEC_delete(vec_t *vec) {
-  return VEC_internalDelete(vec);
+
+  /* NOT IMPLEMENTED */
+
+  return NULL;
 }
 
 int main(void) {
   size_t x;
   int *intArray;
-  int **vec = VEC_new(6);
+  int **vec = (void *)VEC_new(6);
 
   int data[][6] = {
 				   {0, 2, 4, 6, 8, 10}, {1, 3, 5, 7, 9, 11},
 				   {2, 3, 5, 7, 11, 13}, {4, 16, 32, 64, 128},
   };
-  VEC_add(&vec, data[0], sizeof(int), 0);
-  VEC_add(&vec, data[1], sizeof(int), 1);
-  VEC_add(&vec, data[2], sizeof(int), 2);
+  VEC_add((void *)&vec, data[0], sizeof(int), 0);
+  VEC_add((void *)&vec, data[1], sizeof(int), 1);
+  VEC_add((void *)&vec, data[2], sizeof(int), 2);
 
-  intArray = VEC_request(vec, 0);
+  intArray = VEC_request((void *)vec, 0);
   puti(*(intArray + 0));
 
-  intArray = VEC_request(vec, 1);
+  intArray = VEC_request((void *)vec, 1);
   puti(*(intArray + 0));
 
-  intArray = VEC_request(vec, 2);
+  intArray = VEC_request((void *)vec, 2);
   puti(*(intArray + 0));
 
-  /* VEC_delete(&vec); */
+  VEC_delete((void *)&vec);
   return 0;
 }

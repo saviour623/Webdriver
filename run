@@ -1,4 +1,0 @@
-#!/bin/bash
-
-gcc  -Wstrict-overflow=2  -Wno-sign-conversion   -Wcast-qual -Wshift-overflow=2 -Wshift-negative-value -Wsign-compare -Wall -Wextra -pedantic mvdir.c && valgrind -s --tool=memcheck --leak-check=full --track-origins=yes ./a.out
-hp_GpfQ9O5umF5ilU4UM93tAqL3DjrzYR20N3IK

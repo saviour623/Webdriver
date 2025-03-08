@@ -1,5 +1,5 @@
-#ifndef _JSON_H
-#define _JSON_H
+#ifndef _PARSER_H
+#define _PARSER_H
 #if __GNUC__
 #define _GNU_SOURCE
 #endif

@@ -383,30 +383,18 @@ int main(void) {
   VEC_add((void *)&vec, data[2], sizeof(int), 2);
 
   intArray = VEC_request((void *)vec, 0);
-  //puti(*(intArray + 0));
+  puti(*(intArray + 0));
 
-  intArray = VEC_request((void *)vec, 1);
-  //puti(*(intArray + 0));
-
-  VEC_remove((void *)&vec, 1);
-  VEC_add((void *)&vec, data[3], sizeof(int), 1);
   intArray = VEC_request((void *)vec, 1);
   puti(*(intArray + 0));
+
+  intArray = VEC_request((void *)vec, 2);
+  puti(*(intArray + 0));
+
+  VEC_remove((void *)&vec, 0);
+  VEC_remove((void *)&vec, 1);
+  VEC_remove((void *)&vec, 2);
 
   VEC_delete((void *)&vec);
   return 0;
 }
-
-/* __STATIC_FORCE_INLINE_F void VEC_rmfCache(void *vec, size_t at) { */
-/*   vec_t cacheLoc, cachePrevLoc; */
-
-/*   cacheLoc = &(((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcache); */
-/*   while (*cacheLoc && ((*cacheLoc - vec) != at)) */
-/* 	cachePrevLoc = *cacheLoc, *cacheLoc = *(vec_t)*cacheLoc; */
-/*   if (*cacheLoc) { */
-/* 	*cachePrevLoc = *cacheLoc; */
-/* 	((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcacheSize -= 1; */
-/*   } */
-/* } */
-
-//A -> B -> C -> NULL

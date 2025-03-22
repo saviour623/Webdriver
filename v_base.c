@@ -180,7 +180,7 @@ __STATIC_FORCE_INLINE_F void VEC_adtCache(const void *vec, size_t at) {
 __STATIC_FORCE_INLINE_F void VEC_rmfCache(void *vec, size_t at) {
   vec_t cacheLoc, cachePrevLoc;
 
-  cacheLoc = (((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcache);
+  cacheLoc = ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcache;
   cachePrevLoc = NULL;
 
   while (cacheLoc && ((cacheLoc - (vec_t)vec) != at))

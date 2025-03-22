@@ -67,14 +67,15 @@ typedef void ** vec_t;
  * Prototypes
  */
 static __NONNULL__ vec_t VEC_append(vec_t *, void *, size_t);
+__STATIC_FORCE_INLINE_F void VEC_free(void *);
 
 /* Meta-data */
 typedef struct {
   size_t vhcap;
-  uint8_t vCapSize;
+  uint8_t vcapSize;
   uint8_t *vnxtv;
 #ifdef VEC_TRACE_DEL
-  void *vdelStack;
+  void *vcache;
 #endif
 } vecMetaDataHeader;
 
@@ -139,7 +140,7 @@ const uint8_t vecGblDataBlockSize = sizeof (vec_t);
 #define VEC_getMetaData(vec, ...) (MACR_DO_ELSE(__VA_ARGS__ =,,__VA_ARGS__) (VEC_ACCESS(vec) - vecDefFlagLoc)[0])
 
 #define VEC_peekBlockStart(vec)   (void *)(VEC_ACCESS(vec) - vecGblMetaDataSize)
-#define VEC_getMagnitude(vec)     ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vCapSize
+#define VEC_getMagnitude(vec)     ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcapSize
 #define VEC_moveToMainBlock(vec)  ((vec) = VEC_ACCESS(vec) + vecGblMetaDataSize)
 #define VEC_moveToBlockStart(vec) ((vec) = VEC_peekBlockStart(vec))
 #
@@ -159,6 +160,15 @@ static __inline__ __FORCE_INLINE__ uint8_t VEC_ssizeof(uint64_t sz) {
   return ( sz > UINT8_MAX ? sz > UINT16_MAX ?
 		   sz > UINT32_MAX ? sz > UINT64_MAX ?
 		   0x05 : 0x04 : 0x03 : 0x02 : 0x01 );
+}
+
+__STATIC_FORCE_INLINE_F void VEC_rmfCache(void *vec, size_t at) {
+  vec_t cacheLoc, cachePrevLoc;
+
+  cacheLoc = ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcache;
+  while (cacheLoc && ((cacheLoc - (vec_t)vec) != at))
+	cachePrevLoc = cacheLoc, cacheLoc = *cacheLoc;
+  cacheLoc && (*cachePrevLoc = *cacheLoc);
 }
 
 /**
@@ -187,7 +197,7 @@ static vec_t VEC_create(size_t sz, const VEC_set *vnpf) {
 
   if (! (vec = calloc(sizeof (uint8_t), (vecGblDataBlockSize * sz) + vecGblMetaDataSize)))
 	return (vec_t)NULL;
-  ((vecMetaDataHeader *)((uint8_t *)vec))->vCapSize = sz;
+  ((vecMetaDataHeader *)((uint8_t *)vec))->vcapSize = sz;
   VEC_moveToMainBlock(vec);
   ((uint8_t *)vec - vecDefFlagLoc)[0] = VEC_VECTOR | _vecMetaData;
 
@@ -227,12 +237,20 @@ static __inline__  __NONNULL__ vec_t VEC_expand(vec_t *vec, void *new, VEC_szTyp
  * vec_append: add/append new data to vector
  */
 static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t reqAt) {
-  register VEC_szType magnitude;
-;
+  register size_t magnitude;
+  vec_t loc __MB_UNUSED__;
+
   magnitude = VEC_getMagnitude(*vec);
 
-  if (magnitude > reqAt)
-	(*vec)[reqAt] = new;
+  if (magnitude > reqAt) {
+	loc = *vec + reqAt;
+#ifdef VEC_TRACE_DEL
+	VEC_rmfCache(*vec, reqAt);
+#else
+	(*loc != VEC_EOV) && VEC_free(*loc);
+#endif
+	*loc = new;
+  }
   else if (! (!(VEC_getMetaData(*vec) & VEC_READONLY) && VEC_expand(vec, new, magnitude, reqAt)) ) {
 	return (vec_t)NULL;
   }
@@ -303,7 +321,7 @@ static __NONNULL__ void *VEC_remove(vec_t *vec, ssize_t reqAt) {
   /* keep track of empty slots in vector container */
   vec_t remve, delStack;
 
-  delStack = &(((vecMetaDataHeader *)VEC_peekBlockStart(*vec))->vdelStack);
+  delStack = &(((vecMetaDataHeader *)VEC_peekBlockStart(*vec))->vcache);
   /* TODO: size-bound check (use request) */
   remve = *vec + reqAt;
 
@@ -363,7 +381,7 @@ int main(void) {
   intArray = VEC_request((void *)vec, 2);
   puti(*(intArray + 0));
 
-  VEC_remove((void *)&vec, 1);
+   VEC_remove((void *)&vec, 1);
   VEC_delete((void *)&vec);
   return 0;
 }

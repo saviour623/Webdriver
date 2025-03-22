@@ -1,6 +1,5 @@
-//#ifdef V_BASE_H
-//#undef V_BASE_H
-//#define V_BASE_H
+#ifndef V_BASE_H
+#define V_BASE_H
 
 #if defined(__GNUC__) || defined(__clang__)
 #define __FORCE_INLINE__ __attribute__((always_inline))
@@ -27,4 +26,4 @@
 #endif
 #define __STATIC_FORCE_INLINE_F static __inline__ __FORCE_INLINE__
 
-//#endif
+#endif

@@ -67,15 +67,14 @@ typedef void ** vec_t;
  * Prototypes
  */
 static __NONNULL__ vec_t VEC_append(vec_t *, void *, size_t);
-__STATIC_FORCE_INLINE_F void VEC_free(void *);
+__STATIC_FORCE_INLINE_F bool VEC_free(void *);
 
 /* Meta-data */
 typedef struct {
-  size_t vhcap;
   uint8_t vcapSize;
-  uint8_t *vnxtv;
 #ifdef VEC_TRACE_DEL
   void *vcache;
+  uint8_t vcacheSize;
 #endif
 } vecMetaDataHeader;
 
@@ -160,6 +159,22 @@ static __inline__ __FORCE_INLINE__ uint8_t VEC_ssizeof(uint64_t sz) {
   return ( sz > UINT8_MAX ? sz > UINT16_MAX ?
 		   sz > UINT32_MAX ? sz > UINT64_MAX ?
 		   0x05 : 0x04 : 0x03 : 0x02 : 0x01 );
+}
+__STATIC_FORCE_INLINE_F void VEC_adtCache(const void *vec, size_t at) {
+  vec_t slot, cacheLoc;
+  vecMetaDataHeader *cacheInfo __MAY_ALIAS__;
+
+  cacheInfo = (vecMetaDataHeader *)VEC_peekBlockStart(vec);
+  cacheLoc = &(cacheInfo->vcache);
+
+  /* TODO: size-bound check (use request) */
+  slot = (vec_t)vec + at;
+  /* cache only slot, discard its content */
+  (*slot != NULL) && VEC_free(*slot);
+  *slot = *cacheLoc, *cacheLoc = slot;
+
+  cacheInfo->vcacheSize += 1;
+  cacheInfo->vcapSize -= 1;
 }
 
 __STATIC_FORCE_INLINE_F void VEC_rmfCache(void *vec, size_t at) {
@@ -308,8 +323,10 @@ __STATIC_FORCE_INLINE_F __NONNULL__ uint8_t VEC_getLevel(void *vec) {
 /**
  * VEC_free
  */
-__STATIC_FORCE_INLINE_F void VEC_free(void *rt) {
-  return free(VEC_getLevel(rt) ? VEC_moveToBlockStart(rt) : (VEC_ACCESS(rt) - vecDefFlagLoc));
+__STATIC_FORCE_INLINE_F bool VEC_free(void *rt) {
+  free(VEC_getLevel(rt) ? VEC_moveToBlockStart(rt) : (VEC_ACCESS(rt) - vecDefFlagLoc));
+
+  return true;
 }
 
 /**
@@ -318,20 +335,8 @@ __STATIC_FORCE_INLINE_F void VEC_free(void *rt) {
 static __NONNULL__ void *VEC_remove(vec_t *vec, ssize_t reqAt) {
 
 #ifdef VEC_TRACE_DEL
-  /* keep track of empty slots in vector container */
-  vec_t remve, delStack;
-
-  delStack = &(((vecMetaDataHeader *)VEC_peekBlockStart(*vec))->vcache);
-  /* TODO: size-bound check (use request) */
-  remve = *vec + reqAt;
-
-  (*remve != VEC_EOV) && (VEC_free(*remve), 1);
-  *remve = VEC_EOV;
-
-  *remve = (! *delStack) ? VEC_EOV : *delStack;
-  *delStack = remve;
-
-  VEC_getMagnitude(*vec) -= 1;
+  /* cache empty vector slot */
+  VEC_adtCache(*vec, reqAt);
 #else
   /* NOT IMPLEMENTED */
 #endif
@@ -373,15 +378,15 @@ int main(void) {
   VEC_add((void *)&vec, data[2], sizeof(int), 2);
 
   intArray = VEC_request((void *)vec, 0);
-  puti(*(intArray + 0));
+  //puti(*(intArray + 0));
 
+  intArray = VEC_request((void *)vec, 1);
+  //puti(*(intArray + 0));
+
+  VEC_remove((void *)&vec, 1);
   intArray = VEC_request((void *)vec, 1);
   puti(*(intArray + 0));
 
-  intArray = VEC_request((void *)vec, 2);
-  puti(*(intArray + 0));
-
-   VEC_remove((void *)&vec, 1);
   VEC_delete((void *)&vec);
   return 0;
 }

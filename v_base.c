@@ -180,11 +180,13 @@ __STATIC_FORCE_INLINE_F void VEC_adtCache(const void *vec, size_t at) {
 __STATIC_FORCE_INLINE_F void VEC_rmfCache(void *vec, size_t at) {
   vec_t cacheLoc, cachePrevLoc;
 
-  cacheLoc = &(((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcache);
-  while (*cacheLoc && ((*cacheLoc - vec) != at))
-	cachePrevLoc = *cacheLoc, *cacheLoc = *(vec_t)*cacheLoc;
-  if (*cacheLoc) {
-	*cachePrevLoc = *cacheLoc;
+  cacheLoc = (((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcache);
+  cachePrevLoc = NULL;
+
+  while (cacheLoc && ((cacheLoc - (vec_t)vec) != at))
+	cachePrevLoc = cacheLoc, cacheLoc = *cacheLoc;
+  if (cacheLoc) {
+	cachePrevLoc && ( *cachePrevLoc = cacheLoc );
 	((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcacheSize -= 1;
   }
 }
@@ -394,3 +396,17 @@ int main(void) {
   VEC_delete((void *)&vec);
   return 0;
 }
+
+/* __STATIC_FORCE_INLINE_F void VEC_rmfCache(void *vec, size_t at) { */
+/*   vec_t cacheLoc, cachePrevLoc; */
+
+/*   cacheLoc = &(((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcache); */
+/*   while (*cacheLoc && ((*cacheLoc - vec) != at)) */
+/* 	cachePrevLoc = *cacheLoc, *cacheLoc = *(vec_t)*cacheLoc; */
+/*   if (*cacheLoc) { */
+/* 	*cachePrevLoc = *cacheLoc; */
+/* 	((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcacheSize -= 1; */
+/*   } */
+/* } */
+
+//A -> B -> C -> NULL

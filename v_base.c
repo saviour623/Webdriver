@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include "v_base.h"
 
 /**
@@ -48,14 +49,14 @@
  *
  */
 /* Support for vector-remove optimization */
-#define VEC_TRACE_DEL
+//#define VEC_TRACE_DEL
 /* Allow size-bound check on request */
 #define VEC_SAFE_REQUEST 1
 /* Allow neccessary warnings */
 #define VEC_ALW_WARNING 1
 
 /* NULL */
-#define VEC_EOV (char *)(long) 0xff
+#define VEC_EOV (char *)(long) 0
 
 /**
  * Types
@@ -100,52 +101,41 @@ enum {
 };
 
 /**
- * Global Variables
+ * Some useful informations about the container, may be store conveniently
+ * within a single byte of data. In our case, we store frequently accessed
+ * data such as container type, permissions, modes, etc within N bytes in memory
  */
 const uint8_t vecDefFlagLoc         = 1;
+
+/* Meta-data size */
 const uint8_t vecGblMetaDataSize  = sizeof (vecMetaDataHeader) + vecDefFlagLoc;
+
+/* Sizeof allocation block for entries */
 const uint8_t vecGblDataBlockSize = sizeof (vec_t);
 
 /**
- * MACR_NON_EMPTY,
- * MACR_DO_ELSE
- *
- * Safely assert if a macro parameter is given an argument
- * Return: provided argument(s)/zero/nothing
- */
-#define MACR_EMPTY_PARAM(...) 0, 0
-#define MACR_INDIRECT_EVAL(a, ...) MACR_ACCEPT_FIRST(__VA_ARGS__)
-#define MACR_ACCEPT_FIRST(a, ...) a
-#define MACR_IGNORE_FIRST(...) MACR_INDIRECT_EVAL(__VA_ARGS__)
-#define MACR_NON_EMPTY(...) MACR_IGNORE_FIRST(MACR_EMPTY_PARAM  __VA_ARGS__(), 1)
-# /* empty */
-#define MACR_IF_EMPTY_0(a, ...) __VA_ARGS__
-# /* also empty */
-#define MACR_IF_EMPTY_(a, ...) __VA_ARGS__
-# /* non-empty */
-#define MACR_IF_EMPTY_1(a, ...) a
-#
-#define MACR_CAT(A, A1) MACR_INDIRECT_CAT(A, A1)
-#define MACR_INDIRECT_CAT(A, A1) A ## A1
-#define MACR_DO_ELSE(_true, _false, ...) MACR_CAT(MACR_IF_EMPTY_, MACR_NON_EMPTY(__VA_ARGS__))(_true, _false)
-#
-# /* end */
-#
-
-/**
  * VEC_getMetaData (lvalue)
- *
+ * Return the meta-data of a container. If a second argument is passed
+ * to the macro as a varadic parameter, it is assigned the value returned
+ * by meta-data
  */
 #define VEC_getMetaData(vec, ...) (MACR_DO_ELSE(__VA_ARGS__ =,,__VA_ARGS__) (VEC_ACCESS(vec) - vecDefFlagLoc)[0])
 
+/* Temporarily view the starting block of the vector */
 #define VEC_peekBlockStart(vec)   (void *)(VEC_ACCESS(vec) - vecGblMetaDataSize)
+
+/* Request or update the size of the container */
 #define VEC_getMagnitude(vec)     ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcapSize
+
+/* Update the pointer to the start of the wriitable section of the container */
 #define VEC_moveToMainBlock(vec)  ((vec) = VEC_ACCESS(vec) + vecGblMetaDataSize)
+
+/* Move the pointer to the start of the contaner’s block */
 #define VEC_moveToBlockStart(vec) ((vec) = VEC_peekBlockStart(vec))
 #
 #define ignoreExprReturn(...) (void) (__VA_ARGS__)
 #
-/* reinterpret as pointer of bytes */
+/* reinterpret memory block as pointer of single bytes */
 #define VEC_ACCESS(_addr) ((uint8_t *)(void *)(_addr))
 
 /**
@@ -160,7 +150,10 @@ static __inline__ __FORCE_INLINE__ uint8_t VEC_ssizeof(uint64_t sz) {
 		   sz > UINT32_MAX ? sz > UINT64_MAX ?
 		   0x05 : 0x04 : 0x03 : 0x02 : 0x01 );
 }
-__STATIC_FORCE_INLINE_F void VEC_adtCache(const void *vec, size_t at) {
+
+#ifdef VEC_TRACE_DEL
+
+__STATIC_FORCE_INLINE_F void VEC_cache(const void *vec, size_t at) {
   vec_t slot, cacheLoc;
   vecMetaDataHeader *cacheInfo __MAY_ALIAS__;
 
@@ -177,19 +170,30 @@ __STATIC_FORCE_INLINE_F void VEC_adtCache(const void *vec, size_t at) {
   cacheInfo->vcapSize -= 1;
 }
 
-__STATIC_FORCE_INLINE_F void VEC_rmfCache(void *vec, size_t at) {
+__STATIC_FORCE_INLINE_F void VEC_rcache(void *vec, size_t at) {
   vec_t cacheLoc, cachePrevLoc;
 
+  /* retrieve cache list */
   cacheLoc = ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcache;
   cachePrevLoc = NULL;
 
-  while (cacheLoc && ((cacheLoc - (vec_t)vec) != at))
+  /*
+   * if the difference between the initial memory address of the container and that
+   * of the cache pointer equals that of the requested index, we had cached the
+   * memory on a previous operation
+   */
+  while (cacheLoc && (ptrdiff_t)((cacheLoc - (vec_t)vec) != at))
 	cachePrevLoc = cacheLoc, cacheLoc = *cacheLoc;
+
+  /*
+	cacheloc will never be null assuming no cache miss. remove the found memory from the cache list
+   */
   if (cacheLoc) {
 	cachePrevLoc && ( *cachePrevLoc = cacheLoc );
 	((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcacheSize -= 1;
   }
 }
+#endif /**/
 
 /**
  * vector_new (macro: alias -> VEC_create)
@@ -265,7 +269,7 @@ static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t re
   if (magnitude > reqAt) {
 	loc = *vec + reqAt;
 #ifdef VEC_TRACE_DEL
-	VEC_rmfCache(*vec, reqAt);
+	VEC_rcache(*vec, reqAt);
 #else
 	(*loc != VEC_EOV) && VEC_free(*loc);
 #endif
@@ -296,17 +300,21 @@ static  __NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytes,  size_t r
 /**
  * VEC_request
  */
-static __NONNULL__ __inline__ __attribute__((always_inline, pure)) void *VEC_request(vec_t vec, ssize_t reqAt) {
+ __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_baseRequest(vec_t vec, ssize_t reqAt) {
   size_t magnitude;
 
   magnitude = VEC_getMagnitude(vec);
   reqAt = reqAt < 0 ? magnitude + reqAt : reqAt;
 
   if (reqAt >= magnitude || reqAt < 0) {
-	/* out of bound */
-	return NULL;
+	throwError(OUT_OF_BOUND);
+	exit(EXIT_FAILURE);
   }
-  return vec[reqAt];
+  return vec + reqAt;
+}
+/* retrieve data from container located at @request */
+__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_request(vec_t vec, ssize_t reqAt) {
+  return *(vec_t)(VEC_baseRequest(vec, reqAt));
 }
 
 /**
@@ -341,11 +349,16 @@ static __NONNULL__ void *VEC_remove(vec_t *vec, ssize_t reqAt) {
 
 #ifdef VEC_TRACE_DEL
   /* cache empty vector slot */
-  VEC_adtCache(*vec, reqAt);
+  VEC_cache(*vec, reqAt);
 #else
-  /* NOT IMPLEMENTED */
-#endif
+  vec_t varReq;
 
+  (varReq = VEC_baseRequest(*vec, reqAt));
+  free(*varReq);
+  /* TODO: fix the possibility of overflow */
+  memmove(varReq + 1, varReq, (VEC_getMagnitude(*vec) - reqAt) * vecGblDataBlockSize);
+  /* TODO; shrink container to current size */
+#endif
   return NULL;
 }
 

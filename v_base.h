@@ -12,7 +12,7 @@
 #define CHOOSE_EXPR(cExpr, tVal, fVal)			\
   __builtin_choose_expr(cExpr, tVal, fVal)
 
-#define throwError(...) (void *)0
+#define throwError(...) puts(__VA_ARGS__ "\n")
 #define puti(i) printf("%lld\n", (long long int)(i))
 
 #if defined(__GNUC__) || defined(__clang__)

@@ -10,14 +10,17 @@
 #include <stdint.h>
 #include <stdio.h>
 
+typedef __m128i m128i_t;
 __m256i __add(uint16_t __a[], uint16_t __b) {
   
 }
 int main(void) {
-  float ft[4] = {1.1, 1.2, 1.3, 1.4};
-  __m128 ftl = _mm_load_ps(ft);
-  //int *cast = (int *)&_ibbfr;
-
-  //printf("%d %d %d %d %d %d %d %d\n", p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
+ 
 
 }
+
+/*
+ * load the string
+ * compare for zero
+ * we need to know the loation of the zero
+ */

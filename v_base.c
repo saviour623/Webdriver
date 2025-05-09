@@ -49,7 +49,7 @@
  *
  */
 /* Support for vector-remove optimization */
-//#define VEC_TRACE_DEL
+
 /* Allow size-bound check on request */
 #define VEC_SAFE_REQUEST 1
 /* Allow neccessary warnings */
@@ -72,31 +72,38 @@ __STATIC_FORCE_INLINE_F bool VEC_free(void *);
 
 /* Meta-data */
 typedef struct {
-  uint8_t vcapSize;
-#ifdef VEC_TRACE_DEL
+  uint32_t vcapSize;
+  /* enable caching */
+#ifdef VEC_ENABLE_CACHE
   void *vcache;
   uint8_t vcacheSize;
 #endif
 } vecMetaDataHeader;
 
+/*
+  segmentation block-list Header
+*/
+typedef struct {
+  uint8_t blockFill; /* size of block (maximum: 256) */
+  void *nextBlock;
+} segmentBlock;
+
 /* feature flags for vector */
 typedef struct {
-  uint8_t native; /* Default */
+  uint8_t native;
   uint8_t readOnly;
-  uint8_t memReadOnly;
-  uint8_t recurseSet; /* parent setting is inherited by members */
-  uint8_t ntrackSize;
-  uint8_t optimize;
+  uint8_t type;
 } VEC_set;
 
 enum {
 	  VEC_ARRAY          = 0,
-	  VEC_LEAST_SZ       = 0x01,
+	  VEC_MINIMUM_SIZE   = 0x01,
 	  VEC_ALLOC_SZ       = 0x01,
-	  VEC_NON_NATIVE     = 0x18,
+	  VEC_NATIVE         = 0x18,
 	  VEC_NO_TRACK_SIZE  = 0x20,
 	  VEC_READONLY       = 0x08,
 	  VEC_VECTOR         = 0x80,
+	  VEC_SEGTOBLK       = 0x01,
 	  VEC_EROUT_OF_BOUND = 0x3b
 };
 
@@ -113,6 +120,10 @@ const uint8_t vecGblMetaDataSize  = sizeof (vecMetaDataHeader) + vecDefFlagLoc;
 /* Sizeof allocation block for entries */
 const uint8_t vecGblDataBlockSize = sizeof (vec_t);
 
+/* segmentation size */
+const uint16_t vecGlbSegmentBlockSize = 1 << 7;
+const uint16_t vecGlbSegmentAllocSize = sizeof(segmentBlock) + (vecGblDataBlockSize * vecGlbSegmentBlockSize);
+
 /**
  * VEC_getMetaData (lvalue)
  * Return the meta-data of a container. If a second argument is passed
@@ -128,31 +139,26 @@ const uint8_t vecGblDataBlockSize = sizeof (vec_t);
 #define VEC_getMagnitude(vec)     ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcapSize
 
 /* Update the pointer to the start of the wriitable section of the container */
-#define VEC_moveToMainBlock(vec)  ((vec) = VEC_ACCESS(vec) + vecGblMetaDataSize)
+#define VEC_moveToMainBlock(vec)  ((vec) = (void * )(VEC_ACCESS(vec) + vecGblMetaDataSize))
 
 /* Move the pointer to the start of the contaner’s block */
 #define VEC_moveToBlockStart(vec) ((vec) = VEC_peekBlockStart(vec))
-#
+  #
 #define ignoreExprReturn(...) (void) (__VA_ARGS__)
-#
-/* reinterpret memory block as pointer of single bytes */
+  #
+  /* reinterpret memory block as pointer of single bytes */
 #define VEC_ACCESS(_addr) ((uint8_t *)(void *)(_addr))
 
 /**
- * Tools (functions)
+ * if VEC_TRACE_DEL is defined, caching is enabled. Memory of deleted contents of are cached rather than being freed.
+ * This minimizes the frequent call to a memory allocator, at a cost of speed of insertion, since the list of deleted
+ * content may have to be scanned for each insertion request.
+*/
+#ifdef VEC_ENABLE_CACHE
+
+/**
+ * TODO: cache only memory, ignore location of content
  */
-static __inline__ __FORCE_INLINE__ intmax_t VEC_abs(intmax_t a) {
-  return a < 0 ? -a : a;
-}
-
-static __inline__ __FORCE_INLINE__ uint8_t VEC_ssizeof(uint64_t sz) {
-  return ( sz > UINT8_MAX ? sz > UINT16_MAX ?
-		   sz > UINT32_MAX ? sz > UINT64_MAX ?
-		   0x05 : 0x04 : 0x03 : 0x02 : 0x01 );
-}
-
-#ifdef VEC_TRACE_DEL
-
 __STATIC_FORCE_INLINE_F void VEC_cache(const void *vec, size_t at) {
   vec_t slot, cacheLoc;
   vecMetaDataHeader *cacheInfo __MAY_ALIAS__;
@@ -165,6 +171,7 @@ __STATIC_FORCE_INLINE_F void VEC_cache(const void *vec, size_t at) {
   /* cache only slot, discard its content */
   (*slot != NULL) && VEC_free(*slot);
   *slot = *cacheLoc, *cacheLoc = slot;
+
 
   cacheInfo->vcacheSize += 1;
   cacheInfo->vcapSize -= 1;
@@ -187,7 +194,7 @@ __STATIC_FORCE_INLINE_F void VEC_rcache(void *vec, size_t at) {
 
   /*
 	cacheloc will never be null assuming no cache miss. remove the found memory from the cache list
-   */
+  */
   if (cacheLoc) {
 	cachePrevLoc && ( *cachePrevLoc = cacheLoc );
 	((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcacheSize -= 1;
@@ -199,34 +206,73 @@ __STATIC_FORCE_INLINE_F void VEC_rcache(void *vec, size_t at) {
  * vector_new (macro: alias -> VEC_create)
  */
 #define VEC_new(size_t_sz, ...)											\
-  MACR_DO_ELSE(VEC_create(size_t_sz, MACR_DO_ELSE((__VA_ARGS__), NULL, __VA_ARGS__)), (throwError(NULL)), size_t_sz)
+  MACR_DO_ELSE(VEC_create(size_t_sz, MACR_DO_ELSE((__VA_ARGS__), 0, __VA_ARGS__)), (throwError(NULL)), size_t_sz)
 
 /**
  * vector_create
  */
-static vec_t VEC_create(size_t sz, const VEC_set *vnpf) {
-  void *vec;
+
+/* (1) */
+
+/**
+ segment vector into blocks
+*/
+
+static vec_t VEC_segment(vec_t vec, size_t sz) {
+  segmentBlock *block;
+  uint16_t segment;
+
+  /*  minimum fit for size */
+  segment = (segment = (sz >> 8)) + !!(sz - (segment << 8));
+  puti(segment);
+  /* virtual size of vector */
+  VEC_getMagnitude(vec) = segment;
+
+  /* we start constructing the blocks from the initial member of vector */
+  vec[0] = block;
+
+  /* construct block list (TODO: XOR list) */
+  do {
+	if (! (block = malloc(vecGlbSegmentAllocSize)) ) {
+	  /* TODO: cleanup (undo construction of block-list) */
+	  throwError("Debug: possible memory leakage (function: segment)");
+	  return (vec_t)NULL;
+	}
+	block->blockFill = 0;
+	block = block->nextBlock;
+  } while (--segment);
+
+  block = NULL;
+  return vec;
+}
+static vec_t VEC_create(size_t sz, const VEC_set config) {
+  vec_t vec;
   uint8_t _vecMetaData;
 
   if ( !sz )
-	sz = VEC_LEAST_SZ;
-  _vecMetaData = 0x04; /* default -> native */
-  if (vnpf && !vnpf->native) {
-	/*
-	  TODO: NOTRACKSIZE SHOULD HAVE THE SAME EFFECT AS READONLY
-	*/
-	_vecMetaData = vnpf->optimize && /* not */ vnpf->readOnly ? 0x04 /* maximum supported bit size */ : VEC_ssizeof(sz) + 1;
-	_vecMetaData |= (uint8_t)!!vnpf->readOnly << 4 | !(uint8_t)!vnpf->ntrackSize << 4;
+	sz = VEC_MINIMUM_SIZE;
+
+  /* default config */
+  _vecMetaData = VEC_NATIVE;
+
+  if (!config.native) {
+	_vecMetaData = config.type;
   }
 
-  if (! (vec = calloc(sizeof (uint8_t), (vecGblDataBlockSize * sz) + vecGblMetaDataSize)))
+  /* allocate memory for vector; full size is only allocated for non-segmented vector */
+  if (! (vec = calloc(sizeof (uint8_t), vecGblDataBlockSize * (config.type ? sz : 1) + vecGblMetaDataSize))) {
 	return (vec_t)NULL;
-  ((vecMetaDataHeader *)((uint8_t *)vec))->vcapSize = sz;
-  VEC_moveToMainBlock(vec);
-  ((uint8_t *)vec - vecDefFlagLoc)[0] = VEC_VECTOR | _vecMetaData;
+  }
 
-  /*  */
-  *(void **)vec = VEC_EOV;
+  VEC_moveToMainBlock(vec);
+  VEC_getMetaData(vec) =  _vecMetaData | VEC_VECTOR;
+
+  /* segment vector if required by config */
+  if (config.type & VEC_SEGTOBLK) {
+	return VEC_segment(vec, sz);
+  }
+  VEC_getMagnitude(vec) = sz;
+  vec[0] = VEC_EOV;
   return vec;
 }
 
@@ -287,7 +333,7 @@ static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t re
 static  __NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytes,  size_t reqAt) {
   void *_new;
 
- if (!*vec || !bytes || !(_new = malloc(bytes + vecDefFlagLoc)))
+  if (!*vec || !bytes || !(_new = malloc(bytes + vecDefFlagLoc)))
 	return NULL;
 
   _new = (uint8_t *)_new + vecDefFlagLoc;
@@ -300,14 +346,14 @@ static  __NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytes,  size_t r
 /**
  * VEC_request
  */
- __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_baseRequest(vec_t vec, ssize_t reqAt) {
+__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_baseRequest(vec_t vec, ssize_t reqAt) {
   size_t magnitude;
 
   magnitude = VEC_getMagnitude(vec);
   reqAt = reqAt < 0 ? magnitude + reqAt : reqAt;
 
   if (reqAt >= magnitude || reqAt < 0) {
-	throwError(OUT_OF_BOUND);
+	throwError("required index is out of bound");
 	exit(EXIT_FAILURE);
   }
   return vec + reqAt;
@@ -385,28 +431,31 @@ static __NONNULL__ void *VEC_delete(vec_t *vec) {
 int main(void) {
   size_t x;
   int *intArray;
-  int **vec = (void *)VEC_new(6);
+  VEC_set config = {.type = 1};
+  int **vec;
+
+  vec = (void *)VEC_new(255, config);
 
   int data[][6] = {
 				   {0, 2, 4, 6, 8, 10}, {1, 3, 5, 7, 9, 11},
 				   {2, 3, 5, 7, 11, 13}, {4, 16, 32, 64, 128},
   };
-  VEC_add((void *)&vec, data[0], sizeof(int), 0);
-  VEC_add((void *)&vec, data[1], sizeof(int), 1);
-  VEC_add((void *)&vec, data[2], sizeof(int), 2);
+  /* VEC_add((void *)&vec, data[0], sizeof(int), 0);
+	 VEC_add((void *)&vec, data[1], sizeof(int), 1);
+	 VEC_add((void *)&vec, data[2], sizeof(int), 2);
 
-  intArray = VEC_request((void *)vec, 0);
-  puti(*(intArray + 0));
+	 intArray = VEC_request((void *)vec, 0);
+	 puti(*(intArray + 0));
 
-  intArray = VEC_request((void *)vec, 1);
-  puti(*(intArray + 0));
+	 intArray = VEC_request((void *)vec, 1);
+	 puti(*(intArray + 0));
 
-  intArray = VEC_request((void *)vec, 2);
-  puti(*(intArray + 0));
-
-  VEC_remove((void *)&vec, 0);
-  VEC_remove((void *)&vec, 1);
-  VEC_remove((void *)&vec, 2);
+	 intArray = VEC_request((void *)vec, 2);
+	 puti(*(intArray + 0));
+  */
+  //VEC_remove((void *)&vec, 0);
+  //VEC_remove((void *)&vec, 1);
+  //VEC_remove((void *)&vec, 2);
 
   VEC_delete((void *)&vec);
   return 0;

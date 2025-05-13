@@ -7,49 +7,6 @@
 #include <stddef.h>
 #include "v_base.h"
 
-/**
- *                       Vector
- *
- * <[ptr] --------------------+
- *                            |
- *                            +
- * [size]<->[meta-data]<->[Block 1]...[Block N]
- * |              |           |
- * +> BLOCK-START |           +> [Block 1] - meta_data_size --> meta-data
- *                |
- *                +> [meta-data] & 0x0f --> BLOCK-START
- *
- *
- * <[size]
- *      min: 1B, max: sizeof (size_t) or 8
- *
- * <[meta-data: 1B]
- *
- *      1      1      1      1      1      1      1      1
- *      |      |      |      |______|      |_____________|
- *      |      |      |         |                 |
- *    (type)   |  ( misc. bits) |                 |
- *             |                |                 |
- *         (member type)     (misc. bits)     (sizeof size: 0x0f)
- *
- * <[sizeof size] -> byte count.
- *                   It doesn't interpret to be the exact number of bytes that can fit size,
- *                   rather it is the number of shifts of 4 (bits), that can fit the value of size.
- *
- * MIN: 0x01/0b001, MAX: 0x0f/0b111
- *
- * IN BITS: 4 << 1  -> 8B  (1 byte)
- *        4 << 10 -> 16B (2 byte)
- *        4 << 11 -> 32B (4 byte)
- *
- * IN BYTES: 1 << (N - 1)
- *                  ...
- *
- * <[member type] -> this is only set if vector's type is an object.
- *
- */
-/* Support for vector-remove optimization */
-
 /* Allow size-bound check on request */
 #define VEC_SAFE_REQUEST 1
 /* Allow neccessary warnings */

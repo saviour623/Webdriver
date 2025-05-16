@@ -2,21 +2,16 @@
 
 /* Allow size-bound check on request */
 #define VEC_SAFE_REQUEST 1
-/* Allow neccessary warnings */
-#define VEC_ALW_WARNING 1
+
+/* enable debuging by default */
+#if !defined(VEC_DEBUG)
+#define VEC_DEBUG 1
+#endif
 
 /* NULL */
 #define VEC_EOV (char *)(long) 0
 
-/**
- * Types
- */
-typedef uint64_t VEC_sizeType;
 typedef void ** vec_t;
-
-/**
- * Prototypes
- */
 static __NONNULL__ vec_t VEC_append(vec_t *, void *, size_t);
 __STATIC_FORCE_INLINE_F bool VEC_free(void *);
 
@@ -25,8 +20,8 @@ typedef struct {
   uint32_t vcapSize;
   /* enable caching */
 #ifdef VEC_ENABLE_CACHE
-  void *vcache;
-  uint8_t vcacheSize;
+  void     *vcache;
+  uint8_t  vcacheSize;
 #endif
 } vecMetaDataHeader;
 
@@ -47,38 +42,28 @@ typedef struct {
 } VEC_set;
 
 enum {
-	  VEC_ARRAY          = 0,
-	  VEC_MINIMUM_SIZE   = 0x01,
-	  VEC_ALLOC_SIZE     = 0x01,
-	  VEC_NATIVE         = 0x18,
-	  VEC_NO_TRACK_SIZE  = 0x20,
-	  VEC_READONLY       = 0x08,
-	  VEC_VECTOR         = 0x80,
-	  VEC_SEGTBLK       = 0x01,
-	  VEC_M
-	  VEC_MEMFILL        = 0x01,
-	  VEC_EROUT_OF_BOUND = 0x3b
+	  VEC_MINIMUM_SIZE     = 0x100,
+	  VEC_ALLOC_SIZE       = 0x01,
+	  VEC_VECTOR           = 0x80,
+	  VEC_SEGTBLK          = 0x01,
+	  VEC_MALLOCD_ALL      = 0x04,
+	  VEC_MEMFILL          = 0x01,
+	  VEC_ERROR_OUTOFBOUND = 0x3b
 };
 
-/* we reserve some simple vector data in just a single byte */
+/* we save some simple vector data in just a single byte */
 const uint8_t vecDefFlagLoc         = 1;
 
 /* Meta-data size */
 const uint8_t vecGblMetaDataSize  = sizeof (vecMetaDataHeader) + vecDefFlagLoc;
 
-/* Sizeof allocation block for entries */
+/* Size of allocation block for entries */
 const uint8_t vecGblDataBlockSize = sizeof (vec_t);
 
-/* segmentation size */
-const uint16_t vecGlbSegmentBlockSize = 1 << 7;
-const uint16_t vecGlbSegmentAllocSize = sizeof(segmentBlock) + (vecGblDataBlockSize * vecGlbSegmentBlockSize);
+/* Size of segment */
+const uint16_t vecGlbSegmentAllocSize = 1 << 8;
 
-/**
- * VEC_(get/set)MetaData (lvalue)
- * Return the meta-data of a container. If a second argument is passed
- * to the macro as a varadic parameter, it is assigned the value returned
- * by meta-data
- */
+/* Get/set meta-data in header */
 #define VEC_setMetaData VEC_getMetaData
 #define VEC_getMetaData(vec, ...) ((VEC_ACCESS(vec) - vecDefFlagLoc)[0])
 
@@ -93,15 +78,15 @@ const uint16_t vecGlbSegmentAllocSize = sizeof(segmentBlock) + (vecGblDataBlockS
 
 /* Move the pointer to the start of the contaner’s block */
 #define VEC_moveToBlockStart(vec) ((vec) = VEC_peekBlockStart(vec))
-  #
-#define ignoreExprReturn(...) (void) (__VA_ARGS__)
-  #
-  /* reinterpret memory block as pointer of single bytes */
-#define VEC_ACCESS(_addr) ((uint8_t *)(void *)(_addr))
 
-/* increment memory pointer */
-#define VEC_nextblock(block) ((block)++)
-#define VEC_prevblock(block) ((block)--)
+/* reinterpret as pointer to single byte memory */
+#define VEC_ACCESS(_addr)         ((uint8_t *)(void *)(_addr))
+
+/* increment/decrement memory pointer */
+#define VEC_nextblock(block)      ((block)++)
+#define VEC_prevblock(block)      ((block)--)
+
+#define ignoreExprReturn(...)     (void) (__VA_ARGS__)
 
 /**
  * if VEC_TRACE_DEL is defined, caching is enabled. Memory of deleted contents of are cached rather than being freed.
@@ -157,21 +142,10 @@ __STATIC_FORCE_INLINE_F void VEC_rcache(void *vec, size_t at) {
 #endif /**/
 
 /**
- * vector_new (macro: alias -> VEC_create)
- */
-#define VEC_new(size_t_size, ...)											\
-  MACR_DO_ELSE(VEC_create(size_t_size, MACR_DO_ELSE((__VA_ARGS__), 0, __VA_ARGS__)), (throwError(NULL)), size_t_size)
-
-/**
- * vector_create
- */
-
-/* (1) */
-
-/**
- segment vector into blocks
+ * VEC_SEGMENT
+ *
+ * segments vector into blocks
 */
-
 static vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
   segmentBlock **block;
   uint32_t segment;
@@ -179,19 +153,17 @@ static vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
   /*  segment size (each block having atleast 256bytes size) */
   segment = (segment = (size >> 8)) + !!(size - (segment << 8));
 
-  puti(segment);
   /* allocate memory of size equal to segment to vwctor */
   mvpgAlloc(&vec, (vecGblDataBlockSize * segment) + vecGblMetaDataSize);
 
   block = (void *)VEC_moveToMainBlock(vec);
 
-  /* virtual size of vector */
   VEC_getMagnitude(vec) = segment;
-  /* construct block table
-   * THIS LOOP SHOULD ONLY BE DONE FOR 0 < SEGMENT SIZE < 2^8
- */
-  action = action >> (segment > (2 << 8)); /* enable/disable action if segment size is lesser/greater than the number of reasonable malloc call per function */
+
+  /* enable/disable action (memfill) if segment size is lesser/greater than the number of reasonable malloc call per function. 0 >= n <= 2^8 is choosen as the limit */
+  action = action >> (segment > (2 << 8));
   VEC_setMetaData(vec) = VEC_SEGTBLK & (!!action & VEC_MALLOCD_ALL);
+
   do {
 	mvpgAlloc(block, vecGlbSegmentAllocSize);
 	(*block)->blockFill = 0;
@@ -202,15 +174,18 @@ static vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
 
   return vec;
 }
+
+/**
+ * VEC_CREATE
+ *
+ * Constructs Vector Container
+ */
 static vec_t VEC_create(size_t size, const VEC_set config) {
   vec_t vec;
   uint8_t _vecMetaData;
 
   if ( !size )
 	size = VEC_MINIMUM_SIZE;
-
-  /* default config */
-  _vecMetaData = VEC_NATIVE;
 
   if (!config.native) {
 	_vecMetaData = config.type;
@@ -228,11 +203,19 @@ static vec_t VEC_create(size_t size, const VEC_set config) {
 
   return vec;
 }
+/**
+ * VEC_NEW
+ *
+ * (macro: alias -> VEC_create)
+ */
+#define VEC_new(size_t_size, ...)											\
+  MACR_DO_ELSE(VEC_create(size_t_size, MACR_DO_ELSE((__VA_ARGS__), 0, __VA_ARGS__)), (throwError(NULL)), size_t_size)
 
 /**
- * vector_expand: expands to vector/resize vector
+ * VEC_RESIZE
+ * resizes vector
  */
-static __inline__  __NONNULL__ vec_t VEC_expand(vec_t *vec, void *new, ssize_t  size, ssize_t propertyIndex) {
+static __inline__  __NONNULL__ vec_t VEC_resize(vec_t *vec, void *new, ssize_t  size, ssize_t propertyIndex) {
   void *alloc;
   register uintmax_t newSize;
 
@@ -273,7 +256,7 @@ static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t pr
 #endif
 	*loc = new;
   }
-  else if (! VEC_expand(vec, new, magnitude, propertyIndex)) {
+  else if (! VEC_resize(vec, new, magnitude, propertyIndex)) {
 	return (vec_t)NULL;
   }
   return *vec;
@@ -289,7 +272,6 @@ static  __NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytes,  size_t p
 	return NULL;
 
   _new = (uint8_t *)_new + vecDefFlagLoc;
-  (VEC_ACCESS(_new) - vecDefFlagLoc)[0] = VEC_ARRAY;
   memcpy(_new, new, bytes);
 
   return VEC_append(vec, _new, propertyIndex);

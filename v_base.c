@@ -151,10 +151,8 @@ static __NONNULL__ vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
 
   do {
 	mvpgAlloc(block, vecGlbSegmentAllocSize);
-	(*block)->blockFill = 0;
-
-	/* move ahead of header */
-	(*block) += sizeof (segmentBlock);
+	(*block)->blockFill = 0;           /* property fill */
+	(*block) += sizeof (segmentBlock); /* move ahead of header */
   } while (VEC_nextblock(block), (action & VEC_MEMFILL) && --segment );
 
   return vec;

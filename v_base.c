@@ -71,7 +71,7 @@ const uint16_t vecGlbSegmentAllocSize = 1 << 8;
 #define VEC_peekBlockStart(vec)   (void *)(VEC_ACCESS(vec) - vecGblMetaDataSize)
 
 /* Request or update the size of the container */
-#define VEC_getMagnitude(vec)     ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcapSize
+#define VEC_getSize(vec)     ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcapSize
 
 /* Update the pointer to the start of the wriitable section of the container */
 #define VEC_moveToMainBlock(vec)  ((vec) = (void * )(VEC_ACCESS(vec) + vecGblMetaDataSize))
@@ -150,7 +150,7 @@ static vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
   segmentBlock **block;
   uint32_t segment;
 
-  /*  segment size (each block having atleast 256bytes size) */
+  /* segment size (each block having atleast 256bytes size) */
   segment = (segment = (size >> 8)) + !!(size - (segment << 8));
 
   /* allocate memory of size equal to segment to vwctor */
@@ -158,7 +158,7 @@ static vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
 
   block = (void *)VEC_moveToMainBlock(vec);
 
-  VEC_getMagnitude(vec) = segment;
+  VEC_getSize(vec) = segment;
 
   /* enable/disable action (memfill) if segment size is lesser/greater than the number of reasonable malloc call per function. 0 >= n <= 2^8 is choosen as the limit */
   action = action >> (segment > (2 << 8));
@@ -199,10 +199,11 @@ static vec_t VEC_create(size_t size, const VEC_set config) {
   mvpgAlloc(&vec, (vecGblDataBlockSize * size) + vecGblMetaDataSize);
 
   VEC_moveToMainBlock(vec);
-  VEC_getMagnitude(vec) = size;
+  VEC_getSize(vec) = size;
 
   return vec;
 }
+
 /**
  * VEC_NEW
  *
@@ -213,6 +214,7 @@ static vec_t VEC_create(size_t size, const VEC_set config) {
 
 /**
  * VEC_RESIZE
+ *
  * resizes vector
  */
 static __inline__  __NONNULL__ vec_t VEC_resize(vec_t *vec, void *new, ssize_t  size, ssize_t propertyIndex) {
@@ -232,7 +234,7 @@ static __inline__  __NONNULL__ vec_t VEC_resize(vec_t *vec, void *new, ssize_t  
   (newSize > 1) &&  memset((alloc + size), 0, vecGblDataBlockSize * newSize);
 
   *vec = VEC_moveToMainBlock(alloc);
-  VEC_getMagnitude(alloc) = propertyIndex + 1; /* update vector size */
+  VEC_getSize(alloc) = propertyIndex + 1; /* update vector size */
   (*vec)[propertyIndex] = new; /* add to vector */
 
   return alloc;
@@ -242,12 +244,12 @@ static __inline__  __NONNULL__ vec_t VEC_resize(vec_t *vec, void *new, ssize_t  
  * vec_append: add/append new data to vector
  */
 static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t propertyIndex) {
-  register size_t magnitude;
+  register size_t size;
   vec_t loc __MB_UNUSED__;
 
-  magnitude = VEC_getMagnitude(*vec);
+  size = VEC_getSize(*vec);
 
-  if (magnitude > propertyIndex) {
+  if (size > propertyIndex) {
 	loc = *vec + propertyIndex;
 #ifdef VEC_TRACE_DEL
 	VEC_rcache(*vec, propertyIndex);
@@ -256,7 +258,7 @@ static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t pr
 #endif
 	*loc = new;
   }
-  else if (! VEC_resize(vec, new, magnitude, propertyIndex)) {
+  else if (! VEC_resize(vec, new, size, propertyIndex)) {
 	return (vec_t)NULL;
   }
   return *vec;
@@ -281,19 +283,19 @@ static  __NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytes,  size_t p
  * VEC_request
  */
 __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_baseRequest(vec_t vec, ssize_t propertyIndex) {
-  size_t magnitude;
+  size_t size;
 
-  magnitude = VEC_getMagnitude(vec);
-  propertyIndex = propertyIndex < 0 ? magnitude + propertyIndex : propertyIndex;
+  size = VEC_getSize(vec);
+  propertyIndex = propertyIndex < 0 ? size + propertyIndex : propertyIndex;
 
-  if (propertyIndex >= magnitude || propertyIndex < 0) {
+  if (propertyIndex >= size || propertyIndex < 0) {
 	throwError("required index is out of bound");
 	exit(EXIT_FAILURE);
   }
   return vec + propertyIndex;
 }
 /* retrieve data from container located at @request */
-__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_request(vec_t vec, ssize_t propertyIndex) {
+__NONNULL__ void *VEC_request(vec_t vec, ssize_t propertyIndex) {
   return *(vec_t)(VEC_baseRequest(vec, propertyIndex));
 }
 
@@ -325,7 +327,7 @@ __STATIC_FORCE_INLINE_F bool VEC_free(void *rt) {
 /**
  * VEC_remove
  */
-static __NONNULL__ void *VEC_remove(vec_t *vec, ssize_t propertyIndex) {
+__NONNULL__ void *VEC_remove(vec_t *vec, ssize_t propertyIndex) {
 
 #ifdef VEC_TRACE_DEL
   /* cache empty vector slot */
@@ -336,7 +338,7 @@ static __NONNULL__ void *VEC_remove(vec_t *vec, ssize_t propertyIndex) {
   (property = VEC_baseRequest(*vec, propertyIndex));
   free(*property);
   /* TODO: fix the possibility of overflow */
-  memmove(property + 1, property, (VEC_getMagnitude(*vec) - propertyIndex) * vecGblDataBlockSize);
+  memmove(property + 1, property, (VEC_getSize(*vec) - propertyIndex) * vecGblDataBlockSize);
   /* TODO; shrink container to current size */
 #endif
   return NULL;

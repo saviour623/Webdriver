@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <errno.h>
+#include <assert.h>
 
 #if defined(__GNUC__) || defined(__clang__)
 #define __FORCE_INLINE__ __attribute__((always_inline))
@@ -19,77 +20,84 @@
 #define __FORCE_INLINE__
 #endif
 #define __NONNULL__ __attribute__((nonnull))
-#define CHOOSE_EXPR(cExpr, tVal, fVal)			\
-  __builtin_choose_expr(cExpr, tVal, fVal)
-
-#define throwError(...) puts(__VA_ARGS__ "\n")
-#define puti(i) printf("%lld\n", (long long int)(i))
+#define CHOOSE_EXPR(cExpr, tVal, fVal) __builtin_choose_expr(cExpr, tVal, fVal)
+#define __STATIC_FORCE_INLINE_F static __inline__ __FORCE_INLINE__
 
 #if defined(__GNUC__) || defined(__clang__)
-#define __MAY_ALIAS__ __attribute__((may_alias))
 #define __EXPR_LIKELY__(T, L) __builtin_expect(T, L)
+#define __MAY_ALIAS__ __attribute__((may_alias))
 #define __MB_UNUSED__ __attribute__((unused))
 #else
 #define __MAY_ALIAS__
 #define __EXPR_LIKELY__(T, L) T
 #define __MB_UNUSED__
 #endif
-#define __STATIC_FORCE_INLINE_F static __inline__ __FORCE_INLINE__
+
+#define throwError(...) puts(__VA_ARGS__ "\n")
+#define puti(i) printf("%lld\n", (long long int)(i))
 
 /**
- * MACR_NON_EMPTY,
- * MACR_DO_ELSE
+ * MACR_NON_EMPTY, MACR_DO_ELSE
  *
- * Safely assert if a macro parameter is given an argument
- * Return: provided argument(s)/zero/nothing
+ * checks if a macro parameter is given an argument, returns argument if non-emppty
  */
 #define MACR_EMPTY_PARAM(...) 0, 0
 #define MACR_INDIRECT_EVAL(a, ...) MACR_ACCEPT_FIRST(__VA_ARGS__)
 #define MACR_ACCEPT_FIRST(a, ...) a
 #define MACR_IGNORE_FIRST(...) MACR_INDIRECT_EVAL(__VA_ARGS__)
 #define MACR_NON_EMPTY(...) MACR_IGNORE_FIRST(MACR_EMPTY_PARAM  __VA_ARGS__(), 1)
-  # /* empty */
+/* empty */
 #define MACR_IF_EMPTY_0(a, ...) __VA_ARGS__
-  # /* also empty */
+/* also empty */
 #define MACR_IF_EMPTY_(a, ...) __VA_ARGS__
-	# /* non-empty */
+/* non-empty */
 #define MACR_IF_EMPTY_1(a, ...) a
-  #
+
 #define MACR_CAT(A, A1) MACR_INDIRECT_CAT(A, A1)
 #define MACR_INDIRECT_CAT(A, A1) A ## A1
 #define MACR_DO_ELSE(_true, _false, ...) MACR_CAT(MACR_IF_EMPTY_, MACR_NON_EMPTY(__VA_ARGS__))(_true, _false)
 
+/*
+  prototypes
+*/
+__NONNULL__ void *VEC_remove(vec_t *, ssize_t);
+__NONNULL__ void *VEC_request(vec_t vec, ssize_t propertyIndex);
+
+
+/**
+ *  MVPGALLOC - Mvpg Memory Allocator
+ *
+ * MvpgAlloc actually takes in a ’void **’ memptr due to the prototype of posix_memalign.
+ * However, parameter (memptr) is defined as type ’void *’. This is only to avoid the need
+ * for an explicit cast to ’void **’ for pointers of different types on calls to the function.
+ *
+ * A typical to @MvpgAlloc looks like: mvpgAlloc(&memptr, 8)
+ */
+
 #if _POSIX_C_SOURCE >= 200112L || (_DEFAULT_SOURCE || _BSD_SOURCE || (XOPEN_SOURCE >= 500))
 #define MvpgMalloc(memptr, size) posix_memalign(memptr, MVPG_ALLOC_MEMALIGN, size)
 #else
-  /* fallback */
+/* fallback */
 #define MvpgMalloc(*memptr, size) malloc(size)
 #endif
 
-  /**
-   *  MVPGALLOC - Mvpg Memory Allocator
-   *
-   * MvpgAlloc actually takes in a ’void **’ memptr due to the prototype of posix_memalign.
-   * However, parameter (memptr) is defined as type ’void *’. This is only to avoid the need for an explicit cast to ’void **’ for pointers of different types on calls to the function.
-   *
-   * A typical to @MvpgAlloc looks like: mvpgAlloc(&memptr, 8)
-  */
-  void *mvpgAlloc(void *memptr, size_t size) {
-	void **memAllocPtr;
+void *mvpgAlloc(void *memptr, size_t size) {
+  void **memAllocPtr;
 
-	memAllocPtr = memptr;
+  memAllocPtr = memptr;
 
-	if ( MvpgMalloc(memAllocPtr, size) ) {
-	  /* error allocating block of memory */
-	  fprintf(stderr, "mvpgAlloc: allocation of size %lu failed (%s)\n", (long)size, strerror(errno));
+  if ( MvpgMalloc(memAllocPtr, size) ) {
+	/* ERROR */
+	fprintf(stderr, "mvpgAlloc: allocation of size %lu failed (%s)\n", (long)size, strerror(errno));
+
 #ifdef EXIT_ON_MEMERR
-	  exit(EXIT_FAILURE);
+	exit(EXIT_FAILURE);
 #else
-	  return NULL;
+	return NULL;
 #endif
-	}
-	/* zero memory */
-	memset(*memAllocPtr, 0, size);
-	return *memAllocPtr;
   }
+  /* zero memory */
+  memset(*memAllocPtr, 0, size);
+  return *memAllocPtr;
+}
 #endif

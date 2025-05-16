@@ -39,42 +39,39 @@ enum {
 	  VEC_ERROR_OUTOFBOUND = 0x3b
 };
 
-/* we save some simple vector data in just a single byte */
-const uint8_t vecDefFlagLoc         = 1;
-
-/* Meta-data size */
-const uint8_t vecGblMetaDataSize  = sizeof (vecMetaDataHeader) + vecDefFlagLoc;
-
-/* Size of allocation block for entries */
-const uint8_t vecGblDataBlockSize = sizeof (vec_t);
-
-/* Size of segment */
+/**
+* (gblobal)
+*
+* @1 flags (fits in a single byte)
+* @2 Meta-data size
+* @3 Size of allocation block for entries
+* @3 Size of segment
+*/
+const uint8_t  vecDefFlag          = 1;
+const uint8_t  vecGblMetaDataSize     = sizeof (vecMetaDataHeader) + vecDefFlag;
+const uint8_t  vecGblDataBlockSize    = sizeof (vec_t);
 const uint16_t vecGlbSegmentAllocSize = 1 << 8;
 
-/* Get/set meta-data in header */
+/**
+* (macros)
+*
+* @VEC_setMetaData & @VEC_setMetaData: Get/set meta-data in header
+* @VEC_peekBlockStart: Temporarily view the starting block of the vector
+* @VEC_getSize: Request or update the size of the container
+* @VEC_moveToMainBlock: Move pointer to the data section
+* @VEC_moveToBlockStart: Move the pointer to the start of the contaner’s block
+* @VEC_ACCESS: reinterpret as pointer to single byte memory
+* @VEC_nextblock/VEC_prevblock: increment/decrement memory pointer
+*/
 #define VEC_setMetaData VEC_getMetaData
-#define VEC_getMetaData(vec, ...) ((VEC_ACCESS(vec) - vecDefFlagLoc)[0])
-
-/* Temporarily view the starting block of the vector */
-#define VEC_peekBlockStart(vec)   (void *)(VEC_ACCESS(vec) - vecGblMetaDataSize)
-
-/* Request or update the size of the container */
-#define VEC_getSize(vec)          ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcapSize
-
-/* Update the pointer to the start of the wriitable section of the container */
-#define VEC_moveToMainBlock(vec)  ((vec) = (void * )(VEC_ACCESS(vec) + vecGblMetaDataSize))
-
-/* Move the pointer to the start of the contaner’s block */
-#define VEC_moveToBlockStart(vec) ((vec) = VEC_peekBlockStart(vec))
-
-/* reinterpret as pointer to single byte memory */
-#define VEC_ACCESS(_addr)         ((uint8_t *)(void *)(_addr))
-
-/* increment/decrement memory pointer */
-#define VEC_nextblock(block)      ((block)++)
-#define VEC_prevblock(block)      ((block)--)
-
-#define ignoreExprReturn(...)     (void) (__VA_ARGS__)
+#define VEC_getMetaData(vec, ...)   ((VEC_reinterpret(vec) - vecDefFlag)[0])
+#define VEC_peekBlockStart(vec)     (void *)(VEC_reinterpret(vec) - vecGblMetaDataSize)
+#define VEC_getSize(vec)            ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcapSize
+#define VEC_moveToMainBlock(vec)    ((vec) = (void * )(VEC_reinterpret(vec) + vecGblMetaDataSize))
+#define VEC_moveToBlockStart(vec)   ((vec) = VEC_peekBlockStart(vec))
+#define VEC_reinterpret(_addr)      ((uint8_t *)(void *)(_addr))
+#define VEC_nextblock(block)        ((block)++)
+#define VEC_prevblock(block)        ((block)--)
 
 /**
  * if VEC_TRACE_DEL is defined, caching is enabled. Memory of deleted contents of are cached rather than being freed.
@@ -250,10 +247,10 @@ static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t pr
 __NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytes, size_t propertyIndex) {
   void *_new;
 
-  if (!*vec || !bytes || !(_new = malloc(bytes + vecDefFlagLoc)))
+  if (!*vec || !bytes || !(_new = malloc(bytes + vecDefFlag)))
 	return NULL;
 
-  _new = (uint8_t *)_new + vecDefFlagLoc;
+  _new = (uint8_t *)_new + vecDefFlag;
   memcpy(_new, new, bytes);
 
   return VEC_append(vec, _new, propertyIndex);
@@ -299,7 +296,7 @@ __STATIC_FORCE_INLINE_F __NONNULL__ uint8_t VEC_getLevel(void *vec) {
  * VEC_free
  */
 __STATIC_FORCE_INLINE_F bool VEC_free(void *rt) {
-  free(VEC_getLevel(rt) ? VEC_moveToBlockStart(rt) : (VEC_ACCESS(rt) - vecDefFlagLoc));
+  free(VEC_getLevel(rt) ? VEC_moveToBlockStart(rt) : (VEC_ACCESS(rt) - vecDefFlag));
 
   return true;
 }

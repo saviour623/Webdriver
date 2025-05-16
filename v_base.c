@@ -8,10 +8,6 @@
 #define VEC_DEBUG 1
 #endif
 
-/* NULL */
-#define VEC_EOV (char *)(long) 0
-
-typedef void ** vec_t;
 static __NONNULL__ vec_t VEC_append(vec_t *, void *, size_t);
 __STATIC_FORCE_INLINE_F bool VEC_free(void *);
 
@@ -33,16 +29,8 @@ typedef struct {
   void *nextBlock;
 } segmentBlock;
 
-/* feature flags vector for */
-typedef struct {
-  uint16_t alignSize;
-  uint8_t  native;
-  uint8_t  type;
-  uint8_t  memfill;
-} VEC_set;
-
 enum {
-	  VEC_MINIMUM_SIZE     = 0x100,
+	  VEC_MIN_SIZE         = 0x100,
 	  VEC_ALLOC_SIZE       = 0x01,
 	  VEC_VECTOR           = 0x80,
 	  VEC_SEGTBLK          = 0x01,
@@ -71,7 +59,7 @@ const uint16_t vecGlbSegmentAllocSize = 1 << 8;
 #define VEC_peekBlockStart(vec)   (void *)(VEC_ACCESS(vec) - vecGblMetaDataSize)
 
 /* Request or update the size of the container */
-#define VEC_getSize(vec)     ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcapSize
+#define VEC_getSize(vec)          ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcapSize
 
 /* Update the pointer to the start of the wriitable section of the container */
 #define VEC_moveToMainBlock(vec)  ((vec) = (void * )(VEC_ACCESS(vec) + vecGblMetaDataSize))
@@ -146,7 +134,7 @@ __STATIC_FORCE_INLINE_F void VEC_rcache(void *vec, size_t at) {
  *
  * segments vector into blocks
 */
-static vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
+static __NONNULL__ vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
   segmentBlock **block;
   uint32_t segment;
 
@@ -180,12 +168,12 @@ static vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
  *
  * Constructs Vector Container
  */
-static vec_t VEC_create(size_t size, const VEC_set config) {
+vec_t VEC_create(size_t size, const VEC_set config) {
   vec_t vec;
   uint8_t _vecMetaData;
 
   if ( !size )
-	size = VEC_MINIMUM_SIZE;
+	size = VEC_MIN_SIZE;
 
   if (!config.native) {
 	_vecMetaData = config.type;
@@ -195,7 +183,7 @@ static vec_t VEC_create(size_t size, const VEC_set config) {
   if (config.type & VEC_SEGTBLK) {
 	return VEC_segment(vec, size, config.memfill);
   }
-  /* single block (type array) */
+  /* traditional vector with a large, single block */
   mvpgAlloc(&vec, (vecGblDataBlockSize * size) + vecGblMetaDataSize);
 
   VEC_moveToMainBlock(vec);
@@ -203,14 +191,6 @@ static vec_t VEC_create(size_t size, const VEC_set config) {
 
   return vec;
 }
-
-/**
- * VEC_NEW
- *
- * (macro: alias -> VEC_create)
- */
-#define VEC_new(size_t_size, ...)											\
-  MACR_DO_ELSE(VEC_create(size_t_size, MACR_DO_ELSE((__VA_ARGS__), 0, __VA_ARGS__)), (throwError(NULL)), size_t_size)
 
 /**
  * VEC_RESIZE
@@ -254,7 +234,7 @@ static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t pr
 #ifdef VEC_TRACE_DEL
 	VEC_rcache(*vec, propertyIndex);
 #else
-	(*loc != VEC_EOV) && VEC_free(*loc);
+	*loc && VEC_free(*loc);
 #endif
 	*loc = new;
   }
@@ -267,7 +247,7 @@ static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t pr
 /**
  * VEC_add
  */
-static  __NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytes,  size_t propertyIndex) {
+__NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytes, size_t propertyIndex) {
   void *_new;
 
   if (!*vec || !bytes || !(_new = malloc(bytes + vecDefFlagLoc)))

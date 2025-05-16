@@ -57,12 +57,33 @@
 #define MACR_INDIRECT_CAT(A, A1) A ## A1
 #define MACR_DO_ELSE(_true, _false, ...) MACR_CAT(MACR_IF_EMPTY_, MACR_NON_EMPTY(__VA_ARGS__))(_true, _false)
 
-/*
-  prototypes
-*/
+/**
+ *  PROTOTYPES (func/types)
+ */
+typedef void ** vec_t;
+typedef struct {
+  /* feature flags */
+  uint16_t alignSize;
+  uint8_t  native, type, memfill;
+} VEC_set;
+
+vec_t VEC_create(size_t, const VEC_set);
+__NONNULL__ void *VEC_add(vec_t *, void *, size_t, size_t);
 __NONNULL__ void *VEC_remove(vec_t *, ssize_t);
 __NONNULL__ void *VEC_request(vec_t vec, ssize_t propertyIndex);
 
+/* MACRO variants */
+#
+#
+#
+/*
+ * VEC_NEW
+ *
+ * (macro: alias -> VEC_create)
+ * Autofill and error-check arguments before call to VEC_create
+ */
+#define VEC_new(size_t_size, ...)											\
+  MACR_DO_ELSE(VEC_create(size_t_size, MACR_DO_ELSE((__VA_ARGS__), 0, __VA_ARGS__)), (throwError(NULL)), size_t_size)
 
 /**
  *  MVPGALLOC - Mvpg Memory Allocator
@@ -74,10 +95,10 @@ __NONNULL__ void *VEC_request(vec_t vec, ssize_t propertyIndex);
  * A typical to @MvpgAlloc looks like: mvpgAlloc(&memptr, 8)
  */
 
-#if _POSIX_C_SOURCE >= 200112L || (_DEFAULT_SOURCE || _BSD_SOURCE || (XOPEN_SOURCE >= 500))
+#if (_POSIX_C_SOURCE >= 200112L) || (_DEFAULT_SOURCE || _BSD_SOURCE || (XOPEN_SOURCE >= 500))
 #define MvpgMalloc(memptr, size) posix_memalign(memptr, MVPG_ALLOC_MEMALIGN, size)
 #else
-/* fallback */
+/* fallback to malloc */
 #define MvpgMalloc(*memptr, size) malloc(size)
 #endif
 
@@ -85,6 +106,8 @@ void *mvpgAlloc(void *memptr, size_t size) {
   void **memAllocPtr;
 
   memAllocPtr = memptr;
+
+  assert(size != 0);
 
   if ( MvpgMalloc(memAllocPtr, size) ) {
 	/* ERROR */

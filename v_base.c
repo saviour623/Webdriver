@@ -197,49 +197,49 @@ vec_t VEC_create(size_t size, const VEC_set config) {
  *
  * resizes vector
  */
-static __inline__  __NONNULL__ vec_t VEC_resize(vec_t *vec, void *new, ssize_t  size, ssize_t propertyIndex) {
+__NONNULL__ vec_t VEC_resize(vec_t *vec, ssize_t newSize) {
   void *alloc;
-  register uintmax_t newSize;
+  ssize_t oldSize, allocSize;
 
-  if (size > propertyIndex)
-	return VEC_append(vec, new, propertyIndex);
+  oldSize = VEC_getSize(*vec);
 
-  /* TODO: newSize may overflow */
-  newSize = (vecGblDataBlockSize * (propertyIndex + VEC_ALLOC_SIZE)) + vecGblMetaDataSize;
+  /* TODO:  handle overflow */
+  allocSize = (vecGblDataBlockSize * (newSize + VEC_ALLOC_SIZE)) + vecGblMetaDataSize;
+
   /* resize container */
-  if (!(alloc = realloc(VEC_moveToBlockStart(*vec), newSize)) )
+  if (!(alloc = realloc(VEC_moveToBlockStart(*vec), allocSize)) )
 	return (vec_t)NULL;
 
-  newSize = propertyIndex - size; /* padded size */
-  (newSize > 1) &&  memset((alloc + size), 0, vecGblDataBlockSize * newSize);
+  allocSize = newSize - oldSize; /* padded size (reuse of var ’allocSize’) */
+  (allocSize > 1) &&  memset((alloc + oldSize), 0, vecGblDataBlockSize * allocSize);
 
   *vec = VEC_moveToMainBlock(alloc);
-  VEC_getSize(alloc) = propertyIndex + 1; /* update vector size */
-  (*vec)[propertyIndex] = new; /* add to vector */
+  VEC_getSize(alloc) = newSize + 1;
 
   return alloc;
 }
 
 /**
- * vec_append: add/append new data to vector
+ * VEC_APPEND
+ *
+ * Appends new data to vector
  */
 static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t propertyIndex) {
-  register size_t size;
-  vec_t loc __MB_UNUSED__;
+  vec_t property __MB_UNUSED__;
 
-  size = VEC_getSize(*vec);
+  if (VEC_getSize(*vec) > propertyIndex) {
+	property = *vec + propertyIndex;
 
-  if (size > propertyIndex) {
-	loc = *vec + propertyIndex;
-#ifdef VEC_TRACE_DEL
+#ifdef VEC_ENABLED_CACHE
 	VEC_rcache(*vec, propertyIndex);
 #else
-	*loc && VEC_free(*loc);
+	*property && VEC_free(*property);
 #endif
-	*loc = new;
+	*property = new;
   }
-  else if (! VEC_resize(vec, new, size, propertyIndex)) {
-	return (vec_t)NULL;
+  else {
+	VEC_resize(vec, propertyIndex);
+	(*vec)[propertyIndex] = new;
   }
   return *vec;
 }

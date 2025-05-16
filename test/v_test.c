@@ -38,6 +38,7 @@ int main(void) {
 
   printf("internalMemset32Align: %f\n", clockTime1/(float)CLOCKS_PER_SEC);
   printf("memset: %f\n", clockTime2/(float)CLOCKS_PER_SEC);
+
   // vec = (void *)VEC_new(131072, config);
   //VEC_delete((void *)&vec);
   return 0;

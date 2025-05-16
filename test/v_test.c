@@ -13,9 +13,12 @@ int main(void) {
   clock_t clockTime1, clockTime2;
   char *process;
   int fd;
-  void *mem;
+  char *mem;
 
-  posix_memalign(&mem, 32, 1024);
+  if(posix_memalign((void *)&mem, 32, 1333024)) {
+	perror("posix_memalign");
+	exit(-1);
+  }
 
   if ((fd = open("../v_base.c", O_RDONLY, S_IRUSR)) == -1) {
 	process = "open";
@@ -23,23 +26,26 @@ int main(void) {
 	fprintf(stderr, "unable to %s file %s: %s\n", process, "../v_base.c", strerror(errno));
 	return 1;
   }
-  if (read(fd, mem, 1024) == -1) {
+  if (read(fd, mem, 1333024) == -1) {
 	process = "read";
 	goto ioError;
   }
 
-  clockTime1 = clock();
-  internalMemset32Align(mem, 0, 1024);
-  clockTime1 = clock() - clockTime1;
-
   clockTime2 = clock();
-  memset(mem, 0, 1024);
+  memset(mem, 0, 1333024);
   clockTime2 = clock() - clockTime2;
+
+  clockTime1 = clock();
+  internalMemset32Align(mem, 65, 1333024);
+  clockTime1 = clock() - clockTime1;
 
   printf("internalMemset32Align: %f\n", clockTime1/(float)CLOCKS_PER_SEC);
   printf("memset: %f\n", clockTime2/(float)CLOCKS_PER_SEC);
 
-  // vec = (void *)VEC_new(131072, config);
-  //VEC_delete((void *)&vec);
+  putchar(mem[33]);
+
+  puts("");
+
+  free(mem);
   return 0;
 }

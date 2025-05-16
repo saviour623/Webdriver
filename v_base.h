@@ -119,8 +119,8 @@ __NONNULL__ void *VEC_delete(vec_t *);
 #elif defined(__STDC__) && (__STDC_VERSION >= 201112L)
 #if defined(_MSC_VER) || defined(_WIN32)
 #define MvpgMalloc(memptr, size) !(*memptr && (memptr = _aligned_malloc(MVPG_ALLOC_MEMALIGN, size))) /* requires malloc.h */
-#define free(memptr) _aligned_free(memptr) /* memory can’t be freed with malloc’s free()
-											  #else */
+#define free(memptr) _aligned_free(memptr) /* memory can’t be freed with malloc’s free() */
+#else
 /*__clang__ and __GNUC__ */
 #define MvpgMalloc(memptr, size) !(*memptr && (memptr = aligned_alloc(MVPG_ALLOC_MEMALIGN, size))) /* TODO: size must be multiple of alignment  */
 #endif
@@ -158,33 +158,37 @@ __NONNULL__ static void *mvpgAlloc(void *memptr, size_t size) {
  */
 
 typedef struct {
-#if defined(__STDC__) && (__STDC_VERSION >= 201112L)
-	_Alignas(32) unsigned char alignv;
-#else
-  unsigned char alignv [32];
-#endif
+  //_Alignas(32) char alignv;
+  char p[32];
 } _InternalImplMemAlignBuf;
+
+#define fill32(n) {n, n, n, n, n, n, n, n, n, n, n, n, n, n, n, n\
+	  , n, n, n, n, n, n, n,n, n, n, n, n, n, n, n, n}
 
 #define _InternalMemAlignBufFill(fill) (long)(fill)
 
-__NONNULL__ static __inline__ void *internalMemset32Align(void *memptr, int fill, size_t size) {
+__NONNULL__ __FORCE_INLINE__ static __inline__ void *internalMemset32Align(void *memptr, int fill, size_t size) {
   size_t split32 __MB_UNUSED__;
   size_t overflow32 __MB_UNUSED__;
   _InternalImplMemAlignBuf *ptr __MAY_ALIAS__;
 
+  unsigned char fillChar = (unsigned char)(fill);
+
+  _InternalImplMemAlignBuf fillBuf = fill32(fillChar);
+
   if ((uintptr_t)memptr & 31) {
 	return memset(memptr, fill, size);
   }
-  split32    = prvMul32(size);
+  split32    = (size & 31) ? prvMul32(size) : size >> 5;
   overflow32 = mod32(size);
   ptr        = memptr;
 
   while (split32--) {
-    *ptr++ = _InternalMemAlignBufFill(fill);
+	*ptr++ = fillM;
   }
   /* cleanup */
   while (overflow32--)
-	*(unsigned char *)ptr++ = (unsigned char)fill;
+   ;
 
   return memptr;
 }

@@ -1,10 +1,3 @@
-#include <stdio.h>
-#include <limits.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stddef.h>
 #include "v_base.h"
 
 /* Allow size-bound check on request */
@@ -47,15 +40,16 @@ typedef struct {
 
 /* feature flags for vector */
 typedef struct {
-  uint8_t native;
-  uint8_t type;
-  uint8_t memfill;
+  uint16_t alignSize;
+  uint8_t  native;
+  uint8_t  type;
+  uint8_t  memfill;
 } VEC_set;
 
 enum {
 	  VEC_ARRAY          = 0,
 	  VEC_MINIMUM_SIZE   = 0x01,
-	  VEC_ALLOC_SIZE       = 0x01,
+	  VEC_ALLOC_SIZE     = 0x01,
 	  VEC_NATIVE         = 0x18,
 	  VEC_NO_TRACK_SIZE  = 0x20,
 	  VEC_READONLY       = 0x08,
@@ -182,16 +176,19 @@ static vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
 
   /*  minimum fit for size */
   segment = (segment = (size >> 8)) + !!(size - (segment << 8));
-  if (! (vec = calloc(sizeof (uint8_t), (vecGblDataBlockSize * segment) + vecGblMetaDataSize))) {
+
+  puti(segment);
+  if (mvpgAlloc(&vec, (vecGblDataBlockSize * segment) + vecGblMetaDataSize)) {
 	return (vec_t)NULL;
   }
   block = (void *)VEC_moveToMainBlock(vec);
   /* virtual size of vector */
   VEC_getMagnitude(vec) = segment;
 
-  /* construct block table */
+  /* construct block table
+   * THIS LOOP SHOULD ONLY BE DONE FOR 0 < SEGMENT SIZE < 2^8*/
   do {
-	if (! (*block = malloc(vecGlbSegmentAllocSize)) ) {
+	if (! mvpgAlloc(block, vecGlbSegmentAllocSize)) {
 	  /* TODO: cleanup (undo construction of block-list) */
 	  throwError("Debug: possible memory leakage (function: segment)");
 	  return (vec_t)NULL;
@@ -275,7 +272,7 @@ static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t pr
 #endif
 	*loc = new;
   }
-  else if (! (!(VEC_getMetaData(*vec) & VEC_READONLY) && VEC_expand(vec, new, magnitude, propertyIndex)) ) {
+  else if (! VEC_expand(vec, new, magnitude, propertyIndex)) {
 	return (vec_t)NULL;
   }
   return *vec;
@@ -385,31 +382,15 @@ static __NONNULL__ void *VEC_delete(vec_t *vec) {
 int main(void) {
   size_t x;
   int *intArray;
-  VEC_set config = {.type = 1};
+  VEC_set config = {.type = 1 , .memfill = 0};
   int **vec;
 
-  vec = (void *)VEC_new(255, config);
+  vec = (void *)VEC_new(131072, config);
 
   int data[][6] = {
 				   {0, 2, 4, 6, 8, 10}, {1, 3, 5, 7, 9, 11},
 				   {2, 3, 5, 7, 11, 13}, {4, 16, 32, 64, 128},
   };
-  /* VEC_add((void *)&vec, data[0], sizeof(int), 0);
-	 VEC_add((void *)&vec, data[1], sizeof(int), 1);
-	 VEC_add((void *)&vec, data[2], sizeof(int), 2);
-
-	 intArray = VEC_request((void *)vec, 0);
-	 puti(*(intArray + 0));
-
-	 intArray = VEC_request((void *)vec, 1);
-	 puti(*(intArray + 0));
-
-	 intArray = VEC_request((void *)vec, 2);
-	 puti(*(intArray + 0));
-  */
-  //VEC_remove((void *)&vec, 0);
-  //VEC_remove((void *)&vec, 1);
-  //VEC_remove((void *)&vec, 2);
 
   VEC_delete((void *)&vec);
   return 0;

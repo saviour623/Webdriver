@@ -1,5 +1,15 @@
 #ifndef V_BASE_H
 #define V_BASE_H
+#define MVPG_ALLOC_MEMALIGN sizeof (void *)
+
+#include <stdio.h>
+#include <limits.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stddef.h>
+#include <errno.h>
 
 #if defined(__GNUC__) || defined(__clang__)
 #define __FORCE_INLINE__ __attribute__((always_inline))
@@ -26,7 +36,7 @@
 #endif
 #define __STATIC_FORCE_INLINE_F static __inline__ __FORCE_INLINE__
 
-  /**
+/**
  * MACR_NON_EMPTY,
  * MACR_DO_ELSE
  *
@@ -38,18 +48,41 @@
 #define MACR_ACCEPT_FIRST(a, ...) a
 #define MACR_IGNORE_FIRST(...) MACR_INDIRECT_EVAL(__VA_ARGS__)
 #define MACR_NON_EMPTY(...) MACR_IGNORE_FIRST(MACR_EMPTY_PARAM  __VA_ARGS__(), 1)
-# /* empty */
+  # /* empty */
 #define MACR_IF_EMPTY_0(a, ...) __VA_ARGS__
-# /* also empty */
+  # /* also empty */
 #define MACR_IF_EMPTY_(a, ...) __VA_ARGS__
-# /* non-empty */
+	# /* non-empty */
 #define MACR_IF_EMPTY_1(a, ...) a
-#
+  #
 #define MACR_CAT(A, A1) MACR_INDIRECT_CAT(A, A1)
 #define MACR_INDIRECT_CAT(A, A1) A ## A1
 #define MACR_DO_ELSE(_true, _false, ...) MACR_CAT(MACR_IF_EMPTY_, MACR_NON_EMPTY(__VA_ARGS__))(_true, _false)
-#
-# /* end */
-#
 
+#if _POSIX_C_SOURCE >= 200112L || (_DEFAULT_SOURCE || _BSD_SOURCE || (XOPEN_SOURCE >= 500))
+#define MvpgMalloc(memptr, size) posix_memalign(memptr, MVPG_ALLOC_MEMALIGN, size)
+#else
+  /* fallback */
+#define MvpgMalloc(*memptr, size) malloc(size)
+#endif
+
+  /* mvpg memory allocator.
+   * MvpgAlloc actually takes in a void ** memptr due to the requirements of posix_memalign. However, memptr is made of type ’void *’. This is avoid the need for a cast for pointers of different types.
+   * A typical to MvpgAlloc looks like: mvpgAlloc(&memptr, 8)
+  */
+  void *mvpgAlloc(void *memptr, size_t size) {
+	void **memAllocPtr = memptr;
+
+	if ( MvpgMalloc(memAllocPtr, size) ) {
+	  /* error allocating block of memory */
+	  fprintf(stderr, "mvpgalloc: allocation of size %lu failed (%s)\n", (long)size, strerror(errno));
+#ifdef EXIT_ON_MEMERR
+	  exit(EXIT_FAILURE);
+#else
+	  return NULL;
+#endif
+	}
+	memset(*memAllocPtr, 0, size);
+	return *memAllocPtr;
+  }
 #endif

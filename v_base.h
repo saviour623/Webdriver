@@ -165,7 +165,7 @@ typedef struct {
 #endif
 } _InternalImplMemAlignBuf;
 
-#define _InternalMemAlignBufFill(fill) (_InternalImplMemAlignBuf *)(char *)(fill)
+#define _InternalMemAlignBufFill(fill) (long)(fill)
 
 __NONNULL__ static __inline__ void *internalMemset32Align(void *memptr, int fill, size_t size) {
   size_t split32 __MB_UNUSED__;
@@ -180,16 +180,15 @@ __NONNULL__ static __inline__ void *internalMemset32Align(void *memptr, int fill
   ptr        = memptr;
 
   while (split32--) {
-    *ptr++ = __InternalMemAlignBufFill(fill);
+    *ptr++ = _InternalMemAlignBufFill(fill);
   }
   /* cleanup */
-  while (overflow--)
+  while (overflow32--)
 	*(unsigned char *)ptr++ = (unsigned char)fill;
 
   return memptr;
 }
 #endif /* VEC_INTERNAL_IMPLEMENTATION */
 
-#endif
-)
+#endif /* V_BASE_H */
 

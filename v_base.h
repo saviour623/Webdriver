@@ -1,6 +1,6 @@
 #ifndef V_BASE_H
 #define V_BASE_H
-#define MVPG_ALLOC_MEMALIGN sizeof (void *)
+#define MVPG_ALLOC_MEMALIGN 32
 
 #include <stdio.h>
 #include <limits.h>
@@ -102,9 +102,10 @@ __NONNULL__ void *VEC_delete(vec_t *);
  * NEXTMULTIPLE_p2
  */
 #define modp2(n, p2)     ((n) & ((1ULL << (p2)) - 1)) /* N % 2^p2 */
+#define mod32(n)         ((n) & 31)  /* N % 32 */
 #define mod256(n)        ((n) & 255) /* N % 256 */
 #define prvMulp2(n, p2)  ((n) - modp2(n, p2)) /* multiple of 2^p2 less than N */
-#define prvMul32(n)      ((n) - ((n) & 31)) /* multiple of 32, < N */
+#define prvMul32(n)      ((n) - mod32(n)) /* multiple of 32, < N */
 #define prvpMulp2(n, m) ((n) - ((n) & ((m) - 1))) /* multiple of m (power of 2),  < N */
 #define nxtMulp2(n, m)   ((((n) >> m) + 1) << m) /* multiple of m (power of 2), > N */
 
@@ -151,17 +152,41 @@ __NONNULL__ static void *mvpgAlloc(void *memptr, size_t size) {
   return *memAllocPtr;
 }
 
-typedef struct {
-#if defined(__STDC__) && (__STDC_VERSION >= 201112L)
-	_Alignas(32) char alignv;
-#else
-  char alignv [32];
-#endif
-} _internalImplementationMemAlign;
 /**
  * MEMSET
+ * MEMCPY
  */
-__NONNULL__ static void *memset(void *memptr, size_t fill, size_t size) {
+
+typedef struct {
+#if defined(__STDC__) && (__STDC_VERSION >= 201112L)
+	_Alignas(32) unsigned char alignv;
+#else
+  unsigned char alignv [32];
+#endif
+} _InternalImplMemAlignBuf;
+
+#define _InternalMemAlignBufFill(fill) (_InternalImplMemAlignBuf *)(char *)(fill)
+
+__NONNULL__ static __inline__ void *internalMemset32Align(void *memptr, int fill, size_t size) {
+  size_t split32 __MB_UNUSED__;
+  size_t overflow32 __MB_UNUSED__;
+  _InternalImplMemAlignBuf *ptr __MAY_ALIAS__;
+
+  if ((uintptr_t)memptr & 31) {
+	return memset(memptr, fill, size);
+  }
+  split32    = prvMul32(size);
+  overflow32 = mod32(size);
+  ptr        = memptr;
+
+  while (split32--) {
+    *ptr++ = __InternalMemAlignBufFill(fill);
+  }
+  /* cleanup */
+  while (overflow--)
+	*(unsigned char *)ptr++ = (unsigned char)fill;
+
+  return memptr;
 }
 #endif /* VEC_INTERNAL_IMPLEMENTATION */
 

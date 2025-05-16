@@ -66,22 +66,29 @@
 #define MvpgMalloc(*memptr, size) malloc(size)
 #endif
 
-  /* mvpg memory allocator.
-   * MvpgAlloc actually takes in a void ** memptr due to the requirements of posix_memalign. However, memptr is made of type ’void *’. This is avoid the need for a cast for pointers of different types.
-   * A typical to MvpgAlloc looks like: mvpgAlloc(&memptr, 8)
+  /**
+   *  MVPGALLOC - Mvpg Memory Allocator
+   *
+   * MvpgAlloc actually takes in a ’void **’ memptr due to the prototype of posix_memalign.
+   * However, parameter (memptr) is defined as type ’void *’. This is only to avoid the need for an explicit cast to ’void **’ for pointers of different types on calls to the function.
+   *
+   * A typical to @MvpgAlloc looks like: mvpgAlloc(&memptr, 8)
   */
   void *mvpgAlloc(void *memptr, size_t size) {
-	void **memAllocPtr = memptr;
+	void **memAllocPtr;
+
+	memAllocPtr = memptr;
 
 	if ( MvpgMalloc(memAllocPtr, size) ) {
 	  /* error allocating block of memory */
-	  fprintf(stderr, "mvpgalloc: allocation of size %lu failed (%s)\n", (long)size, strerror(errno));
+	  fprintf(stderr, "mvpgAlloc: allocation of size %lu failed (%s)\n", (long)size, strerror(errno));
 #ifdef EXIT_ON_MEMERR
 	  exit(EXIT_FAILURE);
 #else
 	  return NULL;
 #endif
 	}
+	/* zero memory */
 	memset(*memAllocPtr, 0, size);
 	return *memAllocPtr;
   }

@@ -55,6 +55,7 @@ enum {
 	  VEC_READONLY       = 0x08,
 	  VEC_VECTOR         = 0x80,
 	  VEC_SEGTBLK       = 0x01,
+	  VEC_M
 	  VEC_MEMFILL        = 0x01,
 	  VEC_EROUT_OF_BOUND = 0x3b
 };

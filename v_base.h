@@ -96,12 +96,37 @@ __NONNULL__ void *VEC_delete(vec_t *);
  * A typical to @MvpgAlloc looks like: mvpgAlloc(&memptr, 8)
  */
 
+/**
+ * MOD_p2
+ * PREVIOUSMULTIPLE_p2
+ * NEXTMULTIPLE_p2
+ */
+#define modp2(n, p2)     ((n) & ((1ULL << (p2)) - 1)) /* N % 2^p2 */
+#define mod256(n)        ((n) & 255) /* N % 256 */
+#define prvMulp2(n, p2)  ((n) - modp2(n, p2)) /* multiple of 2^p2 less than N */
+#define prvMul32(n)      ((n) - ((n) & 31)) /* multiple of 32, < N */
+#define prvpMulp2(n, m) ((n) - ((n) & ((m) - 1))) /* multiple of m (power of 2),  < N */
+#define nxtMulp2(n, m)   ((((n) >> m) + 1) << m) /* multiple of m (power of 2), > N */
+
+/**
+ * INTERNAL API
+ */
 #ifdef VEC_INTERNAL_IMPLEMENTATION
 #if (_POSIX_C_SOURCE >= 200112L) || (_DEFAULT_SOURCE || _BSD_SOURCE || (XOPEN_SOURCE >= 500))
 #define MvpgMalloc(memptr, size) posix_memalign(memptr, MVPG_ALLOC_MEMALIGN, size)
+/* C11 introduced a standard aligned_alloc function */
+#elif defined(__STDC__) && (__STDC_VERSION >= 201112L)
+#if defined(_MSC_VER) || defined(_WIN32)
+#define MvpgMalloc(memptr, size) !(*memptr && (memptr = _aligned_malloc(MVPG_ALLOC_MEMALIGN, size))) /* requires malloc.h */
+#define free(memptr) _aligned_free(memptr) /* memory can’t be freed with malloc’s free()
+											  #else */
+/*__clang__ and __GNUC__ */
+#define MvpgMalloc(memptr, size) !(*memptr && (memptr = aligned_alloc(MVPG_ALLOC_MEMALIGN, size))) /* TODO: size must be multiple of alignment  */
+#endif
 #else
 /* fallback to malloc */
-#define MvpgMalloc(*memptr, size) malloc(size)
+#define MvpgMalloc(*memptr, size) malloc(size) /* TODO: perform manual alignment */
+#define free(memptr) free(memptr) /*TODO: perform manual free */
 #endif
 
 __NONNULL__ static void *mvpgAlloc(void *memptr, size_t size) {
@@ -125,6 +150,21 @@ __NONNULL__ static void *mvpgAlloc(void *memptr, size_t size) {
   memset(*memAllocPtr, 0, size);
   return *memAllocPtr;
 }
+
+typedef struct {
+#if defined(__STDC__) && (__STDC_VERSION >= 201112L)
+	_Alignas(32) char alignv;
+#else
+  char alignv [32];
+#endif
+} _internalImplementationMemAlign;
+/**
+ * MEMSET
+ */
+__NONNULL__ static void *memset(void *memptr, size_t fill, size_t size) {
+}
 #endif /* VEC_INTERNAL_IMPLEMENTATION */
 
 #endif
+)
+

@@ -51,7 +51,7 @@ enum {
 const uint8_t  vecDefFlag             = 1;
 const uint8_t  vecGblMetaDataSize     = sizeof (vecMetaDataHeader) + vecDefFlag;
 const uint8_t  vecGblDataBlockSize    = sizeof (vec_t);
-const uint8_t  vecGblSegmentCap       = 0x100;
+const uint16_t  vecGblSegmentCap       = 0x100;
 const uint16_t vecGlbSegmentAllocSize = vecGblDataBlockSize * vecGblSegmentCap;
 #define        vecGblInverse256         0.00390625;
 
@@ -262,7 +262,7 @@ __NONNULL__ void *VEC_sAdd(vec_t *vec, void *new, size_t bytes, size_t i) {
 
 
   row = (row = (i >> 8)) + !!(i - (row << 8));                    /* row index */
-  col = vecSegmentBlockCap * (1 - (p - (vecGblInverse256 * i)));  /* Column index */
+  col = vecSegmentBlockCap * (1 - (row - (vecGblInverse256 * i)));  /* Column index */
 
   if ( *vec && (row > VEC_size(*vec)) ) {
 	/* OUT OF BOUND */

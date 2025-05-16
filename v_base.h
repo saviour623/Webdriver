@@ -70,7 +70,8 @@ typedef struct {
 vec_t VEC_create(size_t, const VEC_set);
 __NONNULL__ void *VEC_add(vec_t *, void *, size_t, size_t);
 __NONNULL__ void *VEC_remove(vec_t *, ssize_t);
-__NONNULL__ void *VEC_request(vec_t vec, ssize_t propertyIndex);
+__NONNULL__ void *VEC_request(vec_t, ssize_t);
+__NONNULL__ void *VEC_delete(vec_t *);
 
 /* MACRO variants */
 #
@@ -95,6 +96,7 @@ __NONNULL__ void *VEC_request(vec_t vec, ssize_t propertyIndex);
  * A typical to @MvpgAlloc looks like: mvpgAlloc(&memptr, 8)
  */
 
+#ifdef VEC_INTERNAL_IMPLEMENTATION
 #if (_POSIX_C_SOURCE >= 200112L) || (_DEFAULT_SOURCE || _BSD_SOURCE || (XOPEN_SOURCE >= 500))
 #define MvpgMalloc(memptr, size) posix_memalign(memptr, MVPG_ALLOC_MEMALIGN, size)
 #else
@@ -102,7 +104,7 @@ __NONNULL__ void *VEC_request(vec_t vec, ssize_t propertyIndex);
 #define MvpgMalloc(*memptr, size) malloc(size)
 #endif
 
-void *mvpgAlloc(void *memptr, size_t size) {
+__NONNULL__ static void *mvpgAlloc(void *memptr, size_t size) {
   void **memAllocPtr;
 
   memAllocPtr = memptr;
@@ -123,4 +125,6 @@ void *mvpgAlloc(void *memptr, size_t size) {
   memset(*memAllocPtr, 0, size);
   return *memAllocPtr;
 }
+#endif /* VEC_INTERNAL_IMPLEMENTATION */
+
 #endif

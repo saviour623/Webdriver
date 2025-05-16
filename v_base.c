@@ -1,3 +1,4 @@
+#define VEC_INTERNAL_IMPLEMENTATION
 #include "v_base.h"
 
 /* Allow size-bound check on request */
@@ -47,7 +48,7 @@ enum {
 * @3 Size of allocation block for entries
 * @3 Size of segment
 */
-const uint8_t  vecDefFlag          = 1;
+const uint8_t  vecDefFlag             = 1;
 const uint8_t  vecGblMetaDataSize     = sizeof (vecMetaDataHeader) + vecDefFlag;
 const uint8_t  vecGblDataBlockSize    = sizeof (vec_t);
 const uint16_t vecGlbSegmentAllocSize = 1 << 8;
@@ -55,23 +56,22 @@ const uint16_t vecGlbSegmentAllocSize = 1 << 8;
 /**
 * (macros)
 *
-* @VEC_setMetaData & @VEC_setMetaData: Get/set meta-data in header
+* @VEC_metaData: Get/set meta-data in header
 * @VEC_peekBlockStart: Temporarily view the starting block of the vector
-* @VEC_getSize: Request or update the size of the container
+* @VEC_size: Request or update the size of the container
 * @VEC_moveToMainBlock: Move pointer to the data section
 * @VEC_moveToBlockStart: Move the pointer to the start of the contaner’s block
-* @VEC_ACCESS: reinterpret as pointer to single byte memory
-* @VEC_nextblock/VEC_prevblock: increment/decrement memory pointer
+* @VEC_reinterpret: Reinterpret as pointer to single byte memory
+* @VEC_nextblock & @VEC_prevblock: Increment/decrement memory pointer
 */
-#define VEC_setMetaData VEC_getMetaData
-#define VEC_getMetaData(vec, ...)   ((VEC_reinterpret(vec) - vecDefFlag)[0])
-#define VEC_peekBlockStart(vec)     (void *)(VEC_reinterpret(vec) - vecGblMetaDataSize)
-#define VEC_getSize(vec)            ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcapSize
-#define VEC_moveToMainBlock(vec)    ((vec) = (void * )(VEC_reinterpret(vec) + vecGblMetaDataSize))
-#define VEC_moveToBlockStart(vec)   ((vec) = VEC_peekBlockStart(vec))
-#define VEC_reinterpret(_addr)      ((uint8_t *)(void *)(_addr))
-#define VEC_nextblock(block)        ((block)++)
-#define VEC_prevblock(block)        ((block)--)
+#define VEC_metaData(vec, ...)    ((VEC_reinterpret(vec) - vecDefFlag)[0])
+#define VEC_peekBlockStart(vec)   (void *)(VEC_reinterpret(vec) - vecGblMetaDataSize)
+#define VEC_size(vec)             ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcapSize
+#define VEC_moveToMainBlock(vec)  ((vec) = (void * )(VEC_reinterpret(vec) + vecGblMetaDataSize))
+#define VEC_moveToBlockStart(vec) ((vec) = VEC_peekBlockStart(vec))
+#define VEC_reinterpret(_addr)    ((uint8_t *)(void *)(_addr))
+#define VEC_nextblock(block)      ((block)++)
+#define VEC_prevblock(block)      ((block)--)
 
 /**
  * if VEC_TRACE_DEL is defined, caching is enabled. Memory of deleted contents of are cached rather than being freed.
@@ -143,11 +143,11 @@ static __NONNULL__ vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
 
   block = (void *)VEC_moveToMainBlock(vec);
 
-  VEC_getSize(vec) = segment;
+  VEC_size(vec) = segment;
 
   /* enable/disable action (memfill) if segment size is lesser/greater than the number of reasonable malloc call per function. 0 >= n <= 2^8 is choosen as the limit */
   action = action >> (segment > (2 << 8));
-  VEC_setMetaData(vec) = VEC_SEGTBLK & (!!action & VEC_MALLOCD_ALL);
+  VEC_metaData(vec) = VEC_SEGTBLK & (!!action & VEC_MALLOCD_ALL);
 
   do {
 	mvpgAlloc(block, vecGlbSegmentAllocSize);
@@ -184,7 +184,7 @@ vec_t VEC_create(size_t size, const VEC_set config) {
   mvpgAlloc(&vec, (vecGblDataBlockSize * size) + vecGblMetaDataSize);
 
   VEC_moveToMainBlock(vec);
-  VEC_getSize(vec) = size;
+  VEC_size(vec) = size;
 
   return vec;
 }
@@ -198,7 +198,7 @@ __NONNULL__ vec_t VEC_resize(vec_t *vec, ssize_t newSize) {
   void *alloc;
   ssize_t oldSize, allocSize;
 
-  oldSize = VEC_getSize(*vec);
+  oldSize = VEC_size(*vec);
 
   /* TODO:  handle overflow */
   allocSize = (vecGblDataBlockSize * (newSize + VEC_ALLOC_SIZE)) + vecGblMetaDataSize;
@@ -211,7 +211,7 @@ __NONNULL__ vec_t VEC_resize(vec_t *vec, ssize_t newSize) {
   (allocSize > 1) &&  memset((alloc + oldSize), 0, vecGblDataBlockSize * allocSize);
 
   *vec = VEC_moveToMainBlock(alloc);
-  VEC_getSize(alloc) = newSize + 1;
+  VEC_size(alloc) = newSize + 1;
 
   return alloc;
 }
@@ -224,7 +224,7 @@ __NONNULL__ vec_t VEC_resize(vec_t *vec, ssize_t newSize) {
 static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t propertyIndex) {
   vec_t property __MB_UNUSED__;
 
-  if (VEC_getSize(*vec) > propertyIndex) {
+  if (VEC_size(*vec) > propertyIndex) {
 	property = *vec + propertyIndex;
 
 #ifdef VEC_ENABLED_CACHE
@@ -262,7 +262,7 @@ __NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytes, size_t propertyIn
 __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_baseRequest(vec_t vec, ssize_t propertyIndex) {
   size_t size;
 
-  size = VEC_getSize(vec);
+  size = VEC_size(vec);
   propertyIndex = propertyIndex < 0 ? size + propertyIndex : propertyIndex;
 
   if (propertyIndex >= size || propertyIndex < 0) {
@@ -289,14 +289,14 @@ __STATIC_FORCE_INLINE_F __NONNULL__ uint8_t VEC_getLevel(void *vec) {
   /*
    * Non vector if; v & VEC_VECTOR is 0
    */
-  return VEC_getMetaData(vec) & VEC_VECTOR;
+  return VEC_metaData(vec) & VEC_VECTOR;
 }
 
 /**
  * VEC_free
  */
 __STATIC_FORCE_INLINE_F bool VEC_free(void *rt) {
-  free(VEC_getLevel(rt) ? VEC_moveToBlockStart(rt) : (VEC_ACCESS(rt) - vecDefFlag));
+  free(VEC_getLevel(rt) ? VEC_moveToBlockStart(rt) : (VEC_reinterpret(rt) - vecDefFlag));
 
   return true;
 }
@@ -315,7 +315,7 @@ __NONNULL__ void *VEC_remove(vec_t *vec, ssize_t propertyIndex) {
   (property = VEC_baseRequest(*vec, propertyIndex));
   free(*property);
   /* TODO: fix the possibility of overflow */
-  memmove(property + 1, property, (VEC_getSize(*vec) - propertyIndex) * vecGblDataBlockSize);
+  memmove(property + 1, property, (VEC_size(*vec) - propertyIndex) * vecGblDataBlockSize);
   /* TODO; shrink container to current size */
 #endif
   return NULL;
@@ -334,26 +334,9 @@ __STATIC_FORCE_INLINE_F void *VEC_shrink(void *ptr) {
 /**
  *  VEC_delete
  */
-static __NONNULL__ void *VEC_delete(vec_t *vec) {
+__NONNULL__ void *VEC_delete(vec_t *vec) {
 
   /* NOT IMPLEMENTED */
 
   return NULL;
-}
-
-int main(void) {
-  size_t x;
-  int *intArray;
-  VEC_set config = {.type = 1 , .memfill = 0};
-  int **vec;
-
-  vec = (void *)VEC_new(131072, config);
-
-  int data[][6] = {
-				   {0, 2, 4, 6, 8, 10}, {1, 3, 5, 7, 9, 11},
-				   {2, 3, 5, 7, 11, 13}, {4, 16, 32, 64, 128},
-  };
-
-  VEC_delete((void *)&vec);
-  return 0;
 }

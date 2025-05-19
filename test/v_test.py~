@@ -1,0 +1,12 @@
+import sys, math
+
+def segment(a):
+    s = a >> 8
+    s = s + (a - (s << 8))
+
+    return a
+
+def main(None):
+    a = int(input("split block size").split(" "))
+    print(segment(a)
+

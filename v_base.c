@@ -110,7 +110,7 @@ __STATIC_FORCE_INLINE_F void VEC_rcache(void *vec, size_t at) {
 
   /*
    * if the difference between the initial memory address of the container and that
-   * of the cache pointer equals that of the requested index, we had cached the
+   * of the cache pointer equals that of the requested i, we had cached the
    * memory on a previous operation
    */
   while (cacheLoc && (ptrdiff_t)((cacheLoc - (vec_t)vec) != at))
@@ -219,22 +219,22 @@ __NONNULL__ vec_t VEC_resize(vec_t *vec, ssize_t newSize) {
  *
  * Appends new data to vector
  */
-static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t index) {
+static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t i) {
   vec_t property __MB_UNUSED__;
 
-  if (VEC_size(*vec) > index) {
-	property = *vec + index;
+  if (VEC_size(*vec) > i) {
+	property = *vec + i;
 
 #ifdef VEC_ENABLED_CACHE
-	VEC_rcache(*vec, index);
+	VEC_rcache(*vec, i);
 #else
 	*property && VEC_free(*property);
 #endif
 	*property = new;
   }
   else {
-	VEC_resize(vec, index);
-	(*vec)[index] = new;
+	VEC_resize(vec, i);
+	(*vec)[i] = new;
   }
   return *vec;
 }
@@ -242,7 +242,7 @@ static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t in
 /**
  * VEC_add
  */
-__NONNULL__ void *VEC_addImpl1(vec_t *vec, void *new, size_t bytes, size_t index) {
+__NONNULL__ void *VEC_addImpl1(vec_t *vec, void *new, size_t bytes, size_t i) {
   void *_new;
 
   if (!*vec || !bytes || !(_new = malloc(bytes + vecDefFlag)))
@@ -251,50 +251,56 @@ __NONNULL__ void *VEC_addImpl1(vec_t *vec, void *new, size_t bytes, size_t index
   _new = (uint8_t *)_new + vecDefFlag;
   memcpy(_new, new, bytes);
 
-  return VEC_append(vec, _new, index);
+  return VEC_append(vec, _new, i);
 }
 
-__NONNULL__ void *VEC_addImpl2(vec_t *vec, void *new, size_t bytes, size_t index) {
-  size_t tbIndex;
+__NONNULL__ void *VEC_addImpl2(vec_t *vec, void *new, size_t bytes, size_t i) {
+  size_t row, col;
+  segmentBlock *pRow;
 
-  tbIndex = (tbIndex = (index >> 8)) + !!(index - (tbindex << 8));
+#define INVERSE_256 .00390625 /* 1 / 256 */
 
-  if (tbIndex > VEC_size(*vec)) {
+  row = (row = (i >> 8)) + !!(i - (row << 8));  /* row index */
+  col = 256 * (1 - (p - (INVERSE_256 * i)));     /* Column index */
+
+  if ( *vec && (row > VEC_size(*vec)) ) {
 	/* OUT OF BOUND */
-	fprintf(stderr, "[OUT OF BOUND] invalid access to property at index %lu\n", (long)index);
+	fprintf(stderr, "[OUT OF BOUND] invalid access to property at i %lu\n", (long)i);
 	return NULL;
   }
-  
+  pRow = (*vec)[row];
+  (! pRow->blockFill) && mvpgAlloc(pRow, vecGlbSegmentAllocSize);
+  memcpy((*vec)[row][col], new, bytes);
 }
 
 /**
  * VEC_request
  */
-__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_baseRequest(vec_t vec, ssize_t index) {
+__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_baseRequest(vec_t vec, ssize_t i) {
   size_t size;
 
   size = VEC_size(vec);
-  index = index < 0 ? size + index : index;
+  i = i < 0 ? size + i : i;
 
-  if (index >= size || index < 0) {
-	throwError("required index is out of bound");
+  if (i >= size || i < 0) {
+	throwError("required i is out of bound");
 	exit(EXIT_FAILURE);
   }
-  return vec + index;
+  return vec + i;
 }
 /* retrieve data from container located at @request */
-__NONNULL__ void *VEC_request(vec_t vec, ssize_t index) {
-  return *(vec_t)(VEC_baseRequest(vec, index));
+__NONNULL__ void *VEC_request(vec_t vec, ssize_t i) {
+  return *(vec_t)(VEC_baseRequest(vec, i));
 }
 
 /**
  * VEC_requestAt
  */
-__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_requestAt(vec_t *vec, ssize_t index, ssize_t at) {
+__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_requestAt(vec_t *vec, ssize_t i, ssize_t at) {
   void *itemAt;
 
   itemAt = VEC_request(*vec, at);
-  return itemAt ? VEC_request(&itemAt, index) : NULL;
+  return itemAt ? VEC_request(&itemAt, i) : NULL;
 }
 __STATIC_FORCE_INLINE_F __NONNULL__ uint8_t VEC_getLevel(void *vec) {
   /*
@@ -315,18 +321,18 @@ __STATIC_FORCE_INLINE_F bool VEC_free(void *rt) {
 /**
  * VEC_remove
  */
-__NONNULL__ void *VEC_remove(vec_t *vec, ssize_t index) {
+__NONNULL__ void *VEC_remove(vec_t *vec, ssize_t i) {
 
 #ifdef VEC_TRACE_DEL
   /* cache empty vector slot */
-  VEC_cache(*vec, index);
+  VEC_cache(*vec, i);
 #else
   vec_t property;
 
-  (property = VEC_baseRequest(*vec, index));
+  (property = VEC_baseRequest(*vec, i));
   free(*property);
   /* TODO: fix the possibility of overflow */
-  memmove(property + 1, property, (VEC_size(*vec) - index) * vecGblDataBlockSize);
+  memmove(property + 1, property, (VEC_size(*vec) - i) * vecGblDataBlockSize);
   /* TODO; shrink container to current size */
 #endif
   return NULL;

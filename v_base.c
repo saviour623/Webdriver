@@ -51,7 +51,9 @@ enum {
 const uint8_t  vecDefFlag             = 1;
 const uint8_t  vecGblMetaDataSize     = sizeof (vecMetaDataHeader) + vecDefFlag;
 const uint8_t  vecGblDataBlockSize    = sizeof (vec_t);
-const uint16_t vecGlbSegmentAllocSize = 1 << 8;
+const uint8_t  vecGblSegmentCap       = 0x100;
+const uint16_t vecGlbSegmentAllocSize = vecGblDataBlockSize * vecGblSegmentCap;
+#define        vecGblInverse256         0.00390625;
 
 /**
 * (macros)
@@ -242,7 +244,7 @@ static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t i)
 /**
  * VEC_add
  */
-__NONNULL__ void *VEC_addImpl1(vec_t *vec, void *new, size_t bytes, size_t i) {
+__NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytes, size_t i) {
   void *_new;
 
   if (!*vec || !bytes || !(_new = malloc(bytes + vecDefFlag)))
@@ -254,14 +256,13 @@ __NONNULL__ void *VEC_addImpl1(vec_t *vec, void *new, size_t bytes, size_t i) {
   return VEC_append(vec, _new, i);
 }
 
-__NONNULL__ void *VEC_addImpl2(vec_t *vec, void *new, size_t bytes, size_t i) {
+__NONNULL__ void *VEC_sAdd(vec_t *vec, void *new, size_t bytes, size_t i) {
   size_t row, col;
-  segmentBlock *pRow;
+  segmentBlock *pRow __MB_UNUSED__ ;
 
-#define INVERSE_256 .00390625 /* 1 / 256 */
 
-  row = (row = (i >> 8)) + !!(i - (row << 8));  /* row index */
-  col = 256 * (1 - (p - (INVERSE_256 * i)));     /* Column index */
+  row = (row = (i >> 8)) + !!(i - (row << 8));                    /* row index */
+  col = vecSegmentBlockCap * (1 - (p - (vecGblInverse256 * i)));  /* Column index */
 
   if ( *vec && (row > VEC_size(*vec)) ) {
 	/* OUT OF BOUND */
@@ -269,8 +270,13 @@ __NONNULL__ void *VEC_addImpl2(vec_t *vec, void *new, size_t bytes, size_t i) {
 	return NULL;
   }
   pRow = (*vec)[row];
-  (! pRow->blockFill) && mvpgAlloc(pRow, vecGlbSegmentAllocSize);
-  memcpy((*vec)[row][col], new, bytes);
+
+  /* memory may not be pre-allocated to row */
+  (pRow == NULL)
+	&& mvpgAlloc(pRow, vecGlbSegmentAllocSize);
+
+  pRow->blockFill += 1;
+  memcpy((*vec)[row][col], new, bytes);  /* copy */
 }
 
 /**

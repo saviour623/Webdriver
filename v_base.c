@@ -41,13 +41,13 @@ enum {
 };
 
 /**
-* (gblobal)
-*
-* @1 flags (fits in a single byte)
-* @2 Meta-data size
-* @3 Size of allocation block for entries
-* @3 Size of segment
-*/
+ * (gblobal)
+ *
+ * @1 flags (fits in a single byte)
+ * @2 Meta-data size
+ * @3 Size of allocation block for entries
+ * @3 Size of segment
+ */
 const uint8_t  vecDefFlag             = 1;
 const uint8_t  vecGblMetaDataSize     = sizeof (vecMetaDataHeader) + vecDefFlag;
 const uint8_t  vecGblDataBlockSize    = sizeof (vec_t);
@@ -56,16 +56,16 @@ const uint16_t vecGlbSegmentAllocSize = vecGblDataBlockSize * vecGblSegmentBlock
 #define        vecGblInverse256         0.00390625
 
 /**
-* (macros)
-*
-* @VEC_metaData: Get/set meta-data in header
-* @VEC_peekBlockStart: Temporarily view the starting block of the vector
-* @VEC_size: Request or update the size of the container
-* @VEC_moveToMainBlock: Move pointer to the data section
-* @VEC_moveToBlockStart: Move the pointer to the start of the contaner’s block
-* @VEC_reinterpret: Reinterpret as pointer to single byte memory
-* @VEC_nextblock & @VEC_prevblock: Increment/decrement memory pointer
-*/
+ * (macros)
+ *
+ * @VEC_metaData: Get/set meta-data in header
+ * @VEC_peekBlockStart: Temporarily view the starting block of the vector
+ * @VEC_size: Request or update the size of the container
+ * @VEC_moveToMainBlock: Move pointer to the data section
+ * @VEC_moveToBlockStart: Move the pointer to the start of the contaner’s block
+ * @VEC_reinterpret: Reinterpret as pointer to single byte memory
+ * @VEC_nextblock & @VEC_prevblock: Increment/decrement memory pointer
+ */
 #define VEC_metaData(vec, ...)    ((VEC_reinterpret(vec) - vecDefFlag)[0])
 #define VEC_peekBlockStart(vec)   (void *)(VEC_reinterpret(vec) - vecGblMetaDataSize)
 #define VEC_size(vec)             ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcapSize
@@ -79,29 +79,29 @@ const uint16_t vecGlbSegmentAllocSize = vecGblDataBlockSize * vecGblSegmentBlock
  * if VEC_TRACE_DEL is defined, caching is enabled. Memory of deleted contents of are cached rather than being freed.
  * This minimizes the frequent call to a memory allocator, at a cost of speed of insertion, since the list of deleted
  * content may have to be scanned for each insertion request.
-*/
+ */
 #ifdef VEC_ENABLE_CACHE
 
 /**
  * TODO: cache only memory, ignore location of content
  */
-__STATIC_FORCE_INLINE_F void VEC_cache(const void *vec, size_t at) {
-  vec_t slot, cacheLoc;
-  vecMetaDataHeader *cacheInfo __MAY_ALIAS__;
+  __STATIC_FORCE_INLINE_F void VEC_cache(const void *vec, size_t at) {
+	vec_t slot, cacheLoc;
+	vecMetaDataHeader *cacheInfo __MAY_ALIAS__;
 
-  cacheInfo = (vecMetaDataHeader *)VEC_peekBlockStart(vec);
-  cacheLoc = &(cacheInfo->vcache);
+	cacheInfo = (vecMetaDataHeader *)VEC_peekBlockStart(vec);
+	cacheLoc = &(cacheInfo->vcache);
 
-  /* TODO: size-bound check (use request) */
-  slot = (vec_t)vec + at;
-  /* cache only slot, discard its content */
-  (*slot != NULL) && VEC_free(*slot);
-  *slot = *cacheLoc, *cacheLoc = slot;
+	/* TODO: size-bound check (use request) */
+	slot = (vec_t)vec + at;
+	/* cache only slot, discard its content */
+	(*slot != NULL) && VEC_free(*slot);
+	*slot = *cacheLoc, *cacheLoc = slot;
 
 
-  cacheInfo->vcacheSize += 1;
-  cacheInfo->vcapSize -= 1;
-}
+	cacheInfo->vcacheSize += 1;
+	cacheInfo->vcapSize -= 1;
+  }
 
 __STATIC_FORCE_INLINE_F void VEC_rcache(void *vec, size_t at) {
   vec_t cacheLoc, cachePrevLoc;
@@ -132,7 +132,7 @@ __STATIC_FORCE_INLINE_F void VEC_rcache(void *vec, size_t at) {
  * VEC_SEGMENT
  *
  * segments vector into blocks
-*/
+ */
 static __NONNULL__ vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
   segmentBlock **block;
   uint32_t segment;
@@ -196,20 +196,15 @@ vec_t VEC_create(size_t size, const VEC_set config) {
  */
 __NONNULL__ vec_t VEC_resize(vec_t *vec, ssize_t newSize) {
   void *alloc;
-  ssize_t oldSize, allocSize;
+  ssize_t allocSize;
 
-  oldSize = VEC_size(*vec);
 
   /* TODO:  handle overflow */
   allocSize = (vecGblDataBlockSize * (newSize + VEC_ALLOC_SIZE)) + vecGblMetaDataSize;
 
   /* resize container */
-  if (!(alloc = realloc(VEC_moveToBlockStart(*vec), allocSize)) )
-	return (vec_t)NULL;
-
-  allocSize = newSize - oldSize; /* padded size (reuse of var ’allocSize’) */
-  (allocSize > 1) &&  memset((alloc + oldSize), 0, vecGblDataBlockSize * allocSize);
-
+  mvpgAlloc(&alloc, allocSize, 0);
+  memcpy(alloc, VEC_moveToBlockStart(*vec), (vecGblDataBlockSize * VEC_size(*vec)) + vecGblMetaDataSize);
   *vec = VEC_moveToMainBlock(alloc);
   VEC_size(alloc) = newSize + 1;
 
@@ -217,76 +212,41 @@ __NONNULL__ vec_t VEC_resize(vec_t *vec, ssize_t newSize) {
 }
 
 /**
- * VEC_APPEND
- *
- * Appends new data to vector
- */
-static __inline__  __NONNULL__ vec_t VEC_append(vec_t *vec, void *new, size_t i) {
-  vec_t property __MB_UNUSED__;
-
-  if (VEC_size(*vec) > i) {
-	property = *vec + i;
-
-#ifdef VEC_ENABLED_CACHE
-	VEC_rcache(*vec, i);
-#else
-	*property && VEC_free(*property);
-#endif
-	*property = new;
-  }
-  else {
-	VEC_resize(vec, i);
-	(*vec)[i] = new;
-  }
-  return *vec;
-}
-
-/**
  * VEC_add
  */
-__NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytes, size_t i) {
-  void *_new;
+__NONNULL__ void VEC_add(vec_t *vec, void *new, size_t size, size_t i) {
 
-  if (!*vec || !bytes || !(_new = malloc(bytes + vecDefFlag)))
-	return NULL;
+  assert (*vec);
 
-  _new = (uint8_t *)_new + vecDefFlag;
-  memcpy(_new, new, bytes);
-
-  return VEC_append(vec, _new, i);
+  (VEC_size(*vec) > i) && VEC_resize(vec, i);
+  (*vec)[i] = NULL;
+  memcpy(*vec + i, new, size);
+  VEC_size(*vec) += 1;
 }
 
 #define peekBlkStart(seg) ((segmentBlock *)(VEC_reinterpret(seg) - sizeof (segmentBlock)))
 
 
-__NONNULL__ void *VEC_sAdd(vec_t *vec, void *new, size_t bytes, size_t i) {
+__NONNULL__ void VEC_sAdd(vec_t *vec, void *new, size_t size, size_t i) {
   size_t row, col;
   segmentBlock *pRow __MB_UNUSED__ ;
 
-  assert(*vec); /* fail, if null */
+  assert(*vec);
 
-  row = (i >> 8) + !!(i & 0xff);                    /* row index */
+  row = (i >> 8) + !!( i & 0xff );                    /* row index */
   col = vecGblSegmentBlockCap * (1 - (row - (vecGblInverse256 * i)));  /* Column index */
 
-  if (row > VEC_size(*vec)) {
-	/* TODO: resize vector */
-	return NULL;
-  }
-  pRow = (*vec)[row]; /* move to start of block */
+  (row > VEC_size(*vec)) && VEC_resize(vec, row);
 
-/* memory may not have been pre-allocated to row */
-(pRow == NULL) && mvpgAlloc(pRow, vecGlbSegmentAllocSize, sizeof (segmentBlock));
+  /* space may not have been allocated to row */
+  (pRow == NULL) && mvpgAlloc(pRow, vecGlbSegmentAllocSize, sizeof (segmentBlock));
 
-peekBlkStart(pRow)->blockFill += 1;
-memcpy(pRow + col, new, bytes);  /* copy */
+  peekBlkStart(pRow)->blockFill += 1;
+  memcpy(pRow + col, new, size);
 }
 
 #undef peekBlkStart
-/*
-  []
-[]
-[]
-*/
+
 /**
  * VEC_request
  */

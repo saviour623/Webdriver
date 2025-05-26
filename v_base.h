@@ -68,7 +68,7 @@ typedef struct {
 } VEC_set;
 
 vec_t VEC_create(size_t, const VEC_set);
-__NONNULL__ void *VEC_add(vec_t *, void *, size_t, size_t);
+__NONNULL__ void VEC_add(vec_t *, void *, size_t, size_t);
 __NONNULL__ void *VEC_remove(vec_t *, ssize_t);
 __NONNULL__ void *VEC_request(vec_t, ssize_t);
 __NONNULL__ void *VEC_delete(vec_t *);

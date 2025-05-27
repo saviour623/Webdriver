@@ -9,9 +9,6 @@
 #define VEC_DEBUG 1
 #endif
 
-static __NONNULL__ vec_t VEC_append(vec_t *, void *, size_t);
-__STATIC_FORCE_INLINE_F bool VEC_free(void *);
-
 /* Meta-data */
 typedef struct {
   uint32_t vcapSize;
@@ -141,7 +138,7 @@ static __NONNULL__ vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
   segment = (segment = (size >> 8)) + !!(size - (segment << 8));
 
   /* allocate memory of size equal to segment to vwctor */
-  mvpgAlloc(&vec, (vecGblDataBlockSize * segment) + vecGblMetaDataSize, 0);
+  mvpgAlloc(&vec, safeMulAdd(vecGblDataBlockSize, segment, vecGblMetaDataSize), 0);
 
   block = (void *)VEC_moveToMainBlock(vec);
 
@@ -181,8 +178,7 @@ vec_t VEC_create(size_t size, const VEC_set config) {
 	return VEC_segment(vec, size, config.memfill);
   }
   /* traditional vector with a large, single block */
-  mvpgAlloc(&vec, (vecGblDataBlockSize * size) + vecGblMetaDataSize, 0);
-
+  mvpgAlloc(&vec, safeMulAdd(vecGblDataBlockSize, size, vecGblMetaDataSize), 0);
   VEC_moveToMainBlock(vec);
   VEC_size(vec) = size;
 
@@ -198,15 +194,13 @@ __NONNULL__ vec_t VEC_resize(vec_t *vec, ssize_t newSize) {
   void *alloc;
   ssize_t allocSize;
 
+  allocSize = safeMulAdd(vecGblDataBlockSize, newSize, vecGblMetaDataSize);
 
-  /* TODO:  handle overflow */
-  allocSize = (vecGblDataBlockSize * (newSize + VEC_ALLOC_SIZE)) + vecGblMetaDataSize;
-
-  /* resize container */
   mvpgAlloc(&alloc, allocSize, 0);
-  memcpy(alloc, VEC_moveToBlockStart(*vec), (vecGblDataBlockSize * VEC_size(*vec)) + vecGblMetaDataSize);
+  VEC_moveToBlockStart(*vec);
+  memcpy(alloc, *vec, safeMulAdd(vecGblDataBlockSize, VEC_size(*vec), vecGblMetaDataSize));
   *vec = VEC_moveToMainBlock(alloc);
-  VEC_size(alloc) = newSize + 1;
+  VEC_size(alloc) = newSize;
 
   return alloc;
 }

@@ -20,16 +20,13 @@
 #define __FORCE_INLINE__
 #endif
 #define __NONNULL__ __attribute__((nonnull))
-#define CHOOSE_EXPR(cExpr, tVal, fVal) __builtin_choose_expr(cExpr, tVal, fVal)
 #define __STATIC_FORCE_INLINE_F static __inline__ __FORCE_INLINE__
 
 #if defined(__GNUC__) || defined(__clang__)
-#define __EXPR_LIKELY__(T, L) __builtin_expect(T, L)
 #define __MAY_ALIAS__ __attribute__((may_alias))
 #define __MB_UNUSED__ __attribute__((unused))
 #else
 #define __MAY_ALIAS__
-#define __EXPR_LIKELY__(T, L) T
 #define __MB_UNUSED__
 #endif
 
@@ -57,27 +54,33 @@
 #define MACR_INDIRECT_CAT(A, A1) A ## A1
 #define MACR_DO_ELSE(_true, _false, ...) MACR_CAT(MACR_IF_EMPTY_, MACR_NON_EMPTY(__VA_ARGS__))(_true, _false)
 
-/**
- *  PROTOTYPES (func/types)
- */
-	  typedef void ** vec_t;
+/***********************************************************
+
+ * PROTOTYPES
+
+************************************************************/
+
+typedef void ** vec_t;
+
 typedef struct {
-  /* feature flags */
   uint16_t alignSize;
   uint8_t  native, type, memfill;
 } VEC_set;
 
-vec_t VEC_create(size_t, const VEC_set);
-__NONNULL__ void VEC_add(vec_t *, void *, size_t, size_t);
+            vec_t VEC_create(size_t, const VEC_set);
+__NONNULL__ void  VEC_add(vec_t *, void *, size_t, size_t);
 __NONNULL__ void *VEC_remove(vec_t *, ssize_t);
 __NONNULL__ void *VEC_request(vec_t, ssize_t);
 __NONNULL__ void *VEC_delete(vec_t *);
+__NONNULL__ bool  VEC_free(void *);
 
-/* MACRO variants */
-#
-#
-#
-/*
+/***********************************************************
+
+ * MACRO function variants
+
+************************************************************/
+
+/**
  * VEC_NEW
  *
  * (macro: alias -> VEC_create)
@@ -85,6 +88,13 @@ __NONNULL__ void *VEC_delete(vec_t *);
  */
 #define VEC_new(size_t_size, ...)										\
   MACR_DO_ELSE(VEC_create(size_t_size, MACR_DO_ELSE((__VA_ARGS__), 0, __VA_ARGS__)), (throwError(NULL)), size_t_size)
+
+/***********************************************************
+
+ * ALLOCATOR
+
+************************************************************/
+
 
 /**
  *  MVPGALLOC - Mvpg Memory Allocator
@@ -109,10 +119,11 @@ __NONNULL__ void *VEC_delete(vec_t *);
 #define prvpMulp2(n, m) ((n) - ((n) & ((m) - 1))) /* multiple of m (power of 2),  < N */
 #define nxtMulp2(n, m)   ((((n) >> m) + 1) << m) /* multiple of m (power of 2), > N */
 
-/**
- * INTERNAL API
- */
+
 #ifdef VEC_INTERNAL_IMPLEMENTATION
+/* methods visible only to internal implementation */
+
+
 #if (_POSIX_C_SOURCE >= 200112L) || (_DEFAULT_SOURCE || _BSD_SOURCE || (XOPEN_SOURCE >= 500))
 #define MvpgMalloc(memptr, size) posix_memalign(memptr, MVPG_ALLOC_MEMALIGN, size)
 /* C11 introduced a standard aligned_alloc function */
@@ -188,6 +199,38 @@ __NONNULL__ static __inline__ __FORCE_INLINE__ void *internalMemZero32Align(void
 
   return memptr;
 }
+
+/***********************************************************
+
+ * SAFE INTEGER ARITHMETIC
+
+************************************************************/
+
+
+/*
+ * SAFE_MUL_ADD
+ */
+#if defined(__GNUC__) || defined(__clang__)
+#define __bMulOverflow(a, b, c) __buiultin_mul_overflow(a, b, c)
+#define __baddOverflow(a, b, c) __buiultin_add_overflow(a, b, c)
+#elif defined(_MSC_VER) || defined(_WIN32)
+#include <NintSafe.h>
+/* WINDOWS KENRNEL API FOR SAFE ARITHMETIC
+   ...
+*/
+#define __bMulOverflow(a, b, c) /* ... */
+#define __bAddOverflow(a, b, c) /* ... */
+#else
+/* IMPLEMENT FUNCTION */
+#endif
+
+static __inline__ __FORCE_INLINE__ long safeMulAdd(unsigned long a, unsigned long b, unsigned long c) {
+  unsigned long res;
+
+  assert(!__bMulOverflow(a, b, &res) && !__bAddOverflow(res, c, &res)); /* TODO: Handle failed assertion */
+  return res;
+}
+
 
 #endif /* VEC_INTERNAL_IMPLEMENTATION */
 

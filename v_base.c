@@ -256,7 +256,7 @@ __NONNULL__ void *VEC_add(vec_t *vec, void *new, size_t bytes, size_t i) {
   return VEC_append(vec, _new, i);
 }
 
-#define peekBlkStart(seg) ((segmentBlock *)(VEC_reinterpret(seg) - sizeof (segmentBlock)));
+#define peekBlkStart(seg) ((segmentBlock *)(VEC_reinterpret(seg) - sizeof (segmentBlock)))
 
 
 __NONNULL__ void *VEC_sAdd(vec_t *vec, void *new, size_t bytes, size_t i) {

@@ -60,7 +60,7 @@
 /**
  *  PROTOTYPES (func/types)
  */
-typedef void ** vec_t;
+	  typedef void ** vec_t;
 typedef struct {
   /* feature flags */
   uint16_t alignSize;
@@ -83,7 +83,7 @@ __NONNULL__ void *VEC_delete(vec_t *);
  * (macro: alias -> VEC_create)
  * Autofill and error-check arguments before call to VEC_create
  */
-#define VEC_new(size_t_size, ...)											\
+#define VEC_new(size_t_size, ...)										\
   MACR_DO_ELSE(VEC_create(size_t_size, MACR_DO_ELSE((__VA_ARGS__), 0, __VA_ARGS__)), (throwError(NULL)), size_t_size)
 
 /**
@@ -130,7 +130,7 @@ __NONNULL__ void *VEC_delete(vec_t *);
 #define free(memptr) free(memptr) /*TODO: perform manual free */
 #endif
 
-__NONNULL__ static void *mvpgAlloc(void *memptr, size_t size) {
+  __NONNULL__ static void *mvpgAlloc(void *memptr, size_t size, size_t offset) {
   void **memAllocPtr;
 
   memAllocPtr = memptr;
@@ -147,8 +147,9 @@ __NONNULL__ static void *mvpgAlloc(void *memptr, size_t size) {
 	return NULL;
 #endif
   }
-  /* zero memory */
-  memset(*memAllocPtr, 0, size);
+  memset(*memAllocPtr, 0, size); /* clear memory */
+  *memAllocPtr += offset; /* offset */
+
   return *memAllocPtr;
 }
 
@@ -156,42 +157,38 @@ __NONNULL__ static void *mvpgAlloc(void *memptr, size_t size) {
  * MEMSET
  * MEMCPY
  */
-
 typedef struct {
-  //_Alignas(32) char alignv;
-  char p[32];
+  _Alignas(32) unsigned char p[32];
 } _InternalImplMemAlignBuf;
-
-#define fill32(n) {n, n, n, n, n, n, n, n, n, n, n, n, n, n, n, n\
-	  , n, n, n, n, n, n, n,n, n, n, n, n, n, n, n, n}
 
 #define _InternalMemAlignBufFill(fill) (long)(fill)
 
-__NONNULL__ __FORCE_INLINE__ static __inline__ void *internalMemset32Align(void *memptr, int fill, size_t size) {
+__NONNULL__ static __inline__ __FORCE_INLINE__ void *internalMemZero32Align(void *memptr, size_t size) {
   size_t split32 __MB_UNUSED__;
   size_t overflow32 __MB_UNUSED__;
   _InternalImplMemAlignBuf *ptr __MAY_ALIAS__;
 
-  unsigned char fillChar = (unsigned char)(fill);
+  unsigned char fillChar = (unsigned char)0;
 
-  _InternalImplMemAlignBuf fillBuf = fill32(fillChar);
+  _InternalImplMemAlignBuf fillBuf = {0};
 
   if ((uintptr_t)memptr & 31) {
-	return memset(memptr, fill, size);
+	return memset(memptr, 0, size);
   }
   split32    = (size & 31) ? prvMul32(size) : size >> 5;
   overflow32 = mod32(size);
   ptr        = memptr;
 
-  while (split32--) {
-	*ptr++ = fillM;
+  while ( --split32 ) {
+	*ptr++ = fillBuf;
   }
   /* cleanup */
   while (overflow32--)
-   ;
+	*(char *)ptr++ = fillChar;
 
   return memptr;
 }
+
 #endif /* VEC_INTERNAL_IMPLEMENTATION */
 
 #endif /* V_BASE_H */

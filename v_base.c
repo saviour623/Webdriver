@@ -272,7 +272,7 @@ __NONNULL__ void *VEC_sAdd(vec_t *vec, void *new, size_t bytes, size_t i) {
 	/* TODO: resize vector */
 	return NULL;
   }
-  pRow = (*vec)[row]); /* move to start of block */
+  pRow = (*vec)[row]; /* move to start of block */
 
 /* memory may not have been pre-allocated to row */
 (pRow == NULL) && mvpgAlloc(pRow, vecGlbSegmentAllocSize, sizeof (segmentBlock));

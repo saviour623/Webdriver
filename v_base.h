@@ -141,7 +141,7 @@ __NONNULL__ bool  VEC_free(void *);
 #define free(memptr) free(memptr) /*TODO: perform manual free */
 #endif
 
-  __NONNULL__ static void *mvpgAlloc(void *memptr, size_t size, size_t offset) {
+__NONNULL__ static void *mvpgAlloc(void *memptr, size_t size, size_t offset) {
   void **memAllocPtr;
 
   memAllocPtr = memptr;
@@ -211,8 +211,8 @@ __NONNULL__ static __inline__ __FORCE_INLINE__ void *internalMemZero32Align(void
  * SAFE_MUL_ADD
  */
 #if defined(__GNUC__) || defined(__clang__)
-#define __bMulOverflow(a, b, c) __buiultin_mul_overflow(a, b, c)
-#define __baddOverflow(a, b, c) __buiultin_add_overflow(a, b, c)
+#define __bMulOverflow(a, b, c) __builtin_mul_overflow(a, b, c)
+#define __bAddOverflow(a, b, c) __builtin_add_overflow(a, b, c)
 #elif defined(_MSC_VER) || defined(_WIN32)
 #include <NintSafe.h>
 /* WINDOWS KENRNEL API FOR SAFE ARITHMETIC

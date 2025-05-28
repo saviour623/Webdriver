@@ -160,18 +160,13 @@ static __NONNULL__ vec_t VEC_segment(vec_t vec, size_t size, uint8_t action) {
 /**
  * VEC_CREATE
  *
- * Constructs Vector Container
+ * Constructor
  */
-vec_t VEC_create(size_t size, const VEC_set config) {
+__attribute__ ((warn_unused_result)) vec_t VEC_create(size_t size, const VEC_set config) {
   vec_t vec;
   uint8_t _vecMetaData;
 
-  if ( !size )
-	size = VEC_MIN_SIZE;
-
-  if (!config.native) {
-	_vecMetaData = config.type;
-  }
+  !size && (size = VEC_MIN_SIZE);
 
   /* multiblock (table) */
   if (config.type & VEC_SEGTBLK) {
@@ -196,13 +191,15 @@ __NONNULL__ vec_t VEC_resize(vec_t *vec, ssize_t newSize) {
 
   allocSize = safeMulAdd(vecGblDataBlockSize, newSize, vecGblMetaDataSize);
 
-  mvpgAlloc(&alloc, allocSize, 0);
   VEC_moveToBlockStart(*vec);
+  mvpgAlloc(&alloc, allocSize, 0);
   memcpy(alloc, *vec, safeMulAdd(vecGblDataBlockSize, VEC_size(*vec), vecGblMetaDataSize));
-  *vec = VEC_moveToMainBlock(alloc);
-  VEC_size(alloc) = newSize;
+  free(*vec);
 
-  return alloc;
+  *vec = VEC_moveToMainBlock(alloc);
+  VEC_size(*vec) = newSize;
+
+  return *vec;
 }
 
 /**
@@ -280,8 +277,9 @@ __STATIC_FORCE_INLINE_F __NONNULL__ uint8_t VEC_getLevel(void *vec) {
 /**
  * VEC_free
  */
-__STATIC_FORCE_INLINE_F bool VEC_free(void *rt) {
-  free(VEC_getLevel(rt) ? VEC_moveToBlockStart(rt) : (VEC_reinterpret(rt) - vecDefFlag));
+__FORCE_INLINE__ inline bool VEC_free(void *vec) {
+
+  free( VEC_moveToBlockStart(vec) );
 
   return true;
 }

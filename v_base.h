@@ -214,14 +214,13 @@ __NONNULL__ static __inline__ __FORCE_INLINE__ void *internalMemZero32Align(void
 #define __bMulOverflow(a, b, c) __builtin_mul_overflow(a, b, c)
 #define __bAddOverflow(a, b, c) __builtin_add_overflow(a, b, c)
 #elif defined(_MSC_VER) || defined(_WIN32)
-#include <NintSafe.h>
-/* WINDOWS KENRNEL API FOR SAFE ARITHMETIC
-   ...
-*/
-#define __bMulOverflow(a, b, c) /* ... */
-#define __bAddOverflow(a, b, c) /* ... */
+/* WINDOWS KENRNEL API FOR SAFE ARITHMETIC */
+#include <ntintsafe.h>
+#define __bAddOverflow(a, b, c) (RtlLongAdd(a, b, c) == STATUS_INTEGER_OVERFLOW)
+#define __bMulOverflow(a, b, c) (RtlLongMul(a, b, c) == STATUS_INTEGER_OVERFLOW)
 #else
-/* IMPLEMENT FUNCTION */
+#define __bAddOverflow(a, b, c) !( ((a) < (ULONG_MAX - (b)))) && (*(c) = (a) + (b))
+#define __bMulOverflow(a, b, c) !( !(((a) >>(LONG_BIT>>1)) || ((b) >> (LONG_BIT>>1))))
 #endif
 
 static __inline__ __FORCE_INLINE__ long safeMulAdd(unsigned long a, unsigned long b, unsigned long c) {

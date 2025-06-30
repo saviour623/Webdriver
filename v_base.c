@@ -17,6 +17,7 @@ typedef struct {
   void     *vcache;
   uint8_t  vcacheSize;
 #endif
+  uint8_t rmcounter;
 } vecMetaDataHeader;
 
 /*
@@ -34,7 +35,8 @@ enum {
 	  VEC_SEGTBLK          = 0x01,
 	  VEC_MALLOCD_ALL      = 0x04,
 	  VEC_MEMFILL          = 0x01,
-	  VEC_ERROR_OUTOFBOUND = 0x3b
+	  VEC_ERROR_OUTOFBOUND = 0x3b,
+	  VEC_MAX_RM           = 0xff
 };
 
 /**
@@ -69,6 +71,7 @@ const uint16_t vecGlbSegmentAllocSize = vecGblDataBlockSize * vecGblSegmentBlock
 #define VEC_moveToMainBlock(vec)  ((vec) = (void * )(VEC_reinterpret(vec) + vecGblMetaDataSize))
 #define VEC_moveToBlockStart(vec) ((vec) = VEC_peekBlockStart(vec))
 #define VEC_reinterpret(_addr)    ((uint8_t *)(void *)(_addr))
+#define VEC_rmCounter(vec)        ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->rmcounter
 #define VEC_nextblock(block)      ((block)++)
 #define VEC_prevblock(block)      ((block)--)
 
@@ -240,12 +243,18 @@ __NONNULL__ void VEC_sAdd(vec_t *vec, void *new, size_t size, size_t i) {
 /**
  * VEC_remove
  */
-
 __NONNULL__ void VEC_remove(vec_t *vec, ssize_t i) {
 
   if (i < 0)
 	i = -i;
-  assert(*vec && (i <= VEC_size(vec)));
+  assert(*vec && (i <= VEC_size(*vec)));
+  (*vec)[i] = (i < SIZE_MAX - 1) && (i < VEC_size(*vec)) ? (*vec)[i + 1] : NULL;
+
+  VEC_rmCounter(*vec) += 1
+  if (VEC_rmCounter(*vec) == VEC_MAX_RM) {
+	/* TODO: cleanup */
+	VEC_rmCounter(*vec) = 0
+  }
 }
 
 __STATIC_FORCE_INLINE_F __NONNULL__ uint8_t VEC_getLevel(void *vec) {

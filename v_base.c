@@ -197,6 +197,7 @@ __NONNULL__ vec_t VEC_resize(vec_t *vec, ssize_t newSize) {
   free(*vec);
 
   *vec = VEC_moveToMainBlock(alloc);
+
   VEC_size(*vec) = newSize;
 
   return *vec;
@@ -209,10 +210,8 @@ __NONNULL__ void VEC_add(vec_t *vec, void *new, size_t size, size_t i) {
 
   assert (*vec);
 
-  (VEC_size(*vec) > i) && VEC_resize(vec, i);
-  (*vec)[i] = NULL;
-  memcpy(*vec + i, new, size);
-  VEC_size(*vec) += 1;
+  (VEC_size(*vec) < i) && VEC_resize(vec, i);
+  (*vec)[i] = new;
 }
 
 #define peekBlkStart(seg) ((segmentBlock *)(VEC_reinterpret(seg) - sizeof (segmentBlock)))
@@ -234,44 +233,34 @@ __NONNULL__ void VEC_sAdd(vec_t *vec, void *new, size_t size, size_t i) {
 
   peekBlkStart(pRow)->blockFill += 1;
   memcpy(pRow + col, new, size);
-}
 
-#undef peekBlkStart
-
-/**
- * VEC_request
- */
-__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_baseRequest(vec_t vec, ssize_t i) {
-  size_t size;
-
-  size = VEC_size(vec);
-  i = i < 0 ? size + i : i;
-
-  if (i >= size || i < 0) {
-	throwError("required i is out of bound");
-	exit(EXIT_FAILURE);
-  }
-  return vec + i;
-}
-/* retrieve data from container located at @request */
-__NONNULL__ void *VEC_request(vec_t vec, ssize_t i) {
-  return *(vec_t)(VEC_baseRequest(vec, i));
+  #undef peekBlkStart
 }
 
 /**
- * VEC_requestAt
+ * VEC_remove
  */
-__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_requestAt(vec_t *vec, ssize_t i, ssize_t at) {
-  void *itemAt;
 
-  itemAt = VEC_request(*vec, at);
-  return itemAt ? VEC_request(&itemAt, i) : NULL;
+__NONNULL__ void VEC_remove(vec_t *vec, ssize_t i) {
+
+  if (i < 0)
+	i = -i;
+  assert(*vec && (i <= VEC_size(vec)));
 }
+
 __STATIC_FORCE_INLINE_F __NONNULL__ uint8_t VEC_getLevel(void *vec) {
   /*
    * Non vector if; v & VEC_VECTOR is 0
    */
   return VEC_metaData(vec) & VEC_VECTOR;
+}
+
+/**
+ * Get size of vector
+ */
+__NONNULL__ size_t VEC_getsize(const vec_t vec) {
+
+  return VEC_size(vec);
 }
 
 /**
@@ -282,26 +271,6 @@ __FORCE_INLINE__ inline bool VEC_free(void *vec) {
   free( VEC_moveToBlockStart(vec) );
 
   return true;
-}
-
-/**
- * VEC_remove
- */
-__NONNULL__ void *VEC_remove(vec_t *vec, ssize_t i) {
-
-#ifdef VEC_TRACE_DEL
-  /* cache empty vector slot */
-  VEC_cache(*vec, i);
-#else
-  vec_t property;
-
-  (property = VEC_baseRequest(*vec, i));
-  free(*property);
-  /* TODO: fix the possibility of overflow */
-  memmove(property + 1, property, (VEC_size(*vec) - i) * vecGblDataBlockSize);
-  /* TODO; shrink container to current size */
-#endif
-  return NULL;
 }
 
 /**

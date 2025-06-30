@@ -1,0 +1,30 @@
+
+/**
+ * VEC_request
+ */
+__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_baseRequest(vec_t vec, ssize_t i) {
+  size_t size;
+
+  size = VEC_size(vec);
+  i = i < 0 ? size + i : i;
+
+  if (i >= size || i < 0) {
+	throwError("required i is out of bound");
+	exit(EXIT_FAILURE);
+  }
+  return vec + i;
+}
+/* retrieve data from container located at @request */
+__NONNULL__ void *VEC_request(vec_t vec, ssize_t i) {
+  return *(vec_t)(VEC_baseRequest(vec, i));
+}
+
+/**
+ * VEC_requestAt
+ */
+__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_requestAt(vec_t *vec, ssize_t i, ssize_t at) {
+  void *itemAt;
+
+  itemAt = VEC_request(*vec, at);
+  return itemAt ? VEC_request(&itemAt, i) : NULL;
+}

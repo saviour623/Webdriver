@@ -69,7 +69,8 @@ typedef struct {
 
             vec_t VEC_create(size_t, const VEC_set);
 __NONNULL__ void  VEC_add(vec_t *, void *, size_t, size_t);
-__NONNULL__ void *VEC_remove(vec_t *, ssize_t);
+__NONNULL__ size_t VEC_getsize(const vec_t);
+__NONNULL__ void  VEC_remove(vec_t *, ssize_t);
 __NONNULL__ void *VEC_request(vec_t, ssize_t);
 __NONNULL__ void *VEC_delete(vec_t *);
 __NONNULL__ bool  VEC_free(void *);
@@ -87,7 +88,7 @@ __NONNULL__ bool  VEC_free(void *);
  * Autofill and error-check arguments before call to VEC_create
  */
 #define VEC_new(size_t_size, ...)										\
-  MACR_DO_ELSE(VEC_create(size_t_size, MACR_DO_ELSE((__VA_ARGS__), 0, __VA_ARGS__)), (throwError(NULL)), size_t_size)
+  MACR_DO_ELSE(VEC_create(size_t_size, MACR_DO_ELSE((__VA_ARGS__), (VEC_set)0, __VA_ARGS__)), (throwError(NULL)), size_t_size)
 
 /***********************************************************
 

@@ -15,10 +15,11 @@ int main(void) {
   vec = (void *)VEC_new(2456, config);
 
   for (int i = 0; i < 30; i++) {
-	VEC_add((void *)&vec, (int[3]){1, 2, 3}, sizeof(void *), 25);
+	VEC_add((void *)&vec, data + i, sizeof(void *), i);
   }
+  VEC_remove((void *)&vec, 28);
 
-  int *v = *(vec + 25);
+  int *v = *(vec + 28);
 
   printf("value at (<object: %p> <size: %ld) -> %d\n", vec, (long int)VEC_getsize((void *)vec),*v);
   return 0;

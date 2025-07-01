@@ -76,7 +76,7 @@ __NONNULL__ void * VEC_request(vec_t, ssize_t);
 __NONNULL__ void * VEC_delete(vec_t *);
 __NONNULL__ bool   VEC_free(void *);
 __STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_findNextNonEmpty(vec_t, size_t);
-__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_get(vec_t, ssize_t);
+__STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_get(vec_t, ssize_t);
 /***********************************************************
 
  * MACRO function variants

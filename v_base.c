@@ -11,13 +11,14 @@
 
 /* Meta-data */
 typedef struct {
-  uint32_t cap;
+  uint32_t cap; /* Capacity */
 #if !defined(VEC_MAX_RM)
-#define VEC_MAX_RM 0xff
+  /* Default size of bin is 255 */
+   #define VEC_MAX_RM 0xff
 #endif
-  size_t rmbf[VEC_MAX_RM];
-  uint8_t rmct;
-} vecMetaDataHeader;
+  size_t bin[VEC_MAX_RM];
+  uint8_t bincnt;
+} VEC_metaheader;
 
 
 enum {
@@ -27,40 +28,23 @@ enum {
       VEC_REM_OPTMZ        = USHRT_MAX
 };
 
-/**
- * (gblobal)
- *
- * @1 flags (fits in a single byte)
- * @2 Meta-data size
- * @3 Size of allocation block for entries
- */
-const uint8_t  vecDefFlag          = 1;
-const uint16_t vecGblMetaDataSize  = sizeof(vecMetaDataHeader) + vecDefFlag;
-const uint16_t vecGblDataBlockSize = sizeof(vec_t);
+
+const uint8_t  vecDefFlag          = 1;  /* Keep some setup as bitwise flags */
+const uint16_t GLB_metadtSz  = sizeof(VEC_metaheader) + vecDefFlag; /* Metadata size */
+const uint16_t GLB_datablksz = sizeof(vec_t); /* Size of a block */
+
+
+#define VEC_metaData(vec, ...)    ((VEC_bytePtr(vec) - vecDefFlag)[0]) /*  Get/set meta-data in header */
+#define VEC_peekblkst(vec)        (void *)(VEC_bytePtr(vec) - GLB_metadtSz) /* Temporarily view the starting block of the vector */
+#define VEC_size(vec)             ((VEC_metaheader *)VEC_peekblkst(vec))->cap /* Request or update the size of the container */
+#define VEC_mv2MainBlk(vec)       ((vec) = (void * )(VEC_bytePtr(vec) + GLB_metadtSz)) /* Move pointer to data section */
+#define mv2blkst(vec)             ((vec) = VEC_peekblkst(vec)) /* Move the pointer to the start of vector’s block */
+#define VEC_bytePtr(vec)          ((byte *)(void *)(vec)) /* Cast to byte pointer */
+#define VEC_bin(vec)              ((VEC_metaheader *)VEC_peekblkst(vec))->bin /* Waste bin for removed indices */
+#define VEC_bincnt(vec)           ((VEC_metaheader *)VEC_peekblkst(vec))->bincnt /* bin counter */
 
 /**
- * (macros)
- *
- * @VEC_metaData: Get/set meta-data in header
- * @VEC_peekBlockStart: Temporarily view the starting block of the vector
- * @VEC_size: Request or update the size of the container
- * @VEC_moveToMainBlock: Move pointer to the data section
- * @VEC_moveToBlockStart: Move the pointer to the start of the contaner’s block
- * @VEC_reinterpret: Reinterpret as pointer to single byte memory
- */
-
-#define VEC_metaData(vec, ...)    ((VEC_reinterpret(vec) - vecDefFlag)[0])
-#define VEC_peekBlockStart(vec)   (void *)(VEC_reinterpret(vec) - vecGblMetaDataSize)
-#define VEC_size(vec)             ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->cap
-#define VEC_moveToMainBlock(vec)  ((vec) = (void * )(VEC_reinterpret(vec) + vecGblMetaDataSize))
-#define VEC_moveToBlockStart(vec) ((vec) = VEC_peekBlockStart(vec))
-#define VEC_reinterpret(_addr)    ((uint8_t *)(void *)(_addr))
-#define VEC_rmbuffer(new)         ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->rmbf
-#define VEC_rmCounter(vec)        ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->rmct
-
-
-/**
- * VEC_CREATE
+ * VEC_create
  *
  * Constructor
  */
@@ -68,15 +52,15 @@ __attribute__ ((warn_unused_result)) vec_t VEC_create(size_t size, const VEC_set
   vec_t vec;
   uint8_t _vecMetaData;
 
-  mvpgAlloc(&vec, safeMulAdd(vecGblDataBlockSize, size, vecGblMetaDataSize), 0);
-  VEC_moveToMainBlock(vec);
+  mvpgAlloc(&vec, safeMulAdd(GLB_datablksz, size, GLB_metadtSz), 0);
+  VEC_mv2MainBlk(vec);
   VEC_size(vec) = size;
 
   return vec;
 }
 
 /**
- * VEC_RESIZE
+ * VEC_resize
  *
  * resizes vector
  */
@@ -84,15 +68,14 @@ __NONNULL__ vec_t VEC_resize(vec_t *vec, ssize_t newSize) {
   void *alloc;
   ssize_t allocSize;
 
-  allocSize = safeMulAdd(vecGblDataBlockSize, newSize, vecGblMetaDataSize);
+  allocSize = safeMulAdd(GLB_datablksz, newSize, GLB_metadtSz);
 
-  VEC_moveToBlockStart(*vec);
+  mv2blkst(*vec);
   mvpgAlloc(&alloc, allocSize, 0);
-  memcpy(alloc, *vec, safeMulAdd(vecGblDataBlockSize, VEC_size(*vec), vecGblMetaDataSize));
+  memcpy(alloc, *vec, safeMulAdd(GLB_datablksz, VEC_size(*vec), GLB_metadtSz));
   free(*vec);
 
-  *vec = VEC_moveToMainBlock(alloc);
-
+  *vec = VEC_mv2MainBlk(alloc);
   VEC_size(*vec) = newSize;
 
   return *vec;
@@ -136,11 +119,13 @@ __NONNULL__ void VEC_remove(vec_t *vec, ssize_t i) {
 
   if (VEC_size(*vec) > VEC_REM_OPTMZ) {
     ((vec_t)VEC_get(*vec, i))[0] = NULL;
-    VEC_rmbuffer(*vec)[VEC_rmCounter(*vec)] = i;
-    VEC_rmCounter(*vec) += 1;
-    if (VEC_rmCounter(*vec) == VEC_MAX_RM) {
+    /* store removed index */
+    VEC_bin(*vec)[VEC_bincnt(*vec)] = i;
+    VEC_bincnt(*vec) += 1;
+    /* cleanup all removed items if bin is full */
+    if (VEC_bincnt(*vec) == VEC_MAX_RM) {
       /* TODO: cleanup */
-      VEC_rmCounter(*vec) = 0;
+      VEC_bincnt(*vec) = 0;
     }
   }
   else {
@@ -163,7 +148,7 @@ __NONNULL__ size_t VEC_getsize(const vec_t vec) {
  */
 __FORCE_INLINE__ inline bool VEC_free(void *vec) {
 
-  free( VEC_moveToBlockStart(vec) );
+  free( mv2blkst(vec) );
 
   return true;
 }

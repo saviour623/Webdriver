@@ -62,6 +62,7 @@
 ************************************************************/
 
 typedef void ** vec_t;
+typedef uint8_t byte;
 
 typedef struct {
   uint16_t alignSize;

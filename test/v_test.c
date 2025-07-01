@@ -23,3 +23,7 @@ int main(void) {
   printf("value at (<object: %p> <size: %ld) -> %d\n", vec, (long int)VEC_getsize((void *)vec),*v);
   return 0;
 }
+
+/*
+[1, 1, 1, 1, 1, 0]
+ */

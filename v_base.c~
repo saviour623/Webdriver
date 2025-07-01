@@ -33,8 +33,8 @@ enum {
 	  VEC_VECTOR           = 0x80,
 	  VEC_SEGTBLK          = 0x01,
 	  VEC_MALLOCD_ALL      = 0x04,
-	  VEC_MEMFILL          = 0x01,
-	  VEC_REM_OPTMZ        = USHRT_MAX
+	  VEC_MEMFILL          = 0x01,,
+	  VEC_REM_OPTMZ        = USHORT_MAX
 };
 
 /**
@@ -274,11 +274,6 @@ __NONNULL__ void VEC_remove(vec_t *vec, ssize_t i) {
 	/* TODO: cleanup */
 	  VEC_rmCounter(*vec) = 0;
 	}
-  }
-  else {
-    size_t mvby = (VEC_size(vec) - i) * sizeof(vec_t);
-      mvby ? memmove(vt, ++vt, mvby) /* Shift memory to left */
-	: (vt[0] = (void *)MEMCHAR); /* Last index: reusable */
   }
 }
 

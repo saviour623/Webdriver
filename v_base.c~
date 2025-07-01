@@ -11,12 +11,13 @@
 
 /* Meta-data */
 typedef struct {
-  uint32_t cap;
-#if !defined(VEC_MAX_RM)
-     #define VEC_MAX_RM 0xff
+  uint32_t vcapSize;
+  /* enable caching */
+#ifdef VEC_ENABLE_CACHE
+  void     *vcache;
+  uint8_t  vcacheSize;
 #endif
-  size_t rmbf[VEC_MAX_RM];
-  uint8_t rmct;
+  uint8_t rmcounter;
 } vecMetaDataHeader;
 
 /*
@@ -34,7 +35,8 @@ enum {
 	  VEC_SEGTBLK          = 0x01,
 	  VEC_MALLOCD_ALL      = 0x04,
 	  VEC_MEMFILL          = 0x01,
-	  VEC_ERROR_OUTOFBOUND = 0x3b
+	  VEC_ERROR_OUTOFBOUND = 0x3b,
+	  VEC_MAX_RM           = 0xff
 };
 
 /**
@@ -46,8 +48,8 @@ enum {
  * @3 Size of segment
  */
 const uint8_t  vecDefFlag             = 1;
-const uint16_t  vecGblMetaDataSize     = sizeof (vecMetaDataHeader) + vecDefFlag;
-const uint16_t  vecGblDataBlockSize    = sizeof (vec_t);
+const uint8_t  vecGblMetaDataSize     = sizeof (vecMetaDataHeader) + vecDefFlag;
+const uint8_t  vecGblDataBlockSize    = sizeof (vec_t);
 const uint16_t vecGblSegmentBlockCap  = 0x100;
 const uint16_t vecGlbSegmentAllocSize = vecGblDataBlockSize * vecGblSegmentBlockCap;
 #define        vecGblInverse256         0.00390625
@@ -65,12 +67,11 @@ const uint16_t vecGlbSegmentAllocSize = vecGblDataBlockSize * vecGblSegmentBlock
  */
 #define VEC_metaData(vec, ...)    ((VEC_reinterpret(vec) - vecDefFlag)[0])
 #define VEC_peekBlockStart(vec)   (void *)(VEC_reinterpret(vec) - vecGblMetaDataSize)
-#define VEC_size(vec)             ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->cap
+#define VEC_size(vec)             ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->vcapSize
 #define VEC_moveToMainBlock(vec)  ((vec) = (void * )(VEC_reinterpret(vec) + vecGblMetaDataSize))
 #define VEC_moveToBlockStart(vec) ((vec) = VEC_peekBlockStart(vec))
 #define VEC_reinterpret(_addr)    ((uint8_t *)(void *)(_addr))
-#define VEC_rmbuffer(new)         ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->rmbf
-#define VEC_rmCounter(vec)        ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->rmct
+#define VEC_rmCounter(vec)        ((vecMetaDataHeader *)VEC_peekBlockStart(vec))->rmcounter
 #define VEC_nextblock(block)      ((block)++)
 #define VEC_prevblock(block)      ((block)--)
 
@@ -213,7 +214,7 @@ __NONNULL__ void VEC_add(vec_t *vec, void *new, size_t size, size_t i) {
   assert (*vec);
 
   (VEC_size(*vec) < i) && VEC_resize(vec, i);
-  VEC_findNextNonEmpty(*vec, i)[0] = new;
+  (*vec)[i] = new;
 }
 
 #define peekBlkStart(seg) ((segmentBlock *)(VEC_reinterpret(seg) - sizeof (segmentBlock)))
@@ -238,36 +239,17 @@ __NONNULL__ void VEC_sAdd(vec_t *vec, void *new, size_t size, size_t i) {
 
   #undef peekBlkStart
 }
-/**
- * VEC_get
- */
-__STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_findNextNonEmpty(vec_t vec, size_t frm) {
-  register size_t end;
-
-  for (end = VEC_size(vec) - frm; (frm < end) && !vec[frm]; frm++) {
-	PASS;
-  }
-  return vec + frm;
-}
- __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_get(vec_t vec, ssize_t i) {
-
-  if (i < 0)
-	i = -i;
-  assert(*vec && (i <= VEC_size(*vec)));
-
-  return VEC_findNextNonEmpty(vec, i);
-}
 
 /**
  * VEC_remove
  */
 __NONNULL__ void VEC_remove(vec_t *vec, ssize_t i) {
-  vec_t vt;
 
-  vt = VEC_get(*vec, i);
-  *vt = NULL;
+  if (i < 0)
+	i = -i;
+  assert(*vec && (i <= VEC_size(*vec)));
+  (*vec)[i] = (i < SIZE_MAX - 1) && (i < VEC_size(*vec)) ? (*vec)[i + 1] : NULL;
 
-  VEC_rmbuffer(*vec)[VEC_rmCounter(*vec)] = i;
   VEC_rmCounter(*vec) += 1;
   if (VEC_rmCounter(*vec) == VEC_MAX_RM) {
 	/* TODO: cleanup */

@@ -32,7 +32,6 @@
 
 #define throwError(...) puts(__VA_ARGS__ "\n")
 #define puti(i) printf("%lld\n", (long long int)(i))
-#define PASS (void)0
 
 /**
  * MACR_NON_EMPTY, MACR_DO_ELSE
@@ -68,15 +67,14 @@ typedef struct {
   uint8_t  native, type, memfill;
 } VEC_set;
 
-            vec_t  VEC_create(size_t, const VEC_set);
-__NONNULL__ void   VEC_add(vec_t *, void *, size_t, size_t);
+            vec_t VEC_create(size_t, const VEC_set);
+__NONNULL__ void  VEC_add(vec_t *, void *, size_t, size_t);
 __NONNULL__ size_t VEC_getsize(const vec_t);
-__NONNULL__ void   VEC_remove(vec_t *, ssize_t);
-__NONNULL__ void * VEC_request(vec_t, ssize_t);
-__NONNULL__ void * VEC_delete(vec_t *);
-__NONNULL__ bool   VEC_free(void *);
-__STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_findNextNonEmpty(vec_t, size_t);
-__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_get(vec_t, ssize_t);
+__NONNULL__ void VEC_remove(vec_t *, ssize_t);
+__NONNULL__ void *VEC_request(vec_t, ssize_t);
+__NONNULL__ void *VEC_delete(vec_t *);
+__NONNULL__ bool  VEC_free(void *);
+
 /***********************************************************
 
  * MACRO function variants
@@ -144,8 +142,6 @@ __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_get(vec_t, ssize_t);
 #define free(memptr) free(memptr) /*TODO: perform manual free */
 #endif
 
-#define MEMCHAR UINT_MAX
-
 __NONNULL__ static void *mvpgAlloc(void *memptr, size_t size, size_t offset) {
   void **memAllocPtr;
 
@@ -163,7 +159,7 @@ __NONNULL__ static void *mvpgAlloc(void *memptr, size_t size, size_t offset) {
 	return NULL;
 #endif
   }
-  memset(*memAllocPtr, MEMCHAR, size); /* clear memory */
+  memset(*memAllocPtr, 0, size); /* clear memory */
   *memAllocPtr += offset; /* offset */
 
   return *memAllocPtr;

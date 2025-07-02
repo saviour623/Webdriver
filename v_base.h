@@ -142,15 +142,23 @@ __STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_get(vec_t, ssize_t);
 #endif
 #else
 /* MANUAL MEMALIGN */
+
 #if !defined(UINTPTR_MAX)
      typedef unsigned long int uintptr_t
 #endif
-typdef uint16_t offset_t;
+typedef uint16_t offset_t;
 #define OFFSET_SZ 2
-/* offset + fault (catering for worst cases where returned memory + offset may be unaligned)*/
-#define MAX_ALIGN_OFFSET_SZ (OFFSET_SZ + (MVPG_ALLOC_MEMALIGN - 1))
-#define ALIGN_UP_MEMALIGN(n) NXTMUL(n, MVPG_ALLOC_MEMALIGN)
 
+/* offset + fault (catering for worst cases where returned memory + offset may be unaligned)*/
+#define MAX_ALIGN_OFFSET_SZ  (OFFSET_SZ + (MVPG_ALLOC_MEMALIGN - 1))
+/* Round n up to next multiple of boundary */
+#define ALIGN_UP_MEMALIGN(n) NXTMUL(n, MVPG_ALLOC_MEMALIGN)
+/* offset is stored just before the aligned memory address */
+#define MEM_OFFSET_LOC(ptr) ((offset_t *)ptr - 1)
+/* Move to the initial unaligned (returned by malloc) memory */
+#define MV2_INIT_ALLOC(ptr) (void *)((uintptr_t)ptr - MEM_OFFSET_LOC(ptr)[0])
+
+/**********************************************************************************************/
 
 __WARN_UNUSED__ __NONNULL__ void *NativeAlignedAlloc(void **ptr, size_t size){
   /**
@@ -158,24 +166,28 @@ __WARN_UNUSED__ __NONNULL__ void *NativeAlignedAlloc(void **ptr, size_t size){
    */
   void *nalignedPtr;
 
-
   *ptr = nalignedptr = NULL;
   if ( (nalignedPtr = malloc(size + MAX_ALIGN_OFFSET_SZ)) ) {
     /* Align address to required boundary, aligning from the address ahead of the offset
      */
     *ptr = (void *)ALIGN_UP_MEMALIGN((uintptr_t)nalignedPtr + MAX_ALIGN_OFFSET_SZ);
     /* store the offset + fault_offset at pre-offset location before aligned memory (header) */
-    *((offset *)*ptr - 1) = (uintptr_t)*ptr - (uintptr_t)nalignedPtr;
+    MEM_OFFSET_LOC(ptr)[0] = (uintptr_t)*ptr - (uintptr_t)nalignedPtr;
   }
   return *ptr;
 }
 
 __NONNULL__ void NativeAlignedFree(void *ptr) {
-  PASS;
+  /* Free aligned block */
+
+  free(MV2_INIT_ALLOC(ptr));
 }
-/* fallback to malloc */
+
+/************************************************************************************************/
+
+/* Use native as fallback */
 #define MvpgMalloc(memptr, size) NativeAlignedAlloc(&memptr, MVPG_ALLOC_MEMALIGN, size)
-#define free(memptr) NativeAlignedFree(memptr) /*TODO: perform manual free */
+#define free(memptr) NativeAlignedFree(memptr)
 #endif
 
 #define MEMCHAR UINT_MAX

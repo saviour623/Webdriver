@@ -17,6 +17,7 @@
 #define __FORCE_INLINE__ __attribute__((always_inline))
 #elif defined(_MSC_VER) || defined(_WIN32) || defined(_win32)
 #define __FORCE_INLINE__ __forceinline
+#define TYPEOF(T) void
 #else
 #define __FORCE_INLINE__
 #endif
@@ -27,10 +28,12 @@
 #define __MAY_ALIAS__ __attribute__((may_alias))
 #define __MB_UNUSED__ __attribute__((unused))
 #define __WARN_UNUSED__ __attribute__ ((warn_unused_result))
+#define TYPEOF(T) __typeof__()
 #else
 #define __MAY_ALIAS__
 #define __MB_UNUSED__
 #define __WARN_UNUSED__
+#define TYPEOF(T) void
 #endif
 
 #define throwError(...) puts(__VA_ARGS__ "\n")
@@ -202,7 +205,13 @@ __NONNULL__ void VEC_delInternal(vec_t *vec, ssize_t i) {
 #define VEC_insert(V, N, I)\
   (void)((V)[_cvtindex(V, I, (I) < 0)] = (N))
 
-#define VEC_size(V)\
+#define VEC_head(V)\
+   (V)
+
+#define VEC_tail(V)				\
+   (V + (VEC_used(V) - 1))
+
+#define VEC_size(V)				\
   ((VEC_metaheader *)VEC_peekblkst(vec))->cap
 
 #define VEC_used(V)\
@@ -211,7 +220,7 @@ __NONNULL__ void VEC_delInternal(vec_t *vec, ssize_t i) {
 #define VEC_free(V)\
   (VEC_size(V) - VEC_used(V))
 
-#define VEC_del(V, I) VEC_delInternal(V, I)
+#define VEC_del(V, I) VEC_delInternal(&V, I)
 
 #define VEC_append(V1, V2)\
    VEC_appendInternal(V1, V2)
@@ -229,9 +238,16 @@ __NONNULL__ void VEC_delInternal(vec_t *vec, ssize_t i) {
 #define VEC_destroy(V)\
   (void)(V != NULL ? free(VEC_mv2blkst(V)), (V = NULL) : (void)0)
 
-#define VEC_foreach(V, ...)\
-   /* NOT IMPLEMENTED */
 
+#define VEC_foreach(S, V, T)  	\
+   for (MACR_DO_ELSE(VEC_type(T), TYPEOF(V), T) S = V; S != VEC_back(V); S++)
+
+#define VEC_map(F, V, ...)				\
+   do {						\
+     if (V != NULL && F != NULL)		\
+       for (size_t i = 0; i < VEC_used(V); i++)	\
+	 F(V[i]);				\
+   }
 
 /***********************************************************
 

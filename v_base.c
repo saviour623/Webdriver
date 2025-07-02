@@ -14,14 +14,7 @@ typedef struct {
   size_t cap; /* Capacity */
   size_t used; /* Total used */
   size_t dtype; /* sizeof data Type */
-  size_t result;
-#ifdef VEC_CLOBBER_REM
-    #if !defined(VEC_MAX_RM)
-       /* Default size of bin is 255 */
-       #define VEC_MAX_RM 0xff
-    #endif
-  size_t bin[VEC_MAX_RM];
-  uint8_t bincnt;
+  size_t tmp;
 #endif
 } VEC_metaheader;
 
@@ -47,7 +40,7 @@ const uint16_t GLB_datablksz = sizeof(vec_t); /* Size of a block */
 #define VEC_bytePtr(vec)          ((byte *)(void *)(vec)) /* Cast to byte pointer */
 #define VEC_bin(vec)              ((VEC_metaheader *)VEC_peekblkst(vec))->bin /* Waste bin for removed indices */
 #define VEC_bincnt(vec)           ((VEC_metaheader *)VEC_peekblkst(vec))->bincnt /* bin counter */
-#define VEC_result(vec)           ((VEC_metaheader *)VEC_peekblkst(vec))->bin
+#define VEC_tmp(vec)           ((VEC_metaheader *)VEC_peekblkst(vec))->tmp
 #define VEC_iabs(V, I)             (I < 0 ? I + VEC_size(V) ? I)
 
 /**
@@ -182,3 +175,30 @@ __NONNULL__ void *VEC_delete(vec_t *vec) {
 
   return NULL;
 }
+
+/*
+#ifdef VEC_CLOBBER_REM
+    #if !defined(VEC_MAX_RM)
+       /* Default size of bin is 255 *
+       #define VEC_MAX_RM 0xff
+    #endif
+  size_t bin[VEC_MAX_RM];
+  uint8_t bincnt;
+
+
+
+#ifdef VEC_CLOBBER_REM
+  if (VEC_size(*vec) > VEC_REM_OPTMZ) {
+    ((vec_t)VEC_get(*vec, i))[0] = NULL;
+    /* store removed index *
+    VEC_bin(*vec)[VEC_bincnt(*vec)] = i;
+    VEC_bincnt(*vec) += 1;
+    /* cleanup all removed items if bin is full *
+    if (VEC_bincnt(*vec) == VEC_MAX_RM) {
+      /* TODO: cleanup *
+      VEC_bincnt(*vec) = 0;
+    }
+  }
+  return;
+#endif
+*/

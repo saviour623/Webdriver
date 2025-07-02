@@ -9,6 +9,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <stdalign.h>
 #include <errno.h>
 #include <assert.h>
 
@@ -25,9 +26,11 @@
 #if defined(__GNUC__) || defined(__clang__)
 #define __MAY_ALIAS__ __attribute__((may_alias))
 #define __MB_UNUSED__ __attribute__((unused))
+#define __WARN_UNUSED__ __attribute__ ((warn_unused_result))
 #else
 #define __MAY_ALIAS__
 #define __MB_UNUSED__
+#define __WARN_UNUSED__
 #endif
 
 #define throwError(...) puts(__VA_ARGS__ "\n")
@@ -69,7 +72,7 @@ typedef struct {
   uint8_t  native, type, memfill;
 } VEC_set;
 
-            vec_t  VEC_create(size_t, const VEC_set);
+__WARN_UNUSED__ vec_t  VEC_create(size_t, const VEC_set);
 __NONNULL__ void   VEC_add(vec_t *, void *, size_t, size_t);
 __NONNULL__ size_t VEC_getsize(const vec_t);
 __NONNULL__ void   VEC_remove(vec_t *, ssize_t);
@@ -115,13 +118,11 @@ __STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_get(vec_t, ssize_t);
  * PREVIOUSMULTIPLE_p2
  * NEXTMULTIPLE_p2
  */
-#define modp2(n, p2)     ((n) & ((1ULL << (p2)) - 1)) /* N % 2^p2 */
-#define mod32(n)         ((n) & 31)  /* N % 32 */
-#define mod256(n)        ((n) & 255) /* N % 256 */
-#define prvMulp2(n, p2)  ((n) - modp2(n, p2)) /* multiple of 2^p2 less than N */
-#define prvMul32(n)      ((n) - mod32(n)) /* multiple of 32, < N */
-#define prvpMulp2(n, m) ((n) - ((n) & ((m) - 1))) /* multiple of m (power of 2),  < N */
-#define nxtMulp2(n, m)   ((((n) >> m) + 1) << m) /* multiple of m (power of 2), > N */
+#define     MOD2(n, m) ((n) & ((m) - 1)) /* n % m (m is a power of 2) */
+#define   MODP2(n, p2) mod2(n, 1ULL << p2) /* N % 2^p2 */
+#define PRVMULP2(n, m) ((n) - ((n) & ((m) - 1))) /* (multiple of 2^m) < n */
+#define   NXTMUL(n, m) (((n) + ((m) - 1)) & ~((m) - 1)) /* {(multiple m) >= n (m is a power of 2)} */
+#define NXTMULP2(n, m) ((((n) >> m) + 1) << m) /* {n < (multiple of 2^m) > n} */
 
 
 #ifdef VEC_INTERNAL_IMPLEMENTATION
@@ -140,9 +141,40 @@ __STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_get(vec_t, ssize_t);
 #define MvpgMalloc(memptr, size) !(*memptr && (memptr = aligned_alloc(MVPG_ALLOC_MEMALIGN, size))) /* TODO: size must be multiple of alignment  */
 #endif
 #else
+/* MANUAL MEMALIGN */
+#if !defined(UINTPTR_MAX)
+     typedef unsigned long int uintptr_t
+#endif
+typdef uint16_t offset_t;
+#define OFFSET_SZ 2
+/* offset + fault (catering for worst cases where returned memory + offset may be unaligned)*/
+#define MAX_ALIGN_OFFSET_SZ (OFFSET_SZ + (MVPG_ALLOC_MEMALIGN - 1))
+#define ALIGN_UP_MEMALIGN(n) NXTMUL(n, MVPG_ALLOC_MEMALIGN)
+
+
+__WARN_UNUSED__ __NONNULL__ void *NativeAlignedAlloc(void **ptr, size_t size){
+  /**
+     Align memory to MVPG_ALLOC_MEMALIGN boundary
+   */
+  void *alignedPtr, *nalignedPtr;
+
+  alignedPtr = nalignedptr = NULL;
+  if ( (nalignedPtr = malloc(size + MAX_ALIGN_OFFSET_SZ)) ) {
+    /* Align address to required boundary, aligning from the address ahead of the offset
+     */
+    alignedPtr = (void *)ALIGN_UP_MEMALIGN((uintptr_t)nalignedPtr + MAX_ALIGN_OFFSET_SZ);
+    /* store the offset + fault_offset at pre-offset location before aligned memory (header) */
+    *((offset *)alignedPtr - 1) = (uintptr_t)alignedPtr - (uintptr_t)nalignedPtr;
+  }
+  return alignedPtr;
+}
+
+__NONNULL__ void NativeAlignedFree(void *ptr) {
+  PASS;
+}
 /* fallback to malloc */
-#define MvpgMalloc(*memptr, size) malloc(size) /* TODO: perform manual alignment */
-#define free(memptr) free(memptr) /*TODO: perform manual free */
+#define MvpgMalloc(memptr, size) NativeAlignedAlloc(&memptr, MVPG_ALLOC_MEMALIGN, size)
+#define free(memptr) NativeAlignedFree(memptr) /*TODO: perform manual free */
 #endif
 
 #define MEMCHAR UINT_MAX

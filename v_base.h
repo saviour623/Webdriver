@@ -156,17 +156,18 @@ __WARN_UNUSED__ __NONNULL__ void *NativeAlignedAlloc(void **ptr, size_t size){
   /**
      Align memory to MVPG_ALLOC_MEMALIGN boundary
    */
-  void *alignedPtr, *nalignedPtr;
+  void *nalignedPtr;
 
-  alignedPtr = nalignedptr = NULL;
+
+  *ptr = nalignedptr = NULL;
   if ( (nalignedPtr = malloc(size + MAX_ALIGN_OFFSET_SZ)) ) {
     /* Align address to required boundary, aligning from the address ahead of the offset
      */
-    alignedPtr = (void *)ALIGN_UP_MEMALIGN((uintptr_t)nalignedPtr + MAX_ALIGN_OFFSET_SZ);
+    *ptr = (void *)ALIGN_UP_MEMALIGN((uintptr_t)nalignedPtr + MAX_ALIGN_OFFSET_SZ);
     /* store the offset + fault_offset at pre-offset location before aligned memory (header) */
-    *((offset *)alignedPtr - 1) = (uintptr_t)alignedPtr - (uintptr_t)nalignedPtr;
+    *((offset *)*ptr - 1) = (uintptr_t)*ptr - (uintptr_t)nalignedPtr;
   }
-  return alignedPtr;
+  return *ptr;
 }
 
 __NONNULL__ void NativeAlignedFree(void *ptr) {

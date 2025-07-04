@@ -82,6 +82,7 @@ __NONNULL__ void * VEC_delete(vec_t *);
 __NONNULL__ bool   VEC_free(void *);
 __STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_findNextNonEmpty(vec_t, size_t);
 __STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_get(vec_t, ssize_t);
+
 /***********************************************************
 
  * MACRO function variants
@@ -122,9 +123,8 @@ __STATIC_FORCE_INLINE_F __NONNULL__ _cvtindex size_t(const void *v, size_t i, si
 
 #define VEC_pop_i(V, N, I)					\
   (								\
-   assertV(V, I),						\
    (VEC_tmp(V) = (V)[_cvtindex(V, I, (I) < 0)]),		\
-   VEC_clean((V) + VEC_iabs(I)),				\
+    VEC_remove(V, VEC_iabs(I)),					\
    VEC_tmp(V)						\
   )
 
@@ -132,6 +132,27 @@ __STATIC_FORCE_INLINE_F __NONNULL__ _cvtindex size_t(const void *v, size_t i, si
 
 #define VEC_insert(V, N, I)\
   (void)((V)[_cvtindex(V, I, (I) < 0)] = (N))
+
+#define VEC_size(V)
+
+#define VEC_capacity(V)
+
+#define VEC_free(V)
+
+#define VEC_del(V, I) VEC_remove(V, I)
+
+#define VEC_append(V1, V2)
+
+#define VEC_slice(V, S, E)
+
+#define VEC_shrink(V, ...)\
+  MACR_DO_ELSE(VEC_shrink_to(V, __VA_ARGS__), VEC_shrink_nto(V), __VA_ARGS__)
+
+#define VEC_shrink_nto(V)
+
+#define VEC_shrink_to(V, cap)
+
+#define VEC_destroy(V)
 
 
 

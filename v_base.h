@@ -97,6 +97,27 @@ __STATIC_FORCE_INLINE_F __NONNULL__ _cvtindex size_t(const void *v, size_t i, si
   return _i;
 }
 
+__STATIC_FORCE_INLINE_F __WARN_UNUSED__ vec_t VEC_create(const size_t size, const size_t dtype) {
+  vec_t vec;
+
+  assert ( dtype );
+
+  mvpgAlloc(&vec, safeMulAdd(dtype, size, GLB_metadtSz), 0);
+  VEC_mv2MainBlk(vec);
+  VEC_size(vec)  = size;
+  VEC_dtype(vec) = dtype;
+
+  return vec;
+}
+
+__NONNULL__ void VEC_delInternal(vec_t *vec, ssize_t i) {
+
+  size_t mvby = (VEC_size(*vec) - i - 1) * VEC_dtype(*vec);
+  mvby ? memmove(*vec + i, (*vec + i) + 1, mvby) /* Shift memory to left */
+    : ((*vec)[i] = (void *)MEMCHAR); /* Last index: reusable */
+  VEC_used(*vec)--;
+}
+
 /**
  * VEC_NEW
  *
@@ -111,20 +132,20 @@ __STATIC_FORCE_INLINE_F __NONNULL__ _cvtindex size_t(const void *v, size_t i, si
 #define VEC_push(V, N)							\
   (									\
    assert(V),								\
-   (VEC_size(V) < 1 && VEC_resize(V, 1),				\
-   ((V)[VEC_size(V) - 1] = (N))						\
-									)
+   ((VEC_size(V) < 1) || (VEC_size(V) == VEC_used(V)) ) && VEC_resize(V, 1), \
+   ((V)[++VEC_used(V) - 2] = (N))
+  )
 
 #define VEC_pop_ni(V)				\
   (\
    assert((V) != NULL && VEC_size(V) > 0),\
-   (V)[VEC_size((V))--]		  \
+   (V)[--VEC_used((V))]		  \
   )
 
 #define VEC_pop_i(V, N, I)					\
   (								\
    (VEC_tmp(V) = (V)[_cvtindex(V, I, (I) < 0)]),		\
-    VEC_remove(V, VEC_iabs(I)),					\
+    VEC_del(V, VEC_iabs(I)),					\
    VEC_tmp(V)						\
   )
 
@@ -133,27 +154,35 @@ __STATIC_FORCE_INLINE_F __NONNULL__ _cvtindex size_t(const void *v, size_t i, si
 #define VEC_insert(V, N, I)\
   (void)((V)[_cvtindex(V, I, (I) < 0)] = (N))
 
-#define VEC_size(V)
+#define VEC_size(V)\
+  ((VEC_metaheader *)VEC_peekblkst(vec))->cap
 
-#define VEC_capacity(V)
+#define VEC_used(V)\
+  ((VEC_metaheader *)VEC_peekblkst(vec))->used
 
-#define VEC_free(V)
+#define VEC_free(V)\
+  (VEC_size(V) - VEC_used(V))
 
-#define VEC_del(V, I) VEC_remove(V, I)
+#define VEC_del(V, I) VEC_delInternal(V, I)
 
-#define VEC_append(V1, V2)
+#define VEC_append(V1, V2) VEC_appendInternal(V1, V2)
 
-#define VEC_slice(V, S, E)
+#define VEC_slice(V, S, E) VEC_sliceInternal(V, S, E)
 
 #define VEC_shrink(V, ...)\
   MACR_DO_ELSE(VEC_shrink_to(V, __VA_ARGS__), VEC_shrink_nto(V), __VA_ARGS__)
 
-#define VEC_shrink_nto(V)
+#define VEC_shrink_nto(V)\
+  /* NOT IMPLEMENTED */
 
-#define VEC_shrink_to(V, cap)
+#define VEC_shrink_to(V, cap)\
+   /* NOT IMPLEMENTED */
 
-#define VEC_destroy(V)
+#define VEC_destroy(V)\
+  (void)(V != NULL ? free(VEC_mv2blkst(V)), (V = NULL) : (void)0)
 
+#define VEC_foreach(V, ...)\
+   /* NOT IMPLEMENTED */
 
 
 /***********************************************************

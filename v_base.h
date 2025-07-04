@@ -87,11 +87,11 @@ __STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_get(vec_t, ssize_t);
  * MACRO function variants
 
 ************************************************************/
-__STATIC_FORCE_INLINE_F _assertV size_t(const void *v, size_t i, size_t lt) {
+__STATIC_FORCE_INLINE_F __NONNULL__ _cvtindex size_t(const void *v, size_t i, size_t lt) {
   register size_t _i;
 
   _i = lt ? (ssize_t)i + VEC_size(v) ? i;
-  assert( (v != NULL) && ((_i > 0) && _i < VEC_size(v)) );
+  assert( ((_i > 0) && _i < VEC_size(v)) );
 
   return _i;
 }
@@ -114,20 +114,24 @@ __STATIC_FORCE_INLINE_F _assertV size_t(const void *v, size_t i, size_t lt) {
    ((V)[VEC_size(V) - 1] = (N))						\
 									)
 
-#define VEC_pop(V) \
+#define VEC_pop_ni(V)				\
   (\
    assert((V) != NULL && VEC_size(V) > 0),\
-   (V)[VEC_size((V))--]			  \
+   (V)[VEC_size((V))--]		  \
   )
 
-#define VEC_popIndex(V, N, I)					\
+#define VEC_pop_i(V, N, I)					\
   (								\
    assertV(V, I),						\
-   (VEC_result(V) = (V)[_assertV(V, I, (I) < 0)]),		\
+   (VEC_tmp(V) = (V)[_cvtindex(V, I, (I) < 0)]),		\
    VEC_clean((V) + VEC_iabs(I)),				\
-   VEC_result(V)						\
+   VEC_tmp(V)						\
   )
-#define VEC_insert(V, N, I)
+
+#define VEC_pop(V, ...) MACR_DO_ELSE(VEC_pop_i(V, __VA_ARGS__), VEC_pop_i(V), __VA_ARGS__)
+
+#define VEC_insert(V, N, I)\
+  (void)((V)[_cvtindex(V, I, (I) < 0)] = (N))
 
 
 

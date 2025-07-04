@@ -11,13 +11,18 @@
 
 /* Meta-data */
 typedef struct {
-  uint32_t cap; /* Capacity */
-#if !defined(VEC_MAX_RM)
-  /* Default size of bin is 255 */
-   #define VEC_MAX_RM 0xff
-#endif
+  size_t cap; /* Capacity */
+  size_t used; /* Total used */
+  size_t dtype; /* sizeof data Type */
+  size_t result;
+#ifdef VEC_CLOBBER_REM
+    #if !defined(VEC_MAX_RM)
+       /* Default size of bin is 255 */
+       #define VEC_MAX_RM 0xff
+    #endif
   size_t bin[VEC_MAX_RM];
   uint8_t bincnt;
+#endif
 } VEC_metaheader;
 
 
@@ -29,32 +34,36 @@ enum {
 };
 
 
-const uint8_t  vecDefFlag          = 1;  /* Keep some setup as bitwise flags */
-const uint16_t GLB_metadtSz  = sizeof(VEC_metaheader) + vecDefFlag; /* Metadata size */
+const uint16_t GLB_metadtSz  = sizeof(VEC_metaheader); /* Metadata size */
 const uint16_t GLB_datablksz = sizeof(vec_t); /* Size of a block */
 
 
 #define VEC_metaData(vec, ...)    ((VEC_bytePtr(vec) - vecDefFlag)[0]) /*  Get/set meta-data in header */
 #define VEC_peekblkst(vec)        (void *)(VEC_bytePtr(vec) - GLB_metadtSz) /* Temporarily view the starting block of the vector */
 #define VEC_size(vec)             ((VEC_metaheader *)VEC_peekblkst(vec))->cap /* Request or update the size of the container */
+#define VEC_dtype(vec)            ((VEC_metaheader *)VEC_peekblkst(vec))->dtype /* datatype size */
 #define VEC_mv2MainBlk(vec)       ((vec) = (void * )(VEC_bytePtr(vec) + GLB_metadtSz)) /* Move pointer to data section */
 #define mv2blkst(vec)             ((vec) = VEC_peekblkst(vec)) /* Move the pointer to the start of vector’s block */
 #define VEC_bytePtr(vec)          ((byte *)(void *)(vec)) /* Cast to byte pointer */
 #define VEC_bin(vec)              ((VEC_metaheader *)VEC_peekblkst(vec))->bin /* Waste bin for removed indices */
 #define VEC_bincnt(vec)           ((VEC_metaheader *)VEC_peekblkst(vec))->bincnt /* bin counter */
+#define VEC_result(vec)           ((VEC_metaheader *)VEC_peekblkst(vec))->bin
+#define VEC_iabs(V, I)             (I < 0 ? I + VEC_size(V) ? I)
 
 /**
  * VEC_create
  *
  * Constructor
  */
-__attribute__ ((warn_unused_result)) vec_t VEC_create(size_t size, const VEC_set config) {
+__attribute__ ((warn_unused_result)) vec_t VEC_create(const size_t size, const size_t dtype) {
   vec_t vec;
-  uint8_t _vecMetaData;
 
-  mvpgAlloc(&vec, safeMulAdd(GLB_datablksz, size, GLB_metadtSz), 0);
+  assert ( dtype );
+
+  mvpgAlloc(&vec, safeMulAdd(dtype, size, GLB_metadtSz), 0);
   VEC_mv2MainBlk(vec);
-  VEC_size(vec) = size;
+  VEC_size(vec)  = size;
+  VEC_dtype(vec) = dtype;
 
   return vec;
 }
@@ -117,6 +126,7 @@ __STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_get(vec_t vec, ssize_t i) {
  */
 __NONNULL__ void VEC_remove(vec_t *vec, ssize_t i) {
 
+#ifdef VEC_CLOBBER_REM
   if (VEC_size(*vec) > VEC_REM_OPTMZ) {
     ((vec_t)VEC_get(*vec, i))[0] = NULL;
     /* store removed index */
@@ -128,11 +138,11 @@ __NONNULL__ void VEC_remove(vec_t *vec, ssize_t i) {
       VEC_bincnt(*vec) = 0;
     }
   }
-  else {
-    size_t mvby = (VEC_size(*vec) - i - 1) * sizeof(vec_t);
-    mvby != 1 ? memmove(*vec + i, (*vec + i) + 1, mvby) /* Shift memory to left */
-      : ((*vec)[i] = (void *)MEMCHAR); /* Last index: reusable */
-  }
+  return;
+#endif
+  size_t mvby = (VEC_size(*vec) - i - 1) * sizeof(vec_t);
+  mvby ? memmove(*vec + i, (*vec + i) + 1, mvby) /* Shift memory to left */
+    : ((*vec)[i] = (void *)MEMCHAR); /* Last index: reusable */
 }
 
 /**

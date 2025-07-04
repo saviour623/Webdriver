@@ -56,6 +56,7 @@
 
 #define MACR_CAT(A, A1) MACR_INDIRECT_CAT(A, A1)
 #define MACR_INDIRECT_CAT(A, A1) A ## A1
+/* If ... is empty do true else do false */
 #define MACR_DO_ELSE(_true, _false, ...) MACR_CAT(MACR_IF_EMPTY_, MACR_NON_EMPTY(__VA_ARGS__))(_true, _false)
 
 /***********************************************************
@@ -72,7 +73,7 @@ typedef struct {
   uint8_t  native, type, memfill;
 } VEC_set;
 
-__WARN_UNUSED__ vec_t  VEC_create(size_t, const VEC_set);
+__WARN_UNUSED__ vec_t  VEC_create(const size_t, const size_t);
 __NONNULL__ void   VEC_add(vec_t *, void *, size_t, size_t);
 __NONNULL__ size_t VEC_getsize(const vec_t);
 __NONNULL__ void   VEC_remove(vec_t *, ssize_t);
@@ -86,15 +87,49 @@ __STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_get(vec_t, ssize_t);
  * MACRO function variants
 
 ************************************************************/
+__STATIC_FORCE_INLINE_F _assertV size_t(const void *v, size_t i, size_t lt) {
+  register size_t _i;
+
+  _i = lt ? (ssize_t)i + VEC_size(v) ? i;
+  assert( (v != NULL) && ((_i > 0) && _i < VEC_size(v)) );
+
+  return _i;
+}
 
 /**
  * VEC_NEW
  *
  * (macro: alias -> VEC_create)
- * Autofill and error-check arguments before call to VEC_create
+ *
  */
-#define VEC_new(size_t_size, ...)										\
-  MACR_DO_ELSE(VEC_create(size_t_size, MACR_DO_ELSE((__VA_ARGS__), (VEC_set)0, __VA_ARGS__)), (throwError(NULL)), size_t_size)
+#define VEC_new(_size, _type)										\
+  VEC_create(MACR_DO_ELSE(_size, 32, _size), MACR_DO_ELSE(sizeof(_type), 0, _type))
+
+#define VEC_type(T) T*
+
+#define VEC_push(V, N)							\
+  (									\
+   assert(V),								\
+   (VEC_size(V) < 1 && VEC_resize(V, 1),				\
+   ((V)[VEC_size(V) - 1] = (N))						\
+									)
+
+#define VEC_pop(V) \
+  (\
+   assert((V) != NULL && VEC_size(V) > 0),\
+   (V)[VEC_size((V))--]			  \
+  )
+
+#define VEC_popIndex(V, N, I)					\
+  (								\
+   assertV(V, I),						\
+   (VEC_result(V) = (V)[_assertV(V, I, (I) < 0)]),		\
+   VEC_clean((V) + VEC_iabs(I)),				\
+   VEC_result(V)						\
+  )
+#define VEC_insert(V, N, I)
+
+
 
 /***********************************************************
 
@@ -172,7 +207,7 @@ __WARN_UNUSED__ __NONNULL__ void *NativeAlignedAlloc(void **ptr, size_t size){
      */
     *ptr = (void *)ALIGN_UP_MEMALIGN((uintptr_t)nalignedPtr + MAX_ALIGN_OFFSET_SZ);
     /* store the offset + fault_offset at pre-offset location before aligned memory (header) */
-    MEM_OFFSET_LOC(ptr)[0] = (uintptr_t)*ptr - (uintptr_t)nalignedPtr;
+    MEM_OFFSET_LOC(*ptr)[0] = (uintptr_t)*ptr - (uintptr_t)nalignedPtr;
   }
   return *ptr;
 }
@@ -224,6 +259,8 @@ typedef struct {
 } _InternalImplMemAlignBuf;
 
 #define _InternalMemAlignBufFill(fill) (long)(fill)
+#define prvMul32(n) PRVMULP2(n, 5)
+#define mod32(n) MOD2(n, 32)
 
 __NONNULL__ static __inline__ __FORCE_INLINE__ void *internalMemZero32Align(void *memptr, size_t size) {
   size_t split32 __MB_UNUSED__;
@@ -286,3 +323,10 @@ static __inline__ __FORCE_INLINE__ long safeMulAdd(unsigned long a, unsigned lon
 
 #endif /* V_BASE_H */
 
+/*
+
+[2, 3, 4, 5, 6, 7]
+ rem 1, 4
+[2, 3, ]
+
+ */

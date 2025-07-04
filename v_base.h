@@ -110,6 +110,21 @@ __STATIC_FORCE_INLINE_F __WARN_UNUSED__ vec_t VEC_create(const size_t size, cons
   return vec;
 }
 
+__STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_shrinkInternal(void *v, size_t shrinkto) {
+  void *p;
+
+  assert((p = mvpgAlloc(&p, shrinkto)) == NULL) /* Unable to Shrink */;
+
+  VEC_size(v) = shrinkto;
+  if (shrinkto < VEC_used(v))
+    VEC_used(v) = shrinkto;
+
+  memcpy(p, v, __bMulOverflow(VEC_dtype(v), shrinkto, &shrinkto));
+  VEC_del(v);
+
+  return p;
+}
+
 __NONNULL__ void VEC_delInternal(vec_t *vec, ssize_t i) {
 
   size_t mvby = (VEC_size(*vec) - i - 1) * VEC_dtype(*vec);
@@ -170,13 +185,7 @@ __NONNULL__ void VEC_delInternal(vec_t *vec, ssize_t i) {
 #define VEC_slice(V, S, E) VEC_sliceInternal(V, S, E)
 
 #define VEC_shrink(V, ...)\
-  MACR_DO_ELSE(VEC_shrink_to(V, __VA_ARGS__), VEC_shrink_nto(V), __VA_ARGS__)
-
-#define VEC_shrink_nto(V)\
-  /* NOT IMPLEMENTED */
-
-#define VEC_shrink_to(V, cap)\
-   /* NOT IMPLEMENTED */
+  ((V) = VEC_shrinkInternal(V, MACR_DO_ELSE(__VA_ARGS__, VEC_used(V), __VA_ARGS__)))
 
 #define VEC_destroy(V)\
   (void)(V != NULL ? free(VEC_mv2blkst(V)), (V = NULL) : (void)0)
@@ -255,7 +264,7 @@ __WARN_UNUSED__ __NONNULL__ void *NativeAlignedAlloc(void **ptr, size_t size){
    */
   void *nalignedPtr;
 
-  *ptr = nalignedptr = NULL;
+  *ptr = nalignedPtr = NULL;
   if ( (nalignedPtr = malloc(size + MAX_ALIGN_OFFSET_SZ)) ) {
     /* Align address to required boundary, aligning from the address ahead of the offset
      */
@@ -292,7 +301,7 @@ __NONNULL__ static void *mvpgAlloc(void *memptr, size_t size, size_t offset) {
 	/* ERROR */
 	fprintf(stderr, "mvpgAlloc: allocation of size %lu failed (%s)\n", (long)size, strerror(errno));
 
-#ifdef EXIT_ON_MEMERR
+#ifdef EXIT_ON_MEM_ERR
 	exit(EXIT_FAILURE);
 #else
 	return NULL;

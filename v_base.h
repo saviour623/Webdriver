@@ -120,7 +120,7 @@ __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_shrinkInternal(void *v, size_t shr
     VEC_used(v) = shrinkto;
 
   memcpy(p, v, __bMulOverflow(VEC_dtype(v), shrinkto, &shrinkto));
-  VEC_del(v);
+  VEC_destroy(v);
 
   return p;
 }
@@ -132,6 +132,8 @@ __NONNULL__ void VEC_delInternal(vec_t *vec, ssize_t i) {
     : ((*vec)[i] = (void *)MEMCHAR); /* Last index: reusable */
   VEC_used(*vec)--;
 }
+
+
 
 /**
  * VEC_NEW
@@ -146,7 +148,7 @@ __NONNULL__ void VEC_delInternal(vec_t *vec, ssize_t i) {
 
 #define VEC_push(V, N)							\
   (									\
-   assert(V),								\
+  assert((V != NULL) && (VEC_dtype == sizeof(N)),				\
    ((VEC_size(V) < 1) || (VEC_size(V) == VEC_used(V)) ) && VEC_resize(V, 1), \
    ((V)[++VEC_used(V) - 2] = (N))
   )
@@ -164,7 +166,8 @@ __NONNULL__ void VEC_delInternal(vec_t *vec, ssize_t i) {
    VEC_tmp(V)						\
   )
 
-#define VEC_pop(V, ...) MACR_DO_ELSE(VEC_pop_i(V, __VA_ARGS__), VEC_pop_i(V), __VA_ARGS__)
+#define VEC_pop(V, ...)\
+   MACR_DO_ELSE(VEC_pop_i(V, __VA_ARGS__), VEC_pop_i(V), __VA_ARGS__)
 
 #define VEC_insert(V, N, I)\
   (void)((V)[_cvtindex(V, I, (I) < 0)] = (N))
@@ -180,12 +183,18 @@ __NONNULL__ void VEC_delInternal(vec_t *vec, ssize_t i) {
 
 #define VEC_del(V, I) VEC_delInternal(V, I)
 
-#define VEC_append(V1, V2) VEC_appendInternal(V1, V2)
+#define VEC_append(V1, V2)\
+   VEC_appendInternal(V1, V2)
 
-#define VEC_slice(V, S, E) VEC_sliceInternal(V, S, E)
+#define VEC_slice(V, S, E)\
+   VEC_sliceInternal(V, S, E)
 
-#define VEC_shrink(V, ...)\
-  ((V) = VEC_shrinkInternal(V, MACR_DO_ELSE(__VA_ARGS__, VEC_used(V), __VA_ARGS__)))
+#define VEC_shrink(V, ...) (void)			\
+  (\
+   (V != NULL) && (\
+		   (V) = VEC_shrinkInternal(V, MACR_DO_ELSE(__VA_ARGS__, VEC_used(V), __VA_ARGS__))\
+		   )							\
+   )
 
 #define VEC_destroy(V)\
   (void)(V != NULL ? free(VEC_mv2blkst(V)), (V = NULL) : (void)0)
@@ -371,7 +380,7 @@ __NONNULL__ static __inline__ __FORCE_INLINE__ void *internalMemZero32Align(void
 #define __bMulOverflow(a, b, c) (RtlLongMul(a, b, c) == STATUS_INTEGER_OVERFLOW)
 #else
 #define __bAddOverflow(a, b, c) !( ((a) < (ULONG_MAX - (b)))) && (*(c) = (a) + (b))
-#define __bMulOverflow(a, b, c) !( !(((a) >>(LONG_BIT>>1)) || ((b) >> (LONG_BIT>>1))))
+#define __bMulOverflow(a, b, c) !( !(((a) >>(LONG_BIT>>1)) || ((b) >> (LONG_BIT>>1))) && ((*(c) = a * b), true)
 #endif
 
 static __inline__ __FORCE_INLINE__ long safeMulAdd(unsigned long a, unsigned long b, unsigned long c) {

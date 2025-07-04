@@ -112,7 +112,9 @@ __STATIC_FORCE_INLINE_F __WARN_UNUSED__ vec_t VEC_create(const size_t size, cons
 
   return vec;
 }
-
+__STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_sliceInternal(void *v, void *v) {
+  
+}
 __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_shrinkInternal(void *v, size_t shrinkto) {
   void *p;
 
@@ -134,12 +136,13 @@ __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_shrinkInternal(void *v, size_t shr
 
 __STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_sliceInternal(void **v, size_t b, size_t e) {
   /* Slice items from index b to e, returning a new vector of sliced items */
-
-  size_t sz;
+  void *new __MB_UNUSED__;
+  size_t sz __MB_UNUSED__;
 
   if(! ((b < VEC_used(*v)) && (e < VEC_used(*v)) && (e > b)) )
     return NULL;
-  void *p = VEC_new((e - b), VEC_dtype(*v));
+
+  new = VEC_newFrmSize((e - b), VEC_dtype(*v));
 
   __bMulOverflow(VEC_dtype(*v), (e - b), &sz);
   memcpy(p, (*v + b), e);
@@ -165,8 +168,11 @@ __NONNULL__ void VEC_delInternal(vec_t *vec, ssize_t i) {
  * (macro: alias -> VEC_create)
  *
  */
-#define VEC_new(_size, _type)										\
+#define VEC_new(_size, _type, ...)						\
   VEC_create(MACR_DO_ELSE(_size, 32, _size), MACR_DO_ELSE(sizeof(_type), 0, _type))
+
+#define VEC_newFrmSize(_size, _dsize, ...)					\
+  VEC_create(MACR_DO_ELSE(_size, 32, _size), MACR_DO_ELSE(_dsize, 0, _dsize))
 
 #define VEC_type(T) T*
 

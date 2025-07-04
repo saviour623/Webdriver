@@ -68,26 +68,29 @@
 typedef void ** vec_t;
 typedef uint8_t byte;
 
+/* Meta-data */
 typedef struct {
-  uint16_t alignSize;
-  uint8_t  native, type, memfill;
-} VEC_set;
+  size_t cap; /* Capacity */
+  size_t used; /* Total used */
+  size_t dtype; /* sizeof data Type */
+  size_t tmp;
+} VEC_metaheader;
 
-__WARN_UNUSED__ vec_t  VEC_create(const size_t, const size_t);
-__NONNULL__ void   VEC_add(vec_t *, void *, size_t, size_t);
-__NONNULL__ size_t VEC_getsize(const vec_t);
-__NONNULL__ void   VEC_remove(vec_t *, ssize_t);
-__NONNULL__ void * VEC_request(vec_t, ssize_t);
-__NONNULL__ void * VEC_delete(vec_t *);
-__NONNULL__ bool   VEC_free(void *);
-__STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_findNextNonEmpty(vec_t, size_t);
-__STATIC_FORCE_INLINE_F __NONNULL__ vec_t VEC_get(vec_t, ssize_t);
+enum {
+      VEC_MIN_SIZE         = 0x100,
+      VEC_ALLOC_SIZE       = 0x01,
+      VEC_MEMFILL          = 0x01,
+      VEC_REM_OPTMZ        = USHRT_MAX
+};
+
+
 
 /***********************************************************
 
- * MACRO function variants
+ * Methods: MACRO functions
 
 ************************************************************/
+
 __STATIC_FORCE_INLINE_F __NONNULL__ _cvtindex size_t(const void *v, size_t i, size_t lt) {
   register size_t _i;
 
@@ -130,15 +133,19 @@ __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_shrinkInternal(void *v, size_t shr
 }
 
 __STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_sliceInternal(void **v, size_t b, size_t e) {
-  /*Slice items from index b to e, returning a new vector of sliced items */
-  if(! ((b < VEC_used(v)) && (e < VEC_used(v)) && (e > b)) )
+  /* Slice items from index b to e, returning a new vector of sliced items */
+
+  size_t sz;
+
+  if(! ((b < VEC_used(*v)) && (e < VEC_used(*v)) && (e > b)) )
     return NULL;
-  void *p = VEC_new(e - b, VEC_dtype(v));
+  void *p = VEC_new((e - b), VEC_dtype(*v));
 
-  __bMulOverflow(VEC_dtype(v), (e - b), &e);
-  memcpy(p, v + b, e);
+  __bMulOverflow(VEC_dtype(*v), (e - b), &sz);
+  memcpy(p, (*v + b), e);
 
-  /* TODO: remove sliced items from the original */
+  memove(*v + b, *v + e, &sz);
+  VEC_used(v) -= (e - b);
   return p;
 }
 

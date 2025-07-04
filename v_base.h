@@ -113,15 +113,32 @@ __STATIC_FORCE_INLINE_F __WARN_UNUSED__ vec_t VEC_create(const size_t size, cons
 __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_shrinkInternal(void *v, size_t shrinkto) {
   void *p;
 
+  /**
+     Shrink/Expand the capacity of Vector
+   */
   assert((p = mvpgAlloc(&p, shrinkto)) == NULL) /* Unable to Shrink */;
 
   VEC_size(v) = shrinkto;
   if (shrinkto < VEC_used(v))
     VEC_used(v) = shrinkto;
 
-  memcpy(p, v, __bMulOverflow(VEC_dtype(v), shrinkto, &shrinkto));
+  __bMulOverflow(VEC_dtype(v), shrinkto, &shrinkto);
+  memcpy(p, v, shrinkto);
   VEC_destroy(v);
 
+  return p;
+}
+
+__STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_sliceInternal(void **v, size_t b, size_t e) {
+  /*Slice items from index b to e, returning a new vector of sliced items */
+  if(! ((b < VEC_used(v)) && (e < VEC_used(v)) && (e > b)) )
+    return NULL;
+  void *p = VEC_new(e - b, VEC_dtype(v));
+
+  __bMulOverflow(VEC_dtype(v), (e - b), &e);
+  memcpy(p, v + b, e);
+
+  /* TODO: remove sliced items from the original */
   return p;
 }
 
@@ -187,7 +204,7 @@ __NONNULL__ void VEC_delInternal(vec_t *vec, ssize_t i) {
    VEC_appendInternal(V1, V2)
 
 #define VEC_slice(V, S, E)\
-   VEC_sliceInternal(V, S, E)
+   VEC_sliceInternal(&V, S, E)
 
 #define VEC_shrink(V, ...) (void)			\
   (\

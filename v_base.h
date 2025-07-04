@@ -112,8 +112,8 @@ __STATIC_FORCE_INLINE_F __WARN_UNUSED__ vec_t VEC_create(const size_t size, cons
 
   return vec;
 }
-__STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_sliceInternal(void *v, void *v) {
-  
+__STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_append(void *va, void *vb) {
+  PASS;
 }
 __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_shrinkInternal(void *v, size_t shrinkto) {
   void *p;

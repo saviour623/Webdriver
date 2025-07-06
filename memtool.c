@@ -32,8 +32,8 @@ You should have received a copy of the GNU General Public License along with thi
 #define MvpgMalloc(memptr, size) posix_memalign((void *)&memptr, MVPG_ALLOC_MEMALIGN, size)
     #define MvpgDeallocate(memptr)   free(memptr)
 /* C11 introduced a standard aligned_alloc function */
-#elif defined(__STDC__) && (__STDC_VERSION >= 201112L)
-    #if defined(_MSC_VER) || defined(_WIN32)
+#elif __STDC__GTEQ_11__
+    #if __WINDOWS__
 #define MvpgMalloc(memptr, size) !(*memptr && (memptr = _aligned_malloc(MVPG_ALLOC_MEMALIGN, size))) /* requires malloc.h */
         #define MvpgDeallocate(memptr) _aligned_free(memptr) /* memory can’t be freed with malloc’s free() */
     #else

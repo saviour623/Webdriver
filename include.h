@@ -35,22 +35,29 @@ You should have received a copy of the GNU General Public License along with thi
 * COMPILER SPECIFIC ATTRIBUTES/INTRINSICS
 
 ***********************************************************************/
-
 #if defined(__GNUC__) || defined(__clang__)
-    #define __FORCE_INLINE__ __attribute__((always_inline))
+    #define __GNUC_LLVM__ 1
 #elif defined(_MSC_VER) || defined(_WIN32) || defined(_win32)
+    #define __WINDOWS__   1
+#endif
+#if defined(__STDC__) && (__STDC_VERSION >= 201112L)
+    #define __STDC_GTEQ_11__
+#endif
+
+#if __GNUC_LLVM__
+    #define __FORCE_INLINE__ __attribute__((always_inline))
+#elif __WINDOWS__
     #define __FORCE_INLINE__ __forceinline
-    #define TYPEOF(T) void
 #else
     #define __FORCE_INLINE__
 #endif
 
-#if defined(__GNUC__) || defined(__clang__)
-    #define __MAY_ALIAS__ __attribute__((may_alias))
-    #define __MB_UNUSED__ __attribute__((unused))
+#if __GNU_LLVM__
+    #define __MAY_ALIAS__   __attribute__((may_alias))
+    #define __MB_UNUSED__   __attribute__((unused))
     #define __WARN_UNUSED__ __attribute__ ((warn_unused_result))
-    #define __NONNULL__ __attribute__((nonnull))
-    #define TYPEOF(T) __typeof__(T)
+    #define __NONNULL__     __attribute__((nonnull))
+    #define TYPEOF(T)       __typeof__(T)
 #else
     #define __MAY_ALIAS__
     #define __MB_UNUSED__
@@ -114,10 +121,10 @@ You should have received a copy of the GNU General Public License along with thi
 /* SAFE_MUL_ADD (__bMulOverflow,  __bAddOverflow, safeMulAdd)
 *  Returns 0 if operation succeeded
 */
-#if defined(__GNUC__) || defined(__clang__)
+#if __GNUC_LLVM__
     #define __bMulOverflow(a, b, c) __builtin_mul_overflow(a, b, c)
     #define __bAddOverflow(a, b, c) __builtin_add_overflow(a, b, c)
-#elif defined(_MSC_VER) || defined(_WIN32)
+#elif __WINDOWS__
 /* WINDOWS KENRNEL API FOR SAFE ARITHMETIC */
     #include <ntintsafe.h>
     #define __bAddOverflow(a, b, c) (RtlLongAdd(a, b, c) == STATUS_INTEGER_OVERFLOW)

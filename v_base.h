@@ -166,8 +166,25 @@ enum {
       ) \
   )
 
-#define VEC_repr(V)\
-  PASS
+#if __GNUC_LLVM__
+   #define VEC_ppgeneric(V)\
+      PASS
+
+#elif __STDC_GTEQ_11
+    #define VEC_ppgeneric(V)\
+     _Generic(V,				\
+	      VEC_type(short) : VEC_repri(V),	\
+	      VEC_type(int)   : VEC_repri(V),	\
+	      VEC_type(long)  : VEC_repri(V),	\
+	      VEC_type(float) : VEC_reprc(V),	\
+	      VEC_type(double): VEC_reprc(V),	\
+	      VEC_type(char *): VEC_reprs(V)	\
+	      )
+#else
+     VEC_ppgeneric(V) reprunknwn(V)
+#endif
+#define VEC_repr(V)				\
+  VEC_generic(V)
 
 #define VEC_del(V, I)				\
    VEC_INTERNAL_del(&V, I)

@@ -1,3 +1,13 @@
+/* MVPG utils Header for including compatible system and standard Libraries, macro helpers and debugging functionalies
+Copyright (C) 2025 Michael Saviour
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+*/
+
 #ifndef MVPG_INCLUDE_H
 #define MVPG_INCLUDE_H
 
@@ -111,12 +121,13 @@
     #define __bAddOverflow(a, b, c) (RtlLongAdd(a, b, c) == STATUS_INTEGER_OVERFLOW)
     #define __bMulOverflow(a, b, c) (RtlLongMul(a, b, c) == STATUS_INTEGER_OVERFLOW)
 #else
-    #define __bAddOverflow(a, b, c) !( ((a) < (ULONG_MAX - (b)))) && (*(c) = (a) + (b))
-    #define __bMulOverflow(a, b, c) !( !(((a) >>(LONG_BIT>>1)) || ((b) >> (LONG_BIT>>1))) && ((*(c) = a * b), true)
+    #define __bAddOverflow(a, b, c) !( ((a) < (ULONG_MAX - (b)))) && ((*(c) = (a) + (b)), true)
+    #define __bMulOverflow(a, b, c) !( !(((a) > (ULONG_MAX>>1)) || ((b) > (ULONG_MAX>>1))) && ((*(c) = a * b), true)
 #endif
 
-/* Safe ADD and MUL */
-__STATIC_FORCE_INLINE_F long safeUnsignedMulAdd(unsigned long a, unsigned long b, unsigned long c) {
+
+/* Add and Mul (unsigned long) */
+__STATIC_FORCE_INLINE_F unsigned long __bsafeUnsignedMulAddl(unsigned long a, unsigned long b, unsigned long c) {
   unsigned long res;
 
   assert(!__bMulOverflow(a, b, &res) && !__bAddOverflow(res, c, &res));

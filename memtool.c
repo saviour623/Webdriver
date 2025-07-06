@@ -1,3 +1,13 @@
+/* Memory Tools Used In The MVPG API
+Copyright (C) 2025 Michael Saviour
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+*/
+
 #include "memtool.h"
 
 /***********************************************************
@@ -19,36 +29,37 @@
 
 
 #if (_POSIX_C_SOURCE >= 200112L) || (_DEFAULT_SOURCE || _BSD_SOURCE || (XOPEN_SOURCE >= 500))
-#define MvpgMalloc(memptr, size) posix_memalign(memptr, MVPG_ALLOC_MEMALIGN, size)
+#define MvpgMalloc(memptr, size) posix_memalign((void *)&memptr, MVPG_ALLOC_MEMALIGN, size)
+    #define MvpgDeallocate(memptr)   free(memptr)
 /* C11 introduced a standard aligned_alloc function */
 #elif defined(__STDC__) && (__STDC_VERSION >= 201112L)
-#if defined(_MSC_VER) || defined(_WIN32)
+    #if defined(_MSC_VER) || defined(_WIN32)
 #define MvpgMalloc(memptr, size) !(*memptr && (memptr = _aligned_malloc(MVPG_ALLOC_MEMALIGN, size))) /* requires malloc.h */
-#define mvpgDeallocate(memptr) _aligned_free(memptr) /* memory can’t be freed with malloc’s free() */
-#else
+        #define MvpgDeallocate(memptr) _aligned_free(memptr) /* memory can’t be freed with malloc’s free() */
+    #else
 /*__clang__ and __GNUC__ */
-#define MvpgMalloc(memptr, size) !(*memptr && (memptr = aligned_alloc(MVPG_ALLOC_MEMALIGN, size))) /* TODO: size must be multiple of alignment  */
-#define mvpgDeallocate(memptr) free(memptr)
-#endif
+        #define MvpgMalloc(memptr, size) !(*memptr && (memptr = aligned_alloc(MVPG_ALLOC_MEMALIGN, size))) /* TODO: size must be multiple of alignment  */
+        #define MvpgDeallocate(memptr) free(memptr)
+    #endif
 #else
-/* MANUAL MEMALIGN */
+    /* MANUAL MEMALIGN */
 
-#if !defined(UINTPTR_MAX)
-     typedef unsigned long int uintptr_t
-#endif
+    #if !defined(UINTPTR_MAX)
+        typedef unsigned long int uintptr_t
+    #endif
 typedef uint16_t offset_t;
-#define OFFSET_SZ 2
+    #define OFFSET_SZ 2
 
-/* offset + fault (catering for worst cases where returned memory + offset may be unaligned)*/
-#define MAX_ALIGN_OFFSET_SZ  (OFFSET_SZ + (MVPG_ALLOC_MEMALIGN - 1))
-/* Round n up to next multiple of boundary */
-#define ALIGN_UP_MEMALIGN(n) NXTMUL(n, MVPG_ALLOC_MEMALIGN)
-/* offset is stored just before the aligned memory address */
-#define MEM_OFFSET_LOC(ptr) ((offset_t *)ptr - 1)
-/* Move to the initial unaligned (returned by malloc) memory */
-#define MV2_INIT_ALLOC(ptr) (void *)((uintptr_t)ptr - MEM_OFFSET_LOC(ptr)[0])
+    /* offset + fault (catering for worst cases where returned memory + offset may be unaligned)*/
+    #define MAX_ALIGN_OFFSET_SZ  (OFFSET_SZ + (MVPG_ALLOC_MEMALIGN - 1))
+    /* Round n up to next multiple of boundary */
+    #define ALIGN_UP_MEMALIGN(n) NXTMUL(n, MVPG_ALLOC_MEMALIGN)
+    /* offset is stored just before the aligned memory address */
+    #define MEM_OFFSET_LOC(ptr) ((offset_t *)ptr - 1)
+    /* Move to the initial unaligned (returned by malloc) memory */
+    #define MV2_INIT_ALLOC(ptr) (void *)((uintptr_t)ptr - MEM_OFFSET_LOC(ptr)[0])
 
-/**********************************************************************************************/
+/******************************************************************************************/
 
 __WARN_UNUSED__ __NONNULL__ static void *NativeAlignedAlloc(void **ptr, size_t size){
   /**
@@ -73,46 +84,33 @@ __NONNULL__ static void NativeAlignedFree(void *ptr) {
   free(MV2_INIT_ALLOC(ptr));
 }
 
-/************************************************************************************************/
+/******************************************************************************************/
 
-/* Use native as fallback */
-#define MvpgMalloc(memptr, size) NativeAlignedAlloc(&memptr, MVPG_ALLOC_MEMALIGN, size)
-#define mvpgDeallocate(memptr) NativeAlignedFree(memptr)
+    /* Define manual implementation as fallback */
+    #define MvpgMalloc(memptr, size) NativeAlignedAlloc(&memptr, MVPG_ALLOC_MEMALIGN, size)
+    #define MvpgDeallocate(memptr)   NativeAlignedFree(memptr)
 
 #endif
 
 
 /* MAIN */
 
-__NONNULL__ void *mvpgAlloc(void *memptr, size_t size, size_t offset) {
+__NONNULL__ void *mvpgAlloc(const size_t size, const size_t offset) {
   /* Allocate Block */
 
-  void **memAllocPtr;
+  char *memAllocPtr;
 
-  memAllocPtr = memptr;
+  assert( (size != 0) && !(MvpgMalloc(memAllocPtr, size)) );
+  memset(memAllocPtr, 0, size); /* clear memory */
 
-  assert(size != 0);
-
-  if ( MvpgMalloc(memAllocPtr, size) ) {
-	/* ERROR */
-	fprintf(stderr, "mvpgAlloc: allocation of size %lu failed (%s)\n", (long)size, strerror(errno));
-
-#ifdef EXIT_ON_MEM_ERR
-	exit(EXIT_FAILURE);
-#else
-	return NULL;
-#endif
-  }
-  memset(*memAllocPtr, MEMCHAR, size); /* clear memory */
-  *memAllocPtr += offset; /* offset */
-
-  return *memAllocPtr;
+  memAllocPtr += offset;
+  return memAllocPtr;
 }
 
 __WARN_UNUSED__ __NONNULL__ void *mvpgRealloc(void *memptr __MB_UNUSED__, size_t newsize __MB_UNUSED__) {
 
   /* NOT IMPLEMENTED */
-  static_assert(0, "MVPGREALLOC: NOT IMPLEMENTED");
+  assert( ("MVPGREALLOC: NOT IMPLEMENTED", 0) );
 
   return NULL;
 }
@@ -121,5 +119,5 @@ __WARN_UNUSED__ __NONNULL__ void *mvpgRealloc(void *memptr __MB_UNUSED__, size_t
 void mvpgDealloc(void *memptr) {
   /* Deallocate Block */
 
-  mvpgDeallocate(memptr);
+  MvpgDeallocate(memptr);
 }

@@ -65,31 +65,39 @@ enum {
    (V) = VEC_voidptr( VEC_metaDataType(V) + 1 )	\
     )
 
-#define VEC_size(V)				\
+#define VEC_vsize(V)				\
   VEC_fromMetaDataGet(V).__cap
 
-#define VEC_used(V)				\
+#define VEC_vused(V)				\
   VEC_fromMetaDataGet(V).__used
 
-#define VEC_dtype(V)				\
+#define VEC_vdtype(V)				\
   VEC_fromMetaDataGet(V).__dtype
 
-#define VEC_tmp(V)				\
-  VEC_fromMetaDataGet(V).tmp
+/* Read Only */
+#define VEC_size(V)\
+  (VEC_vsize(V) | 0)
 
-#define VEC_begin(V)\
+#define VEC_used(V)\
+  (VEC_vused(V) | 0)
+
+#define VEC_sizeof(V)\
+  (VEC_vdtype(V) | 0)
+/***/
+
+#define VEC_begin(V)				\
   ( V )
 #define VEC_end(V)\
-  ( V + VEC_used(V) - 1)
+  ( V + VEC_vused(V) - 1)
 
 #define VEC_front(V)				\
   ( V )[0]
 
 #define VEC_back(V)				\
-  ( V )[VEC_used(V) - 1]
+  ( V )[VEC_vused(V) - 1]
 
 #define VEC_free(V)				\
-  ( VEC_size(V) - VEC_used(V) )
+  ( VEC_vsize(V) - VEC_vused(V) )
 
 #define VEC_new(_size, _type, ...)						\
   VEC_INTERNAL_create(MACR_DO_ELSE(_size, 32, _size), MACR_DO_ELSE(sizeof(_type), 0, _type))
@@ -99,15 +107,15 @@ enum {
 
 #define VEC_push(V, N)							\
   (									\
-   assert((V != NULL) && (VEC_dtype == sizeof(N))),			\
-   ((VEC_size(V) < 1) || (VEC_size(V) == VEC_used(V)) ) && VEC_resize(V, 1), \
-   ((V)[++VEC_used(V) - 2] = (N))\
+   assert((V != NULL) && (VEC_vdtype(V) == sizeof(N))),			\
+   ((VEC_vsize(V) < 1) || (VEC_vsize(V) == VEC_vused(V)) ) && VEC_INTERNAL_resize(V, 1), \
+   ((V)[++VEC_vused(V) - 1] = (N))\
   )
 
 #define VEC_pop_ni(V)				\
   (\
-   assert((V) != NULL && VEC_size(V) > 0),\
-   (V)[--VEC_used((V))]		  \
+   assert((V) != NULL && VEC_vsize(V) > 0),\
+   (V)[--VEC_vused((V))]		  \
   )
 
 #define VEC_pop_i(V, I)					\
@@ -134,7 +142,7 @@ enum {
   (									\
    (V != NULL)								\
    && (									\
-       (V) = VEC_INTERNAL_shrink(V, MACR_DO_ELSE(__VA_ARGS__, VEC_used(V), __VA_ARGS__))\
+       (V) = VEC_INTERNAL_shrink(V, MACR_DO_ELSE(__VA_ARGS__, VEC_vused(V), __VA_ARGS__))\
       ) \
   )
 
@@ -148,7 +156,7 @@ enum {
 #define VEC_map(F, V, ...)				\
    do {						\
      if (V != NULL && F != NULL)		\
-       for (vsize_t i = 0; i < VEC_used(V); i++)	\
+       for (vsize_t i = 0; i < VEC_vused(V); i++)	\
 	 F(V[i]);				\
    }
 
@@ -161,8 +169,8 @@ enum {
   __STATIC_FORCE_INLINE_F __NONNULL__ vsize_t VEC_cvtindex(const void *v, vsize_t i, vsize_t lt) {
   register vsize_t _i;
 
-  _i = lt ? (vsize_t)i + VEC_size(v) : i;
-  assert( ((_i > 0) && _i < VEC_size(v)) );
+  _i = lt ? (vsize_t)i + VEC_vsize(v) : i;
+  assert( ((_i > 0) && _i < VEC_vsize(v)) );
 
   return _i;
 }
@@ -173,11 +181,16 @@ __STATIC_FORCE_INLINE_F __WARN_UNUSED__ void *VEC_INTERNAL_create(const vsize_t 
   assert ( dtype );
 
   v = mvpgAlloc(__bsafeUnsignedMulAddl(dtype, size, VEC_metadtsz), VEC_metadtsz);
-  VEC_size(v)  = size;
-  VEC_dtype(v) = dtype;
+  VEC_vsize(v)  = size;
+  VEC_vdtype(v) = dtype;
 
   return v;
 }
+
+__STATIC_FORCE_INLINE_F void *VEC_INTERNAL_resize(void *v, const vsize_t size) {
+  PASS;
+}
+
 __STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_INTERNAL_append(void *va, void *vb) {
   PASS;
 }
@@ -188,11 +201,11 @@ __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_INTERNAL_shrink(void *v, vsize_t s
      Shrink/Expand the capacity of Vector
    */
 
-  if (shrinkSize < VEC_used(v))
-    VEC_used(v) = shrinkSize;
+  if (shrinkSize < VEC_vused(v))
+    VEC_vused(v) = shrinkSize;
 
-  VEC_size(v) = shrinkSize;
-  __bMulOverflow(VEC_dtype(v), shrinkSize, &shrinkSize);
+  VEC_vsize(v) = shrinkSize;
+  __bMulOverflow(VEC_vdtype(v), shrinkSize, &shrinkSize);
 
   /* Copy v shrinked to size (Realloc) */
   p = mvpgAlloc(shrinkSize, 0);
@@ -207,41 +220,29 @@ __STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_INTERNAL_slice(voi
   void *new __MB_UNUSED__;
   vsize_t sz __MB_UNUSED__;
 
-  if(! ((b < VEC_used(*v)) && (e < VEC_used(*v)) && (e > b)) )
+  if(! ((b < VEC_vused(*v)) && (e < VEC_vused(*v)) && (e > b)) )
     return NULL;
 
   new = 0;
-  //new = VEC_newFrmSize((e - b), VEC_dtype(*v));
+  //new = VEC_newFrmSize((e - b), VEC_vdtype(*v));
 
-  __bMulOverflow(VEC_dtype(*v), (e - b), &sz);
+  __bMulOverflow(VEC_vdtype(*v), (e - b), &sz);
   memcpy(new, (*v + b), e);
 
   memmove(*v + b, *v + e, sz);
-  VEC_used(v) -= (e - b);
+  VEC_vused(v) -= (e - b);
   return new;
 }
 
 __NONNULL__ void VEC_INTERNAL_del(void *v, vsize_t i) {
 
-  /* vsize_t mvby = (VEC_size(v) - i - 1) * VEC_dtype(v); */
+  /* vsize_t mvby = (VEC_vsize(v) - i - 1) * VEC_vdtype(v); */
   /* mvby ? memmove(v + i, (v + i) + 1, mvby) /\* Shift memory to left *\/ */
   /*   : ((v)[i] = (void *)MEMCHAR); /\* Last index: reusable *\/ */
-  VEC_used(v)--;
+  VEC_vused(v)--;
 }
 
-/* Make ReadOnly */
-#undef  VEC_size
-#define VEC_size(V)   (VEC_fromMetaDataGet(V).__cap + 0)
-
-#undef  VEC_used
-#define VEC_used(V)   (VEC_fromMetaDataGet(V).__used + 0)
-
-#define VEC_sizeof(V) (VEC_fromMetaDataGet(V).__dtype + 0)
-
 /* No need of these */
-#undef  VEC_mv2blkst
-#undef  VEC_mv2MainBlk
-#undef  VEC_dtype
 #undef  VEC_newFrmSize
 #undef  vsize_t
 

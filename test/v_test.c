@@ -15,6 +15,9 @@ int main(void) {
 
   VEC_push(v, 5);
 
-  /* printf("value at (<object: %p> <size: %ld) -> %d\n", vec, (long int)VEC_getsize((void *)vec),*v); */
+  puti(v[0]);
+
+  VEC_destroy(v);
+
   return 0;
 }

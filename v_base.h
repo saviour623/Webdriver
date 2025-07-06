@@ -214,7 +214,7 @@ __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_INTERNAL_shrink(void *v, vsize_t s
 
   /* Copy v shrinked to size (Realloc) */
   p = mvpgAlloc(shrinkSize, 0);
-  memcpy(p, VEC_mv2MainBlk(v), shrinkSize);
+  memcpy(p, VEC_mv2MainBlk(v), __bsafeUnsignedMull(shrinkSize, VEC_dtype(v)));
   VEC_destroy(v);
 
   return VEC_mv2MainBlk(p);

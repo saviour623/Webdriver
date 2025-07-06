@@ -44,6 +44,10 @@ int main(void) {
 
   puti(VEC_back(v));
 
+  //VEC_shrink(v);
+
+  puti(VEC_size(v));
+
   VEC_destroy(v);
 
   return 0;

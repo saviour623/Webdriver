@@ -111,27 +111,40 @@ You should have received a copy of the GNU General Public License along with thi
 
 ************************************************************/
 
-/* SAFE_MUL_ADD (__bMulOverflow,  __bAddOverflow, safeMulAdd) */
+/* SAFE_MUL_ADD (__bMulOverflow,  __bAddOverflow, safeMulAdd)
+*  Returns 0 if operation succeeded
+*/
 #if defined(__GNUC__) || defined(__clang__)
     #define __bMulOverflow(a, b, c) __builtin_mul_overflow(a, b, c)
     #define __bAddOverflow(a, b, c) __builtin_add_overflow(a, b, c)
 #elif defined(_MSC_VER) || defined(_WIN32)
 /* WINDOWS KENRNEL API FOR SAFE ARITHMETIC */
-    #include <ntintsafe.h>#
+    #include <ntintsafe.h>
     #define __bAddOverflow(a, b, c) (RtlLongAdd(a, b, c) == STATUS_INTEGER_OVERFLOW)
     #define __bMulOverflow(a, b, c) (RtlLongMul(a, b, c) == STATUS_INTEGER_OVERFLOW)
 #else
-    #define __bAddOverflow(a, b, c) !( ((a) < (ULONG_MAX - (b)))) && ((*(c) = (a) + (b)), true)
-    #define __bMulOverflow(a, b, c) !( !(((a) > (ULONG_MAX>>1)) || ((b) > (ULONG_MAX>>1))) && ((*(c) = a * b), true)
+    #define __bAddOverflow(a, b, c) !( ((a) < (ULONG_MAX - (b)))) && ((*(c) = (a) + (b)), 0)
+    #define __bMulOverflow(a, b, c) !( !(((a) > (ULONG_MAX>>1)) || ((b) > (ULONG_MAX>>1))) && ((*(c) = a * b), 0)
 #endif
 
+/* Add */
+    __STATIC_FORCE_INLINE_F unsigned long int __bsafeUnsignedAddl(unsigned long int a, unsigned long int b) {
+      assert(("INTEGER OVERFLOW -> ADD", __bAddOverflow(a, b, &b) == 0));
+
+      return b;
+    }
+
+/* Mul */
+__STATIC_FORCE_INLINE_F unsigned long int __bsafeUnsignedMull(unsigned long int a, unsigned long int b) {
+  assert(("INTEGER OVERFLOW -> MUL", __bMulOverflow(a, b, &b));
+}
 
 /* Add and Mul (unsigned long) */
-__STATIC_FORCE_INLINE_F unsigned long __bsafeUnsignedMulAddl(unsigned long a, unsigned long b, unsigned long c) {
-  unsigned long res;
+__STATIC_FORCE_INLINE_F unsigned long int __bsafeUnsignedMulAddl(unsigned long int a, unsigned long int b, unsigned long int c) {
 
-  assert(!__bMulOverflow(a, b, &res) && !__bAddOverflow(res, c, &res));
-  return res;
+    assert(("INTEGER OVERFLOW -> MUL_ADD", !__bMulOverflow(a, b, &a) && !__bAddOverflow(&a, c, &a)));
+
+  return a;
 }
 
 

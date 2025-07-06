@@ -27,13 +27,14 @@ typedef struct {
  /* Metadata size */
 const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
 
+/* Pretty Print Supported types */
 enum {
-      VEC_MIN_SIZE         = 0x100,
-      VEC_ALLOC_SIZE       = 0x01,
-      VEC_MEMFILL          = 0x01,
-      VEC_REM_OPTMZ        = USHRT_MAX
-};
-
+      VEC_NO_TYPE_TYPE = 0,
+      VEC_INTEGER_TYPE = 1,
+      VEC_FLOAT_TYPE   = 8,
+      VEC_STRING_TYPE  = 16,
+      VEC_UNKNOWN_TYPE = 32
+}
 
 /***********************************************************
 
@@ -50,6 +51,9 @@ enum {
 
 #define VEC_voidptr(V)				\
   ( (void *)(V) )
+
+#define VEC_assert(expr, ...)\
+  debugAssert(expr, __VA_ARGS__)
 
 #define VEC_peekblkst(V)			\
   ( VEC_metaDataType(V) - 1 )
@@ -120,14 +124,14 @@ enum {
 
 #define VEC_push(V, N)							\
   (									\
-   assert((V != NULL) && (VEC_vdtype(V) == sizeof(N))),			\
+   VEC_assert((V != NULL) && (VEC_vdtype(V) == sizeof(N))),			\
    ((VEC_vsize(V) < 1) || (VEC_vsize(V) == VEC_vused(V)) ) && VEC_INTERNAL_resize(V, 1), \
    ((V)[VEC_vused(V)++] = (N))					\
   )
 
 #define VEC_popni(V)				\
   (\
-   assert((V) != NULL && VEC_vused(V) > 0),\
+   VEC_assert((V) != NULL && VEC_vused(V) > 0),\
    (V)[--VEC_vused((V))]		  \
   )
 
@@ -146,7 +150,7 @@ enum {
    VEC_INTERNAL_append(V1, V2)
 
 #define VEC_foreach(S, V, T)						\
-  for (MACR_DO_ELSE(VEC_type(T), TYPEOF(V), T) K = VEC_begin(V), S = 0; S = K[0], K != VEC_end(V); S++)
+  for (MACR_DO_ELSE(VEC_type(T), TYPEOF(V), T) K = VEC_begin(V), S = 0; (S = K[0]), K != VEC_end(V); S++, K++)
 
 #define VEC_map(F, V, ...)				\
    do {						\
@@ -167,24 +171,26 @@ enum {
   )
 
 #if __GNUC_LLVM__
-   #define VEC_ppgeneric(V)\
-      PASS
+#define VEC_tgeneric(V)\
+  __builtin_classify_type(TYPEOF(*V)))
 
 #elif __STDC_GTEQ_11__
-    #define VEC_ppgeneric(V)\
-     _Generic(V,				\
-	      VEC_type(short) : VEC_repri(V),	\
-	      VEC_type(int)   : VEC_repri(V),	\
-	      VEC_type(long)  : VEC_repri(V),	\
-	      VEC_type(float) : VEC_reprc(V),	\
-	      VEC_type(double): VEC_reprc(V),	\
-	      VEC_type(char *): VEC_reprs(V)	\
-	      )
+    #define VEC_tgeneric(V)\
+        _Generic(V,		   \
+	  VEC_type(short) : VEC_INTEGER_TYPE,	   \
+	  VEC_type(int)   : VEC_INTEGER_TYPE,	   \
+	  VEC_type(long)  : VEC_INTEGER_TYPE,	   \
+	  VEC_type(float) : VEC_FLOAT_TYPE,	   \
+	  VEC_type(double): VEC_FLOAT_TYPE,	   \
+	  VEC_type(char *): VEC_STRING_TYPE	   \
+	  )
 #else
-     VEC_ppgeneric(V) reprunknwn(V)
+     VEC_generic(V) VEC_UNKNOWN_TYPE
 #endif
-#define VEC_repr(V)				\
-  VEC_generic(V)
+#define VEC_prettyPrint(V)				\
+       do {					\
+       int type = tgeneric(V);
+       }
 
 #define VEC_del(V, I)				\
    VEC_INTERNAL_del(&V, I)
@@ -210,7 +216,7 @@ enum {
   register vsize_t _i;
 
   _i = lt ? (vsize_t)i + VEC_vsize(v) : i;
-  assert( ((_i > 0) && _i < VEC_vsize(v)) );
+  VEC_assert( ((_i > 0) && _i < VEC_vsize(v)) );
 
   return _i;
 }
@@ -218,7 +224,7 @@ enum {
 __STATIC_FORCE_INLINE_F __WARN_UNUSED__ void *VEC_INTERNAL_create(const vsize_t size, const vsize_t dtype) {
   void *v;
 
-  assert ( dtype );
+  VEC_assert ( dtype );
 
   v = mvpgAlloc(__bsafeUnsignedMulAddl(dtype, size, VEC_metadtsz), VEC_metadtsz);
   VEC_vsize(v)  = size;
@@ -276,6 +282,68 @@ __NONNULL__ void VEC_INTERNAL_del(void *v, vsize_t i) {
   VEC_vused(v)--;
 }
 
+#define VEC_BUFFER_SIZE USHRT_MAX
+#define VEC_MAX_INT_LEN 32
+#define VEC_appendComma(bf, i)\
+  (((bf)[i] = ','), ((bf)[i + 1] = ' ', cnt + 2))
+
+
+__STATIC_FORCE_INLINE_F int VEC_int2str(uintmax_t num, char *bf) {
+  PASS;
+}
+
+__STATIC_FORCE_INLINE_F int VEC_str2str(char *str __restrict, char *bf __restrict) {
+  vsize_t j;
+
+  for (j = 0; str[j] != 0; j++) {
+    bf[j] = str[j];
+  }
+  return j;
+}
+__STATIC_FORCE_INLINE_F int VEC_addr2str(void *adr __restrict, char *bf __restrict) {
+  PASS;
+}
+
+char *VEC_INTERNAL_repr(void *v, int type, FILE *file) {
+  /* Return the representation of vector */
+  char bf[VEC_BUFFER_SIZE] = {0};
+  vsize_t size;
+  vsize_t cnt, j, i;
+  int _type;
+
+  if (v == NULL)
+    return NULL;
+
+  fprintf(file, "<Object %p -> Vector(%lu, %lu)> [", v, VEC_size(v), VEC_used(v));
+  _type = VEC_NO_TYPE_TYPE;
+  switch (_type) {
+  case VEC_NO_TYPE_TYPE:
+    _type = type;
+    for (i = 0; i < VEC_size(v); i++) {
+      if (cnt > (VEC_BUFFER_SIZE - VEC_MAX_INT_LEN)) {
+	fprintf(file, "%s", bf);
+	cnt = 0;
+      }
+      if (cnt != 0)
+	cnt += VEC_appendComma(bf, cnt);
+  case VEC_INTEGER_TYPE:
+    cnt += VEC_int2str(v[i], bf);
+    break;
+  case VEC_FLOAT_TYPE:
+    PASS;
+    break;
+  case VEC_STRING_TYPE:
+    cnt += VEC_str2str(v[i], bf);
+    break;
+  case VEC_UNKNOWN_TYPE:
+    cnt += VEC_addr2str(v + i, bf);
+    break;
+    }
+  }
+  fprintf(file, "%s]\n", bf);
+
+  return NULL;
+}
 /* No need of these */
 #undef  VEC_newFrmSize
 #undef  vsize_t

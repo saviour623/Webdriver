@@ -28,23 +28,25 @@ int main(void) {
 
   puti(VEC_used(v));
 
+  puti(VEC_back(v));
+
   VEC_push(v, 5);
 
-  puti(v[0]);
+  puti(VEC_back(v));
 
   vecUsageFuncAdd(v, 6);
 
-  puti(v[1]);
+  puti(VEC_back(v));
 
   vecUsageFuncRefAdd(VEC_base(v), 12);
 
-  puti(v[2]);
+  puti(VEC_back(v));
 
   VEC_pop(v);
 
   puti(VEC_back(v));
 
-  //VEC_shrink(v);
+  VEC_shrink(v);
 
   puti(VEC_size(v));
 

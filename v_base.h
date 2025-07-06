@@ -88,18 +88,26 @@ enum {
 
 #define VEC_sizeof(V)\
   (VEC_vdtype(V) | 0)
-/***/
+
+#define VEC_isempty(V)\
+  !!( VEC_used(v) )
+
+#define VEC_isfilled(V)\
+  (VEC_used(V) == VEC_size(V))
+/**/
 
 #define VEC_begin(V)				\
   ( V )
-#define VEC_end(V)\
-  ( V + VEC_vused(V) - 1)
+
+#define VEC_end(V)				\
+  ( V + VEC_vused(V))
 
 #define VEC_front(V)				\
-  ( V )[0]
+  (( V )[0] | 0)
 
+/* Get last item of vector, equivalent to vec_front if vector is empty */
 #define VEC_back(V)				\
-  ( V )[VEC_vused(V) - 1]
+  ( ( V )[VEC_vused(V) - !!VEC_used(V)] | 0)
 
 #define VEC_free(V)				\
   ( VEC_vsize(V) - VEC_vused(V) )
@@ -114,12 +122,12 @@ enum {
   (									\
    assert((V != NULL) && (VEC_vdtype(V) == sizeof(N))),			\
    ((VEC_vsize(V) < 1) || (VEC_vsize(V) == VEC_vused(V)) ) && VEC_INTERNAL_resize(V, 1), \
-   ((V)[++VEC_vused(V) - 1] = (N))\
+   ((V)[VEC_vused(V)++] = (N))					\
   )
 
 #define VEC_popni(V)				\
   (\
-   assert((V) != NULL && VEC_vsize(V) > 0),\
+   assert((V) != NULL && VEC_vused(V) > 0),\
    (V)[--VEC_vused((V))]		  \
   )
 
@@ -134,11 +142,18 @@ enum {
 #define VEC_insert(V, N, I)			\
    (void)((V)[VEC_cvtindex(V, I, (I) < 0)] = (N))
 
-#define VEC_del(V, I)				\
-   VEC_INTERNAL_del(&V, I)
-
 #define VEC_append(V1, V2)			\
    VEC_INTERNAL_append(V1, V2)
+
+#define VEC_foreach(S, V, T)						\
+  for (MACR_DO_ELSE(VEC_type(T), TYPEOF(V), T) K = VEC_begin(V), S = 0; S = K[0], K != VEC_end(V); S++)
+
+#define VEC_map(F, V, ...)				\
+   do {						\
+     if (V != NULL && F != NULL)		\
+       for (vsize_t i = 0; i < VEC_vused(V); i++)	\
+	 F(V[i]);				\
+   }
 
 #define VEC_slice(V, S, E)			\
    VEC_INTERNAL_slice(&V, S, E)
@@ -151,19 +166,22 @@ enum {
       ) \
   )
 
-#define VEC_destroy(V)\
+#define VEC_repr(V)\
+  PASS
+
+#define VEC_del(V, I)				\
+   VEC_INTERNAL_del(&V, I)
+
+#define VEC_clear(V)\
+  ( VEC_vused(V) = 0)
+
+#define VEC_sort(V)				\
+  PASS
+
+#define VEC_destroy(V)							\
   (void)(V != NULL ? mvpgDealloc(VEC_mv2blkst(V)), (V = NULL) : (void)0)
 
 
-#define VEC_foreach(S, V, T)						\
-  for (MACR_DO_ELSE(VEC_type(T), TYPEOF(V), T) K = VEC_begin(V), S = 0; S = K[0], K != VEC_end(V); S++)
-
-#define VEC_map(F, V, ...)				\
-   do {						\
-     if (V != NULL && F != NULL)		\
-       for (vsize_t i = 0; i < VEC_vused(V); i++)	\
-	 F(V[i]);				\
-   }
 
 /*************************************************************
 
@@ -200,30 +218,25 @@ __STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_INTERNAL_append(vo
   PASS;
 }
 __STATIC_FORCE_INLINE_F __NONNULL__ void *VEC_INTERNAL_shrink(void *v, vsize_t shrinkSize) {
+  /* Shrink/Expand the capacity of Vector */
+
   void *p;
 
-  /**
-     Shrink/Expand the capacity of Vector
-   */
-
-  if (shrinkSize < VEC_vused(v))
-    VEC_vused(v) = shrinkSize;
-
-  VEC_vsize(v) = shrinkSize;
-  __bMulOverflow(VEC_vdtype(v), shrinkSize, &shrinkSize);
-
-  /* Copy v shrinked to size (Realloc) */
-  p = mvpgAlloc(shrinkSize, 0);
-  memcpy(p, VEC_mv2MainBlk(v), __bsafeUnsignedMull(shrinkSize, VEC_dtype(v)));
+  /* Create a new vector with shrinkSize (Realloc) */
+  p = VEC_INTERNAL_create(shrinkSize, VEC_vdtype(v));
+  /* Copy old to new */
+  memcpy(p, v, __bsafeUnsignedMull(shrinkSize, VEC_vdtype(v)));
+  VEC_vused(p) = shrinkSize < VEC_vused(v) ? shrinkSize : VEC_vused(v);
+  /* Destroy Old */
   VEC_destroy(v);
 
-  return VEC_mv2MainBlk(p);
+  return p;
 }
 
 __STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_INTERNAL_slice(void **v, vsize_t b, vsize_t e) {
   /* Slice items from index b to e, returning a new vector of sliced items */
+
   void *new __MB_UNUSED__;
-  vsize_t sz __MB_UNUSED__;
 
   if(! ((b < VEC_vused(*v)) && (e < VEC_vused(*v)) && (e > b)) )
     return NULL;
@@ -233,8 +246,8 @@ __STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_INTERNAL_slice(voi
 
   memcpy(new, (*v + b), e);
 
-  memmove(*v + b, *v + e, __bsafeUnsignedMull(VEC_dtype(*v), (e - b)));
-  VEC_vused(v) -= (e - b);
+  memmove(*v + b, *v + e, __bsafeUnsignedMull(VEC_vdtype(*v), (e - b)));
+  VEC_vused(v) -= e - b;
   return new;
 }
 

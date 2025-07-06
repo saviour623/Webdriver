@@ -129,22 +129,24 @@ You should have received a copy of the GNU General Public License along with thi
 
 /* Add */
     __STATIC_FORCE_INLINE_F unsigned long int __bsafeUnsignedAddl(unsigned long int a, unsigned long int b) {
-      assert(("INTEGER OVERFLOW -> ADD", __bAddOverflow(a, b, &b) == 0));
+      assert(( "INTEGER OVERFLOW -> ADD", __bAddOverflow(a, b, &b) == 0 ));
 
       return b;
     }
 
 /* Mul */
 __STATIC_FORCE_INLINE_F unsigned long int __bsafeUnsignedMull(unsigned long int a, unsigned long int b) {
-  assert(("INTEGER OVERFLOW -> MUL", __bMulOverflow(a, b, &b));
+  assert(( "INTEGER OVERFLOW -> MUL", __bMulOverflow(a, b, &b) == 0 ));
+
+  return b;
 }
 
 /* Add and Mul (unsigned long) */
 __STATIC_FORCE_INLINE_F unsigned long int __bsafeUnsignedMulAddl(unsigned long int a, unsigned long int b, unsigned long int c) {
 
-    assert(("INTEGER OVERFLOW -> MUL_ADD", !__bMulOverflow(a, b, &a) && !__bAddOverflow(&a, c, &a)));
+  assert(( "INTEGER OVERFLOW -> MUL_ADD", !__bMulOverflow(a, b, &b) && !__bAddOverflow(b, c, &c) ));
 
-  return a;
+  return c;
 }
 
 

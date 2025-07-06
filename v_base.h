@@ -231,10 +231,9 @@ __STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_INTERNAL_slice(voi
   new = 0;
   //new = VEC_newFrmSize((e - b), VEC_vdtype(*v));
 
-  __bMulOverflow(VEC_vdtype(*v), (e - b), &sz);
   memcpy(new, (*v + b), e);
 
-  memmove(*v + b, *v + e, sz);
+  memmove(*v + b, *v + e, __bsafeUnsignedMull(VEC_dtype(*v), (e - b)));
   VEC_vused(v) -= (e - b);
   return new;
 }

@@ -32,11 +32,11 @@ const uint16_t GLB_datablksz = sizeof(vec_t); /* Size of a block */
 
 
 #define VEC_metaData(vec, ...)    ((VEC_bytePtr(vec) - vecDefFlag)[0]) /*  Get/set meta-data in header */
-#define VEC_peekblkst(vec)        (void *)(VEC_bytePtr(vec) - GLB_metadtSz) /* Temporarily view the starting block of the vector */
-#define VEC_size(vec)             ((VEC_metaheader *)VEC_peekblkst(vec))->cap /* Request or update the size of the container */
+
+q#define VEC_size(vec)             ((VEC_metaheader *)VEC_peekblkst(vec))->cap /* Request or update the size of the container */
 #define VEC_dtype(vec)            ((VEC_metaheader *)VEC_peekblkst(vec))->dtype /* datatype size */
 #define VEC_mv2MainBlk(vec)       ((vec) = (void * )(VEC_bytePtr(vec) + GLB_metadtSz)) /* Move pointer to data section */
-#define mv2blkst(vec)             ((vec) = VEC_peekblkst(vec)) /* Move the pointer to the start of vector’s block */
+
 #define VEC_bytePtr(vec)          ((byte *)(void *)(vec)) /* Cast to byte pointer */
 #define VEC_bin(vec)              ((VEC_metaheader *)VEC_peekblkst(vec))->bin /* Waste bin for removed indices */
 #define VEC_bincnt(vec)           ((VEC_metaheader *)VEC_peekblkst(vec))->bincnt /* bin counter */

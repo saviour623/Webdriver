@@ -43,6 +43,8 @@ enum {
 
 #define VEC_type(T) T*
 
+#define VEC_refType(T) T**
+
 #define VEC_metaDataType(V)			\
   ( (VEC_metaData_ *)(void *)(V) )
 
@@ -64,6 +66,9 @@ enum {
   (						\
    (V) = VEC_voidptr( VEC_metaDataType(V) + 1 )	\
     )
+
+#define VEC_base(V)				\
+  ( &(V) )
 
 #define VEC_vsize(V)				\
   VEC_fromMetaDataGet(V).__cap
@@ -112,19 +117,19 @@ enum {
    ((V)[++VEC_vused(V) - 1] = (N))\
   )
 
-#define VEC_pop_ni(V)				\
+#define VEC_popni(V)				\
   (\
    assert((V) != NULL && VEC_vsize(V) > 0),\
    (V)[--VEC_vused((V))]		  \
   )
 
-#define VEC_pop_i(V, I)					\
+#define VEC_popi(V, I)					\
   (								\
-   (V) = VEC_del(V, VEC_iabs(I)),					\	\
+   (V) = VEC_del(V, VEC_iabs(I)),					\
   )
 
 #define VEC_pop(V, ...)\
-   MACR_DO_ELSE(VEC_pop_i(V, __VA_ARGS__), VEC_pop_i(V), __VA_ARGS__)
+  MACR_DO_ELSE(VEC_popi(V, __VA_ARGS__), VEC_popni(V), __VA_ARGS__)
 
 #define VEC_insert(V, N, I)			\
    (void)((V)[VEC_cvtindex(V, I, (I) < 0)] = (N))

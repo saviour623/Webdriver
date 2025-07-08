@@ -170,7 +170,7 @@ enum {
    #define VEC_ppgeneric(V)\
       PASS
 
-#elif __STDC_GTEQ_11
+#elif __STDC_GTEQ_11__
     #define VEC_ppgeneric(V)\
      _Generic(V,				\
 	      VEC_type(short) : VEC_repri(V),	\

@@ -74,10 +74,6 @@ You should have received a copy of the GNU General Public License along with thi
 
 ***********************************************************************/
 
-/* Do nothing (python’s ’pass’) */
-#define PASS (void)0
-
-
 #define MACR_EMPTY_PARAM(...) 0, 0
 #define MACR_INDIRECT_EVAL(a, ...) MACR_ACCEPT_FIRST(__VA_ARGS__)
 #define MACR_ACCEPT_FIRST(a, ...) a
@@ -156,12 +152,29 @@ __STATIC_FORCE_INLINE_F unsigned long int __bsafeUnsignedMulAddl(unsigned long i
   return c;
 }
 
-
 /***********************************************************************
+
+* FUNCTION PROTOTYPES FROM INCLUDE.C
+
+***********************************************************************/
+void _debugAssert(const char *, const unsigned long int, const char *, const char *, const char *);
+
+
+ /***********************************************************************
 
 * DEBUG
 
 ***********************************************************************/
+#define PASS (void)0
+
+#ifdef MVPG_NDEBUG
+    #define debugAssert(...)
+#else
+    #define debugAssert(expr, ...) (\
+ (expr) || (_debugAssert(__FILE__, __LINE__, __FUNCTION__, #expr, MACR_DO_ELSE(__VA_ARGS__, "", __VA_ARGS__)), 1) \
+				    )
+#endif
+
 #define throwError(...) puts(__VA_ARGS__)
 #define puti(i)         printf("%lld\n", (long long int)(i))
 

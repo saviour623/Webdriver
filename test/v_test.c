@@ -19,8 +19,22 @@ VEC_refType(int) vecUsageFuncRefAdd(VEC_refType(int) v, int i) {
 
 int main(void) {
   /* VECTOR TEST */
-
-  puti(__builtin_classify_type(NULL));
+  int t = 0;
+  switch (t) {
+  case 0:
+    t = 0;
+    while (t != 0) {
+    case 1:
+      printf("%d\n", t);
+      t -= 1;
+      puts("case 1");
+    case 2:
+      t -= 1;
+      puts("case 2");
+    }
+  default:
+    puts("done");
+  }
   exit(0);
 
   VEC_type(int) v = VEC_new(32, int);

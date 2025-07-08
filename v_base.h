@@ -313,11 +313,12 @@ char *VEC_INTERNAL_repr(char *v, int type, FILE *file) {
   if (v == NULL)
     return NULL;
 
-  fprintf(file, "<Object %p -> Vector(%lu, %lu)> [", v, VEC_size(v), VEC_used(v));
   _type = VEC_NO_TYPE_TYPE;
+
   switch (_type) {
   case VEC_NO_TYPE_TYPE:
     _type = type;
+    fprintf(file, "<Object %p -> Vector(%lu, %lu)> [", v, VEC_size(v), VEC_used(v));
     for (i = 0; i < VEC_size(v); i++) {
       if (bfcnt > (VEC_BUFFER_SIZE - VEC_MAX_INT_LEN)) {
 	fprintf(file, "%s", bf);
@@ -327,19 +328,17 @@ char *VEC_INTERNAL_repr(char *v, int type, FILE *file) {
 	bfcnt += VEC_appendComma(bf, bfcnt);
   case VEC_INTEGER_TYPE:
     bfcnt += VEC_int2str((uintmax_t)v[i], bf + bfcnt);
-    break;
   case VEC_FLOAT_TYPE:
     PASS;
-    break;
   case VEC_STRING_TYPE:
     bfcnt += VEC_str2str(v + i, bf + bfcnt);
-    break;
   case VEC_UNKNOWN_TYPE:
     bfcnt += VEC_addr2str(v + i, bf + bfcnt);
-    break;
     }
+  default:
+    /* Always comes here */
+    fprintf(file, "%s]\n", bf);
   }
-  fprintf(file, "%s]\n", bf);
 
   return NULL;
 }

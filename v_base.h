@@ -34,7 +34,7 @@ enum {
       VEC_FLOAT_TYPE   = 8,
       VEC_STRING_TYPE  = 16,
       VEC_UNKNOWN_TYPE = 32
-}
+};
 
 /***********************************************************
 
@@ -187,9 +187,9 @@ enum {
 #else
      VEC_generic(V) VEC_UNKNOWN_TYPE
 #endif
-#define VEC_prettyPrint(V)				\
+#define VEC_prettyPrint(V)			\
        do {					\
-       int type = tgeneric(V);
+	 int type = tgeneric(V);		\
        }
 
 #define VEC_del(V, I)				\
@@ -285,14 +285,14 @@ __NONNULL__ void VEC_INTERNAL_del(void *v, vsize_t i) {
 #define VEC_BUFFER_SIZE USHRT_MAX
 #define VEC_MAX_INT_LEN 32
 #define VEC_appendComma(bf, i)\
-  (((bf)[i] = ','), ((bf)[i + 1] = ' ', cnt + 2))
+  (((bf)[i] = ','), ((bf)[i + 1] = ' ', i + 2))
 
 
 __STATIC_FORCE_INLINE_F int VEC_int2str(uintmax_t num, char *bf) {
   PASS;
 }
 
-__STATIC_FORCE_INLINE_F int VEC_str2str(char *str __restrict, char *bf __restrict) {
+__STATIC_FORCE_INLINE_F int VEC_str2str(char *__restrict__ str, char *__restrict__ bf) {
   vsize_t j;
 
   for (j = 0; str[j] != 0; j++) {
@@ -300,15 +300,14 @@ __STATIC_FORCE_INLINE_F int VEC_str2str(char *str __restrict, char *bf __restric
   }
   return j;
 }
-__STATIC_FORCE_INLINE_F int VEC_addr2str(void *adr __restrict, char *bf __restrict) {
+__STATIC_FORCE_INLINE_F int VEC_addr2str(void *__restrict__ adr, char *__restrict__ bf) {
   PASS;
 }
 
-char *VEC_INTERNAL_repr(void *v, int type, FILE *file) {
+char *VEC_INTERNAL_repr(char *v, int type, FILE *file) {
   /* Return the representation of vector */
   char bf[VEC_BUFFER_SIZE] = {0};
-  vsize_t size;
-  vsize_t cnt, j, i;
+  vsize_t bfcnt, j, i;
   int _type;
 
   if (v == NULL)
@@ -320,23 +319,23 @@ char *VEC_INTERNAL_repr(void *v, int type, FILE *file) {
   case VEC_NO_TYPE_TYPE:
     _type = type;
     for (i = 0; i < VEC_size(v); i++) {
-      if (cnt > (VEC_BUFFER_SIZE - VEC_MAX_INT_LEN)) {
+      if (bfcnt > (VEC_BUFFER_SIZE - VEC_MAX_INT_LEN)) {
 	fprintf(file, "%s", bf);
-	cnt = 0;
+	bfcnt = 0;
       }
-      if (cnt != 0)
-	cnt += VEC_appendComma(bf, cnt);
+      if (bfcnt != 0)
+	bfcnt += VEC_appendComma(bf, bfcnt);
   case VEC_INTEGER_TYPE:
-    cnt += VEC_int2str(v[i], bf);
+    bfcnt += VEC_int2str((uintmax_t)v[i], bf + bfcnt);
     break;
   case VEC_FLOAT_TYPE:
     PASS;
     break;
   case VEC_STRING_TYPE:
-    cnt += VEC_str2str(v[i], bf);
+    bfcnt += VEC_str2str(v + i, bf + bfcnt);
     break;
   case VEC_UNKNOWN_TYPE:
-    cnt += VEC_addr2str(v + i, bf);
+    bfcnt += VEC_addr2str(v + i, bf + bfcnt);
     break;
     }
   }

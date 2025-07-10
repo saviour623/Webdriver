@@ -1,17 +1,16 @@
-/* MVPG utils
+#include <time.h>
+#include <limits.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdbool.h>
 
-Copyright (C) 2025 Michael Saviour
+#define START_TIME(t) (t = clock())
+#define END_TIME(t) (t = (clock() - t))
+#define PRINT_TIME(t) (printf("%f\n", t/(float)CLOCKS_PER_SEC))
 
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+#define puti(i) printf("%llu\n", (uint64_t)(i))
 
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
-*/
-
-#include "include.h"
-
-#define BOOL(n)        !!(n)
+#define BOOL(n) !!(n)
 #define TO_CHAR_NUM(n) ((n) | 0x30)
 
 #define ROTBF(b, i)				\
@@ -25,7 +24,6 @@ You should have received a copy of the GNU General Public License along with thi
   } while(0)
 
 #ifdef __ARM__
-/* This brute force approach happens to be alot faster on ARM (Tested on V7) */
 #define CVT_INT_STR(b, n, k, i)					\
   do {								\
     b[i] = TO_CHAR_NUM((k = (n * 0x5ull) >> 32));		\
@@ -68,10 +66,7 @@ You should have received a copy of the GNU General Public License along with thi
     b[i + 1] = 0;						\
   }\
   while (0)
-#elif x86_64
-/* */
 #else
-/* */
 #define CVT_ITOSTR(b, n, k, i)			\
   do {						\
     while (n > 0){				\
@@ -84,9 +79,7 @@ You should have received a copy of the GNU General Public License along with thi
   } while(0)
 #endif
 
-
-/* INTEGER TO STRING */
-size_t intostr(unsigned int n, char *b){
+static inline  size_t intostr(unsigned int n, char *b){
   register unsigned int k, i;
 
   i = 0;
@@ -96,12 +89,54 @@ size_t intostr(unsigned int n, char *b){
   return i;
 }
 
-/* DEBUG */
-void _debugAssert(const char *file, const unsigned long int linenum, const char *func, const char *expr, const char *msg) {
 
-  char *format;
+static inline void _intostr(unsigned int n, char *b){
+  register unsigned int k, i;
 
-  format = msg && *msg ? "MVPG DEBUG: %s:%lu %s: Assertion \'%s\' Failed <err: \'%s\'>.\n" : "MVPG DEBUG: %s:%lu %s: Assertion \'%s\' Failed.%s\n";
-  fprintf(stderr, format, file, linenum, func, expr, msg && *msg ? msg : "");
-  abort();
+  i = 0;
+  while (n > 0) {
+    k = n / 10;
+    b[i++] = TO_CHAR_NUM(n - (k * 10));
+    n = k;
+  }
+  ROTBF(b, i);
+  b[i] = 0;
 }
+
+
+int main(void) {
+  clock_t t1, t2, t3;
+  char a[11], b[11], c[11];
+  unsigned int n;
+  int i;
+
+  n = UINT_MAX;
+  //n = 12453;
+  clock();
+
+  START_TIME(t1);
+  for (i = 0; i < 1000; i++)
+    intostr(n, a);
+  END_TIME(t1);
+
+  clock();
+  START_TIME(t2);
+  for (i = 0; i < 1000; i++)
+    intostr(n, b);
+  END_TIME(t2);
+
+  clock();
+  START_TIME(t3);
+  for (i = 0; i < 1000; i++)
+    _intostr(n, c);
+  END_TIME(t3);
+
+  puts(a);
+  puts(b);
+  puts(c);
+  PRINT_TIME(t1);
+  PRINT_TIME(t2);
+  PRINT_TIME(t3);
+  return 0;
+}
+

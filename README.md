@@ -21,4 +21,4 @@ int main(void) {
 ```
 <br>
 
-_IMPORTANT: This project is stated to officially begin by 2nd July 2025, and so if you're free to feature in it, send me a mail at ```saviourme33@gmail.com``` including a message of interest and your github username, or you may wait until it's open for contribution._
+_IMPORTANT: Project is currently ongoing.

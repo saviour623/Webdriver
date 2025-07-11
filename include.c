@@ -12,88 +12,64 @@ You should have received a copy of the GNU General Public License along with thi
 #include "include.h"
 
 #define BOOL(n)        !!(n)
-#define TO_CHAR_NUM(n) ((n) | 0x30)
-
-#define ROTBF(b, i)				\
-  do {						\
-    register size_t j, k, c;			\
-    for (j = 0, k = i - 1; j < (i >> 1); j++, k--){	\
-      c    = b[j];				\
-      b[j] = b[k];			\
-      b[k] = c;				\
-    }						\
-  } while(0)
-
+#define TO_CHAR(n) ((n) | 0x30)
 #ifdef __ARM__
-/* This brute force approach happens to be alot faster on ARM (Tested on V7) */
-#define CVT_INT_STR(b, n, k, i)					\
-  do {								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x5ull) >> 32));		\
-    n    = n - (k * 1000000000);				\
-    i   += BOOL(i | k);						\
-								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x2bull) >> 32));		\
-    n    = n - (k * 100000000);					\
-    i   += BOOL(i | k);						\
-								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x1aeull) >> 32));		\
-    n    = n - (k * 10000000);					\
-    i   += BOOL(i | k);						\
-								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x10c7ull) >> 32));		\
-    n    = n - (k * 1000000);					\
-    i   += BOOL(i | k);						\
-								\
-    b[i] = TO_CHAR_NUM((k = (n * 0xa7c6ull) >> 32));		\
-    n    = n - (k * 100000);					\
-    i   += BOOL(i | k);						\
-								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x68db9ull) >> 32));		\
-    n    = n - (k * 10000);					\
-    i   += BOOL(i | k);						\
-								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x418938ull) >> 32));		\
-    n    = n - (k * 1000);					\
-    i   += BOOL(i | k);						\
-								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x28f5c29ull) >> 32));		\
-    n    = n - (k * 100);					\
-    i   += BOOL(i | k);						\
-								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x1999999aull) >> 32));	\
-    n    = n - (k * 10);					\
-    i   += BOOL(i | k);						\
-								\
-    b[i] = TO_CHAR_NUM(n);					\
-    b[i + 1] = 0;						\
-  }\
-  while (0)
-#elif x86_64
-/* */
+    #define MACR_DIV10(n) ((n) / 10)
 #else
-/* */
-#define CVT_ITOSTR(b, n, k, i)			\
-  do {						\
-    while (n > 0){				\
-      k = (n * 0x1999999Aull) >> 32;		\
-      b[i++] = TO_CHAR_NUM(n - (k * 10));	\
-      n = k;					\
-    }						\
-    ROTBF(b, i);				\
-    b[i] = 0;					\
-  } while(0)
+    #define MACR_DIV10(n) (((n) * 0x1999999Aull) >> 32)
 #endif
 
+__STATIC_FORCE_INLINE_F void *rotbuf(char *b, size_t i){
+  char *e, c;
 
-/* INTEGER TO STRING */
-size_t intostr(unsigned int n, char *b){
-  register unsigned int k, i;
+  for (e = (b + i); e > b; b++, e--){
+    c    = b[0];
+    b[0] = e[0];
+    e[0] = c;
+  }
+}
 
-  i = 0;
+__STATIC_FORCE_INLINE_F unsigned int strDec(unsigned int n, char *bf){
+  register unsigned int quot, i;
 
-  CVT_ITOSTR(b, n, k, i);
+  for (i = 0; n > 0; i++){
+    qout  = MACR_DIV10(n);
+    bf[i] = TO_CHAR(n - (quot * 10));
+    n     = qout;
+  }
+  rotbuf(bf, i);
+  b[i] = 0;
 
   return i;
+}
+
+__STATIC_FORCE_INLINE_F unsigned int strHex(unsigned int n, char *bf){
+  register unsigned int quot, i;
+
+  bf[0] = '0';
+  bf[1] = 'x';
+  bf += 2;
+
+  for (i = 0; n > 0; i++) {
+    qout  = n >> 4;
+    bf[i] = (n & 0x0f);
+    n     = k;
+  }
+  rotbuf(bf, i);
+  b[i] = 0;
+
+  return i;
+}
+
+/* INTEGER TO STRING */
+size_t cvtIntoStr(unsigned int n, char *bf, uint8_t base, uint8_t lt){
+  register unsigned int quot, i;
+
+  if ( lt ) {
+    n = -(int)n;
+    *bf++ = '-';
+  }
+  return (base == 16 ? strHex : strDec)(n, bf);
 }
 
 /* DEBUG */

@@ -24,71 +24,74 @@
   } while(0)
 
 #ifdef __ARM__
-#define CVT_INT_STR(b, n, k, i)					\
-  do {								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x5ull) >> 32));		\
-    n    = n - (k * 1000000000);				\
-    i   += BOOL(i | k);						\
+#define CVT_INT_STR(b, n, k, i) do				\
+    {								\
+      b[i] = TO_CHAR_NUM((k = (n * 0x5ull) >> 32));		\
+      n    = n - (k * 1000000000);				\
+      i   += BOOL(i | k);					\
 								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x2bull) >> 32));		\
-    n    = n - (k * 100000000);					\
-    i   += BOOL(i | k);						\
+      b[i] = TO_CHAR_NUM((k = (n * 0x2bull) >> 32));		\
+      n    = n - (k * 100000000);				\
+      i   += BOOL(i | k);					\
 								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x1aeull) >> 32));		\
-    n    = n - (k * 10000000);					\
-    i   += BOOL(i | k);						\
+      b[i] = TO_CHAR_NUM((k = (n * 0x1aeull) >> 32));		\
+      n    = n - (k * 10000000);				\
+      i   += BOOL(i | k);					\
 								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x10c7ull) >> 32));		\
-    n    = n - (k * 1000000);					\
-    i   += BOOL(i | k);						\
+      b[i] = TO_CHAR_NUM((k = (n * 0x10c7ull) >> 32));		\
+      n    = n - (k * 1000000);					\
+      i   += BOOL(i | k);					\
 								\
-    b[i] = TO_CHAR_NUM((k = (n * 0xa7c6ull) >> 32));		\
-    n    = n - (k * 100000);					\
-    i   += BOOL(i | k);						\
+      b[i] = TO_CHAR_NUM((k = (n * 0xa7c6ull) >> 32));		\
+      n    = n - (k * 100000);					\
+      i   += BOOL(i | k);					\
 								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x68db9ull) >> 32));		\
-    n    = n - (k * 10000);					\
-    i   += BOOL(i | k);						\
+      b[i] = TO_CHAR_NUM((k = (n * 0x68db9ull) >> 32));		\
+      n    = n - (k * 10000);					\
+      i   += BOOL(i | k);					\
 								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x418938ull) >> 32));		\
-    n    = n - (k * 1000);					\
-    i   += BOOL(i | k);						\
+      b[i] = TO_CHAR_NUM((k = (n * 0x418938ull) >> 32));	\
+      n    = n - (k * 1000);					\
+      i   += BOOL(i | k);					\
 								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x28f5c29ull) >> 32));		\
-    n    = n - (k * 100);					\
-    i   += BOOL(i | k);						\
+      b[i] = TO_CHAR_NUM((k = (n * 0x28f5c29ull) >> 32));	\
+      n    = n - (k * 100);					\
+      i   += BOOL(i | k);					\
 								\
-    b[i] = TO_CHAR_NUM((k = (n * 0x1999999aull) >> 32));	\
-    n    = n - (k * 10);					\
-    i   += BOOL(i | k);						\
+      b[i] = TO_CHAR_NUM((k = (n * 0x1999999aull) >> 32));	\
+      n    = n - (k * 10);					\
+      i   += BOOL(i | k);					\
 								\
-    b[i] = TO_CHAR_NUM(n);					\
-    b[i + 1] = 0;						\
-  }\
+      b[i] = TO_CHAR_NUM(n);					\
+      b[i + 1] = 0;						\
+    }								\
   while (0)
 #else
-#define CVT_ITOSTR(b, n, k, i)			\
-  do {						\
-    while (n > 0){				\
-      k = (n * 0x1999999Aull) >> 32;		\
-      b[i++] = TO_CHAR_NUM(n - (k * 10));	\
-      n = k;					\
-    }						\
-    ROTBF(b, i);				\
-    b[i] = 0;					\
+#if defined(__i386__) || defined(__i386) || defined(x86_64)
+#define CVT_IDIV10(n) ((n) / 10)
+#else
+#define CVT_IDIV10(n) (((n) * 0x1999999Aull) >> 32)
+#endif
+#define CVT_ITOSTR(b, n, k, i)				\
+  do {							\
+    while (n > 0){					\
+      k = CVT_IDIV10(n);					\
+      b[i++] = TO_CHAR_NUM(n - (k * 10));		\
+      n = k;						\
+    }							\
+    ROTBF(b, i);					\
+    b[i] = 0;						\
   } while(0)
 #endif
 
 static inline  size_t intostr(unsigned int n, char *b){
   register unsigned int k, i;
 
-  i = 0;
-
+  i = k = 0;
   CVT_ITOSTR(b, n, k, i);
 
   return i;
 }
-
 
 static inline void _intostr(unsigned int n, char *b){
   register unsigned int k, i;
@@ -128,7 +131,7 @@ int main(void) {
   clock();
   START_TIME(t3);
   for (i = 0; i < 1000; i++)
-    _intostr(n, c);
+    intostr(n, c);
   END_TIME(t3);
 
   puts(a);

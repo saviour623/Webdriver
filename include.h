@@ -157,7 +157,11 @@ __STATIC_FORCE_INLINE_F unsigned long int __bsafeUnsignedMulAddl(unsigned long i
 * FUNCTION PROTOTYPES FROM INCLUDE.C
 
 ***********************************************************************/
+/* Similar to assert */
 void _debugAssert(const char *, const unsigned long int, const char *, const char *, const char *);
+
+/* Convert 32bit integer to string */
+size_t cvtIntoStr(unsigned int, char *);
 
 
  /***********************************************************************

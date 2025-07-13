@@ -1,6 +1,15 @@
 #include <limits.h>
-
+#include <stdio.h>
+struct abc;
 int main(void) {
-  __LONG_LONG_WIDTH__;
-  return 0;
+  int c = 1;
+  switch (c) {
+  case 1:
+    c = 5;
+  case 2:
+    puts("true");
+    break;
+  case 8:
+    puts("true");
+  }
 }

@@ -297,6 +297,7 @@ typedef struct {
   uint8_t Pp_base;
   uint8_t PP_signed;
   uint8_t Pp_overflw;
+  uint8_t Pp_genrc;
 } Pp_Setup;
 
 __STATIC_FORCE_INLINE_F int VEC_str(char *__restrict__ str, const Pp_Setup *cf) {
@@ -320,33 +321,45 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
   vsize_t bfcnt;
 
   fc[0] = *fmt++;
-    (c = *fmt++)   ? (fc[1]  = c),
+  (c = *fmt++)   ? (fc[1]  = c),
     (c = *fmt++) ? (fc[3]  = c),
     (c = *fmt++) ? (fc[7]  = c),
-    (c = *fmt)   ? (fc[15] = c)
-    : PASS : PASS : PASS : PASS;
+    (c = *fmt)   ? (fc[15] = c):
+    PASS : PASS : PASS : PASS;
 
 
-  mask =  ((fc[0] & 0x5fu)   == 85 );
-  mask |= ((fc[mask] & 76)   == 76 ) << 1;
-  mask |= ((fc[mask] & 0x5fu) == 76) << 2;
-  mask |= ((fc[mask] & 0x5fu) == 88) << 3;
-  mask = (mask << 8) | fc[mask];
+  mask =  ((fc[0] & 0x5fu)    == 76);
+  mask |= ((fc[mask] & 76)    == 76) << 1;
+  mask |= ((fc[mask] & 0x5fu) == 88) << 2;
+  mask |= ((fc[mask] & 0x5fu) == 90) << 3;
+  mask =  (mask << 8) | fc[mask];
 
-  c = (mask & ~MIXED_INT_ND_STR) | (mask & ~MIXED_BASE_STR)
-    | (mask & ~MIXED_INT_FLT)    | (mask & ~MIXED_BASE_FLT);
+  VEC_assert(c = (mask & ~MIXED_INT_ND_STR) | (mask & ~MIXED_BASE_STR)
+	       | (mask & ~MIXED_INT_FLT)    | (mask & ~MIXED_BASE_FLT), "Invalid Format");
 
   switch (( c = mask & TYPE )) {
+  case 'p':
+    setup.Pp_genrc = True;
+  case 'u':
+    setup.Pp_signd = mask & SIGNESS;
   case 'd':
-    c = mask & WIDTH;
-  case 'h':
-  case 'l':
-  case 'L':
-  case 'z':
+  case 'i':
+    setup.Pp_base  = mask & BASE;
+    switch (( c = mask & WIDTH )) {
+    case 'l':
+      VEC_map(v, VEC_itoa, long, &setup     );
+    case 'L':
+      VEC_map(v, VEC_itoa, long long, &setup);
+    case 'z':
+      VEC_map(v, VEC_itoa, size_t, &setup   );
+    default:
+      VEC_map(v, VEC_itoa, int, &setup      );
+    }
   case 'f':
   case 'D':
+  case 'c':
+    setup.Pp_char = True;
   case 's':
-  case 'p':
   default :
     PASS;
   }

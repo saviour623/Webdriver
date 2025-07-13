@@ -11,12 +11,10 @@ c[0] = *kc++;
 : 0 : 0 : 0 : 0;
 
 
-mask =  ((c[0] & 0x5f) == 85 )
-mask |= ((c[mask] & 76) == 76 ) << 1
-
-mask |= ((c[mask] & 0x5f) == 76) << 2
-mask |= ((c[mask] & 0x5f) == 88 ) << 3
-
+mask =  ((c[0] & 76) == 76 )
+mask |= ((c[mask] & 0x5f) == 76) << 1
+mask |= ((c[mask] & 0x5f) == 90) << 2
+mask |= ((c[mask] & 0x5f) == 88) << 3
 mask = (mask << 8) | c[mask];
 
 

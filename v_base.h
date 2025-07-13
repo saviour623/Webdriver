@@ -331,7 +331,7 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
   mask |= ((fc[mask] & 76)    == 76) << 1;
   mask |= ((fc[mask] & 0x5fu) == 88) << 2;
   mask |= ((fc[mask] & 0x5fu) == 90) << 3;
-  mask =  (mask << 8) | fc[mask];
+  mask =  (mask << 8)| fc[mask];
 
   VEC_assert(c = (!((mask & TYPE) ^ 0x73) & (~mask & SPEC))
 	     |   (!((mask & TYPE) ^ 0x66) & (~mask & BASE))

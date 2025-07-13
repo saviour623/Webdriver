@@ -317,7 +317,7 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
   uint8_t c, fc[15] = {0};
 
   enum {
-	TYPE = 0x0f,  SPEC = 0xf00, BASE = 0x400
+	TYPE = 0x7f,  SPEC = 0xf00, BASE = 0x400
 	LONG = 0x100, LLNG = 0x200, SIZE = 0x300,
   };
 
@@ -333,9 +333,9 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
   mask |= ((fc[mask] & 0x5fu) == 90) << 3;
   mask =  (mask << 8)| fc[mask];
 
-  VEC_assert(c = (!((mask & TYPE) ^ 0x73) & (~mask & SPEC))
-	     |   (!((mask & TYPE) ^ 0x66) & (~mask & BASE))
-	     |   ( (mask & SPEC)          & (~mask & TYPE)), "Invalid Format");
+  VEC_assert(c = (((mask & TYPE) ^ 0x73) ^ (mask & SPEC))
+	     |   (((mask & TYPE) ^ 0x66) ^ (mask & BASE))
+	     |   ( (mask & SPEC)         ^ (mask & TYPE)), "Invalid Format");
 
   switch (( c = mask & TYPE )) {
   case 'p':

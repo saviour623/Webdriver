@@ -32,19 +32,14 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
  * Methods: MACRO
 
 ************************************************************/
-#ifndef VEC_UNSAFE
-    #define VEC_AllowValidation(...) __VA_ARGS__
-#else
-    #define VEC_AllowValidation(...) PASS
-#endif
 
 #define VEC_Macro_Exec_True(...) __VA_ARGS__
 #define VEC_Macro_Exec_False(...)
 
-#define VEC_Macro_If_Args_Exec(...)	\
+#define VEC_Macro_If_Args_Exec(...)					\
   VEC_Macro_Exec_ ## MACR_DO_ELSE(True, False, __VA_ARGS__) (__VA_ARGS__)
 
-  #define VEC_type(T) T*
+#define VEC_type(T) T*
 
 #define VEC_refType(T) T**
 
@@ -54,8 +49,11 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
 #define VEC_voidptr(V)				\
   ( (void *)(uintptr_t)(V) )
 
-#define VEC_assert(expr, ...)\
-  debugAssert(expr, __VA_ARGS__)
+#ifndef VEC_UNSAFE
+    #define VEC_assert(expr, ...) debugAssert(expr, __VA_ARGS__)
+#else
+    #define VEC_assert(...)
+#endif
 
 #define VEC_peekblkst(V)			\
   ( VEC_metaDataType(V) - 1 )
@@ -126,14 +124,14 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
 
 #define VEC_push(V, N)							\
   (									\
-  VEC_AllowValidation(VEC_assert((V != NULL) && (VEC_vdtype(V) == sizeof(N))), \
+  VEC_assert((V != NULL) && (VEC_vdtype(V) == sizeof(N)), \
    ((VEC_vsize(V) < 1) || (VEC_vsize(V) == VEC_vused(V)) ) && VEC_INTERNAL_resize(V, 1), \
    ((V)[VEC_vused(V)++] = (N))					\
   )
 
 #define VEC_popni(V)				\
   (\
-   VEC_AllowValidation(VEC_assert((V) != NULL && VEC_vused(V) > 0)),	\
+   VEC_assert((V) != NULL && VEC_vused(V) > 0),	\
    (V)[--VEC_vused((V))]		  \
   )
 
@@ -217,7 +215,7 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
   register vsize_t _i;
 
   _i = lt ? (vsize_t)i + VEC_vsize(v) : i;
-  VEC_AllowValidation(VEC_assert( ((_i > 0) && _i < VEC_vsize(v)) ));
+  VEC_assert( ((_i > 0) && _i < VEC_vsize(v)) );
 
   return _i;
 }
@@ -285,6 +283,7 @@ __NONNULL__ void VEC_INTERNAL_del(void *v, vsize_t i) {
 
 #define VEC_BUFFER_SIZE USHRT_MAX
 #define VEC_MAX_INT_LEN 32
+#define EOFMT(c, f) (((c) = (f)) & ((c) ^ 58))
 #define VEC_appendComma(bf, i)\
   (((bf)[i] = ','), ((bf)[i + 1] = ' ', i + 2))
 
@@ -294,6 +293,7 @@ __NONNULL__ void VEC_INTERNAL_del(void *v, vsize_t i) {
 typedef struct {
   char   *Pp_buf;
   vsize_t Pp_size;
+  vsize_t Pp_used;
   uint8_t Pp_base;
   uint8_t PP_signed;
   uint8_t Pp_overflw;
@@ -310,21 +310,20 @@ __STATIC_FORCE_INLINE_F int VEC_str(char *__restrict__ str, const Pp_Setup *cf) 
   return j;
 }
 
-__STATIC_FORCE_INLINE_F int VEC_addr(void *__restrict__ addr, char *__restrict__ bf) {
-  return  cvtInt2Str((uintptr_t)addr, bf, 16, 0);
-}
-
 __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsize) {
   /* Return the representation of vector */
   struct Pp_Setup setup = {bf, VEC_vused(v), 10, 0};
-  char fc[15] = {0}, c;
-  vsize_t bfcnt;
+  uint16_t mask;
+  uint8_t c, fc[15] = {0};
+
+  enum {
+	TYPE = 0x0f,  SPEC = 0xf00, BASE = 0x400
+	LONG = 0x100, LLNG = 0x200, SIZE = 0x300,
+  };
 
   fc[0] = *fmt++;
-  (c = *fmt++)   ? (fc[1]  = c),
-    (c = *fmt++) ? (fc[3]  = c),
-    (c = *fmt++) ? (fc[7]  = c),
-    (c = *fmt)   ? (fc[15] = c):
+  EOFMT(c, *fmt++)   ? (fc[1]  = c), EOFMT(c, *fmt++) ? (fc[3]  = c),
+    EOFMT(c, *fmt++) ? (fc[7]  = c), EOFMT(c, *fmt)   ? (fc[15] = c):
     PASS : PASS : PASS : PASS;
 
 
@@ -334,37 +333,40 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
   mask |= ((fc[mask] & 0x5fu) == 90) << 3;
   mask =  (mask << 8) | fc[mask];
 
-  VEC_assert(c = (mask & ~MIXED_INT_ND_STR) | (mask & ~MIXED_BASE_STR)
-	       | (mask & ~MIXED_INT_FLT)    | (mask & ~MIXED_BASE_FLT), "Invalid Format");
+  VEC_assert(c = (!((mask & TYPE) ^ 0x73) & (~mask & SPEC))
+	     |   (!((mask & TYPE) ^ 0x66) & (~mask & BASE))
+	     |   ( (mask & SPEC)          & (~mask & TYPE)), "Invalid Format");
 
   switch (( c = mask & TYPE )) {
   case 'p':
-    setup.Pp_genrc = True;
+    setup.Pp_genrc = true;
   case 'u':
-    setup.Pp_signd = mask & SIGNESS;
+    setup.Pp_signd = mask & UNSIGNED;
   case 'd':
   case 'i':
     setup.Pp_base  = mask & BASE;
     switch (( c = mask & WIDTH )) {
-    case 'l':
+    case LONG:
       VEC_map(v, VEC_itoa, long, &setup     );
-    case 'L':
+    case LLNG:
       VEC_map(v, VEC_itoa, long long, &setup);
-    case 'z':
+    case SIZE:
       VEC_map(v, VEC_itoa, size_t, &setup   );
     default:
       VEC_map(v, VEC_itoa, int, &setup      );
     }
+    break;
   case 'f':
   case 'D':
   case 'c':
     setup.Pp_char = True;
   case 's':
+    VEC_map(v)
   default :
     PASS;
   }
 
-  return bfcnt;
+  return setup.used;
 }
 /* No need of these */
 #undef  VEC_newFrmSize

@@ -27,22 +27,24 @@ typedef struct {
  /* Metadata size */
 const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
 
-/* Pretty Print Supported types */
-enum {
-      VEC_NO_TYPE_TYPE = 0,
-      VEC_INTEGER_TYPE = 1,
-      VEC_FLOAT_TYPE   = 8,
-      VEC_STRING_TYPE  = 16,
-      VEC_UNKNOWN_TYPE = 32
-};
-
 /***********************************************************
 
  * Methods: MACRO
 
 ************************************************************/
+#ifndef VEC_UNSAFE
+    #define VEC_AllowValidation(...) __VA_ARGS__
+#else
+    #define VEC_AllowValidation(...) PASS
+#endif
 
-#define VEC_type(T) T*
+#define VEC_Macro_Exec_True(...) __VA_ARGS__
+#define VEC_Macro_Exec_False(...)
+
+#define VEC_Macro_If_Args_Exec(...)	\
+  VEC_Macro_Exec_ ## MACR_DO_ELSE(True, False, __VA_ARGS__) (__VA_ARGS__)
+
+  #define VEC_type(T) T*
 
 #define VEC_refType(T) T**
 
@@ -124,14 +126,14 @@ enum {
 
 #define VEC_push(V, N)							\
   (									\
-   VEC_assert((V != NULL) && (VEC_vdtype(V) == sizeof(N))),			\
+  VEC_AllowValidation(VEC_assert((V != NULL) && (VEC_vdtype(V) == sizeof(N))), \
    ((VEC_vsize(V) < 1) || (VEC_vsize(V) == VEC_vused(V)) ) && VEC_INTERNAL_resize(V, 1), \
    ((V)[VEC_vused(V)++] = (N))					\
   )
 
 #define VEC_popni(V)				\
   (\
-   VEC_assert((V) != NULL && VEC_vused(V) > 0),\
+   VEC_AllowValidation(VEC_assert((V) != NULL && VEC_vused(V) > 0)),	\
    (V)[--VEC_vused((V))]		  \
   )
 
@@ -150,13 +152,14 @@ enum {
    VEC_INTERNAL_append(V1, V2)
 
 #define VEC_foreach(S, V, T)						\
-  for (MACR_DO_ELSE(VEC_type(T), TYPEOF(V), T) K = VEC_begin(V), S = 0; (S = K[0]), K != VEC_end(V); S++, K++)
+  for (MACR_DO_ELSE(VEC_type(T), TYPEOF(V), T) K = VEC_begin(V), S = K[0]; K != VEC_end(V); S = *++k)
 
-#define VEC_map(F, V, ...)				\
+#define VEC_map(F, V, T, ...)			\
    do {						\
-     if (V != NULL && F != NULL)		\
+   VEC_type(T) Vv = V;
+     if (Vv != NULL && F != NULL)		\
        for (vsize_t i = 0; i < VEC_vused(V); i++)	\
-	 F(V[i]);				\
+	 F(Vv[i] VEC_Macro_If_Args_Exec(__VA_ARGS__));	\
    }
 
 #define VEC_slice(V, S, E)			\
@@ -175,15 +178,6 @@ enum {
   __builtin_classify_type(TYPEOF(*V)))
 
 #elif __STDC_GTEQ_11__
-    #define VEC_tgeneric(V)\
-        _Generic(V,		   \
-	  VEC_type(short) : VEC_INTEGER_TYPE,	   \
-	  VEC_type(int)   : VEC_INTEGER_TYPE,	   \
-	  VEC_type(long)  : VEC_INTEGER_TYPE,	   \
-	  VEC_type(float) : VEC_FLOAT_TYPE,	   \
-	  VEC_type(double): VEC_FLOAT_TYPE,	   \
-	  VEC_type(char *): VEC_STRING_TYPE	   \
-	  )
 #else
      VEC_generic(V) VEC_UNKNOWN_TYPE
 #endif
@@ -223,7 +217,7 @@ enum {
   register vsize_t _i;
 
   _i = lt ? (vsize_t)i + VEC_vsize(v) : i;
-  VEC_assert( ((_i > 0) && _i < VEC_vsize(v)) );
+  VEC_AllowValidation(VEC_assert( ((_i > 0) && _i < VEC_vsize(v)) ));
 
   return _i;
 }
@@ -298,35 +292,12 @@ __NONNULL__ void VEC_INTERNAL_del(void *v, vsize_t i) {
   cvtInt2Str(n, bf, base, negtv)
 
 typedef struct {
-  char *bf;
-  vsize_t size;
-  uint8_t base;
-  uint8_t signd;
+  char   *Pp_buf;
+  vsize_t Pp_size;
+  uint8_t Pp_base;
+  uint8_t PP_signed;
+  uint8_t Pp_overflw;
 } Pp_Setup;
-
-static int VEC_short(const void *var, const Pp_Setup *cf) {
-  const short n = (const short *) var[0];
-  return VEC_itoa(n, cf->bf, cf->base, cf->signd && (n < 0));
-}
-
-static int VEC_int(const void *var, const Pp_Setup *cf) {
-  const int n = (const short *) var[0];
-  return VEC_itoa(n, cf->bf, cf->base, cf->signd && (n < 0));
-}
-
-static int VEC_long(const void *var, const Pp_Setup *cf) {
-  const long n = (const short *) var[0];
-  return VEC_itoa(n, cf->bf, cf->base, cf->signd && (n < 0));
-}
-
-static int VEC_longLong(const void *var, const Pp_Setup *cf) {
-  const longLong n = (const short *) var[0];
-  return VEC_itoa(n, cf->bf, cf->base, cf->signd && (n < 0));
-}
-
-static int VEC_float(const void *var, const Pp_Setup *cf) {
-  return 0.0;
-}
 
 __STATIC_FORCE_INLINE_F int VEC_str(char *__restrict__ str, const Pp_Setup *cf) {
   vsize_t j, e;
@@ -342,47 +313,32 @@ __STATIC_FORCE_INLINE_F int VEC_addr(void *__restrict__ addr, char *__restrict__
   return  cvtInt2Str((uintptr_t)addr, bf, 16, 0);
 }
 
-vsize_t VEC_INTERNAL_repr(char *v, char *format, char *bf, vsize_t bfsize) {
+__NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *format, char *bf, vsize_t bfsize) {
   /* Return the representation of vector */
-  typedef void (*cvtfunc)(void *, vsize_t, uint8_t, uint8_t);
-  typedef v
-  cvtfunc converter;
-  vsize_t size, bfcnt, i, overflw;
-  uint8_t signd, base, c;
+  struct Pp_Setup setup = {bf, VEC_vused(v), 10, 0};
 
-  if (v == NULL)
-    return -1;
+  vsize_t bfcnt;
+  uint8_t c;
 
-  converter = NULL;
-  overflow  = 1;
-  signd     = 0;
-  base      = 10;
-  c         = *format;
-
-  switch (c) {
+  switch ( (c = *format) ) {
   case 'u':
-    signd = 1;
+    setup.Pp_signd = 1;
     c = *format++;
+  case 'x':
+    setup.Pp_base = 16;
+    goto conversion;
   case 'c':
     converter = NULL;
   case 'h':
-    converter = VEC_short;
-    overflow  = 5;
+    VEC_map(v, VEC_itoa, short, &setup);
   case 'i':
-    converter = VEC_int;
-    overflw   = 10;
+    VEC_map(v, VEC_itoa, int, &setup);
   case 'l':
-    converter = VEC_long;
-    overflw   = 20;
+
   case 'L':
-    converter = VEC_longLong;
-    overflw   = 20;
+
   case 'z':
-    converter = VEC_bigInt;
-    c = *format++;
-  case 'x':
-    base = 16;
-    goto conversion;
+
   case 'f':
   case 'd':
   case 'D':
@@ -398,16 +354,16 @@ vsize_t VEC_INTERNAL_repr(char *v, char *format, char *bf, vsize_t bfsize) {
 
   conversion:
 
-      for (i = 0; i < size; i++) {
-	if (bfcnt > (bfsize - VEC_MAX_INT_LEN)) {
-	  bf[bfcnt] = bfcnt = 0;
-	  break;
-	}
-	if (overflw) {
-	  PASS;
-	}
-	converter(v+bfcnt, bfsize, signd, base);
-	bfcnt += VEC_appendComma(bf, bfcnt);
+    for (i = 0; i < size; i++) {
+      if (bfcnt > (bfsize - VEC_MAX_INT_LEN)) {
+	bf[bfcnt] = bfcnt = 0;
+	break;
+      }
+      if (overflw) {
+	PASS;
+      }
+      converter(v+bfcnt, bfsize, signd, base);
+      bfcnt += VEC_appendComma(bf, bfcnt);
     }
   }
 

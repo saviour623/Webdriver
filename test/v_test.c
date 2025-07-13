@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <time.h>
 #include <limits.h>
+
+#include "../include.h"
 #include "../v_base.h"
 
 VEC_type(int) vecUsageFuncAdd(VEC_type(int) v, int i) {
@@ -19,22 +21,13 @@ VEC_refType(int) vecUsageFuncRefAdd(VEC_refType(int) v, int i) {
 
 int main(void) {
   /* VECTOR TEST */
-  int t = 0;
-  switch (t) {
-  case 0:
-    t = 0;
-    while (t != 0) {
-    case 1:
-      printf("%d\n", t);
-      t -= 1;
-      puts("case 1");
-    case 2:
-      t -= 1;
-      puts("case 2");
-    }
-  default:
-    puts("done");
-  }
+
+  char b[1024] = "000000000000000002";
+  puts(b);
+  __int128 n;
+  int i = cvtInt2Str(UINT64_MAX, b, 16, 0);
+  puts(b);
+  puti(i);
   exit(0);
 
   VEC_type(int) v = VEC_new(32, int);

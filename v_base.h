@@ -50,7 +50,7 @@ enum {
   ( (VEC_metaData_ *)(void *)(V) )
 
 #define VEC_voidptr(V)				\
-  ( (void *)(V) )
+  ( (void *)(uintptr_t)(V) )
 
 #define VEC_assert(expr, ...)\
   debugAssert(expr, __VA_ARGS__)
@@ -287,12 +287,10 @@ __NONNULL__ void VEC_INTERNAL_del(void *v, vsize_t i) {
 #define VEC_appendComma(bf, i)\
   (((bf)[i] = ','), ((bf)[i + 1] = ' ', i + 2))
 
+#define VEC_itoa(n, bf, base)			\
+  cvtInt2Str(n, bf, base, (n) < 0)
 
-__STATIC_FORCE_INLINE_F int VEC_int2str(uintmax_t num, char *bf) {
-  PASS;
-}
-
-__STATIC_FORCE_INLINE_F int VEC_str2str(char *__restrict__ str, char *__restrict__ bf) {
+__STATIC_FORCE_INLINE_F int VEC_appendStr(char *__restrict__ str, char *__restrict__ bf) {
   vsize_t j;
 
   for (j = 0; str[j] != 0; j++) {
@@ -300,25 +298,28 @@ __STATIC_FORCE_INLINE_F int VEC_str2str(char *__restrict__ str, char *__restrict
   }
   return j;
 }
-__STATIC_FORCE_INLINE_F int VEC_addr2str(void *__restrict__ adr, char *__restrict__ bf) {
-  PASS;
+__STATIC_FORCE_INLINE_F int VEC_memAddr(void *__restrict__ addr, char *__restrict__ bf) {
+  return  cvtInt2Str((uintptr_t)addr, bf, 16, 0);
 }
 
 char *VEC_INTERNAL_repr(char *v, int type, FILE *file) {
   /* Return the representation of vector */
-  char bf[VEC_BUFFER_SIZE] = {0};
+  char bf[VEC_BUFFER_SIZE] = "<Object %s -> Vector(%s, %s)> [";
   vsize_t bfcnt, j, i;
   int _type;
 
   if (v == NULL)
     return NULL;
 
+  bfcnt = 31 + memAddr(v, bf + 31);
+  bfcnt += VEC_itoa(VEC_size(v), bf + bfcnt,  10);
+  bfcnt += VEC_itoa(VEC_used(v), bf + bfcnt,  10);
   _type = VEC_NO_TYPE_TYPE;
 
   switch (_type) {
   case VEC_NO_TYPE_TYPE:
     _type = type;
-    fprintf(file, "<Object %p -> Vector(%lu, %lu)> [", v, VEC_size(v), VEC_used(v));
+
     for (i = 0; i < VEC_size(v); i++) {
       if (bfcnt > (VEC_BUFFER_SIZE - VEC_MAX_INT_LEN)) {
 	fprintf(file, "%s", bf);
@@ -326,14 +327,14 @@ char *VEC_INTERNAL_repr(char *v, int type, FILE *file) {
       }
       if (bfcnt != 0)
 	bfcnt += VEC_appendComma(bf, bfcnt);
-  case VEC_INTEGER_TYPE:
-    bfcnt += VEC_int2str((uintmax_t)v[i], bf + bfcnt);
-  case VEC_FLOAT_TYPE:
-    PASS;
-  case VEC_STRING_TYPE:
-    bfcnt += VEC_str2str(v + i, bf + bfcnt);
-  case VEC_UNKNOWN_TYPE:
-    bfcnt += VEC_addr2str(v + i, bf + bfcnt);
+      case VEC_INTEGER_TYPE:
+        bfcnt += VEC_itoa(v[i], bf + bfcnt, 10);
+      case VEC_FLOAT_TYPE:
+        PASS;
+      case VEC_STRING_TYPE:
+        bfcnt += VEC_appendStr(VEC_voidptr(v[i]), bf + bfcnt);
+      case VEC_UNKNOWN_TYPE:
+        bfcnt += VEC_memAddr(v + i, bf + bfcnt);
     }
   default:
     /* Always comes here */

@@ -294,22 +294,46 @@ __NONNULL__ void VEC_INTERNAL_del(void *v, vsize_t i) {
 #define VEC_appendComma(bf, i)\
   (((bf)[i] = ','), ((bf)[i + 1] = ' ', i + 2))
 
-#define VEC_itoa(n, bf, base)			\
-  cvtInt2Str(n, bf, base)
+#define VEC_itoa(n, bf, base, negtv)			\
+  cvtInt2Str(n, bf, base, negtv)
 
-static uintmax_t VEC_short(void *type)    { return VEC_itoa((short *) type[0]);     }
-static uintmax_t VEC_int(void *type)      { return VEC_itoa((int *) type[0]);       }
-static uintmax_t VEC_long(void *type)     { return VEC_itoa((long *) type[0]);      }
-static uintmax_t VEC_longLong(void *type) { return VEC_itoa((long long *) type[0]); }
-static uintmax_t VEC_bigInt(void *type)   { return 0; }
+typedef struct {
+  char *bf;
+  vsize_t size;
+  uint8_t base;
+  uint8_t signd;
+} Pp_Setup;
 
-static long double VEC_float(void *type)  { return 0.0; }
+static int VEC_short(const void *var, const Pp_Setup *cf) {
+  const short n = (const short *) var[0];
+  return VEC_itoa(n, cf->bf, cf->base, cf->signd && (n < 0));
+}
 
-__STATIC_FORCE_INLINE_F int VEC_str(char *__restrict__ str, char *__restrict__ bf) {
-  vsize_t j;
+static int VEC_int(const void *var, const Pp_Setup *cf) {
+  const int n = (const short *) var[0];
+  return VEC_itoa(n, cf->bf, cf->base, cf->signd && (n < 0));
+}
 
-  for (j = 0; str[j] != 0; j++) {
-    bf[j] = str[j];
+static int VEC_long(const void *var, const Pp_Setup *cf) {
+  const long n = (const short *) var[0];
+  return VEC_itoa(n, cf->bf, cf->base, cf->signd && (n < 0));
+}
+
+static int VEC_longLong(const void *var, const Pp_Setup *cf) {
+  const longLong n = (const short *) var[0];
+  return VEC_itoa(n, cf->bf, cf->base, cf->signd && (n < 0));
+}
+
+static int VEC_float(const void *var, const Pp_Setup *cf) {
+  return 0.0;
+}
+
+__STATIC_FORCE_INLINE_F int VEC_str(char *__restrict__ str, const Pp_Setup *cf) {
+  vsize_t j, e;
+  char c, *bf;
+
+  for (bf = cf->bf, e = bf->size, j = 0; (c = str[j]) && (j < e); j++) {
+    bf[j] = c;
   }
   return j;
 }
@@ -323,13 +347,14 @@ vsize_t VEC_INTERNAL_repr(char *v, char *format, char *bf, vsize_t bfsize) {
   typedef void (*cvtfunc)(void *, vsize_t, uint8_t, uint8_t);
   typedef v
   cvtfunc converter;
-  vsize_t size, bfcnt, i;
+  vsize_t size, bfcnt, i, overflw;
   uint8_t signd, base, c;
 
   if (v == NULL)
     return -1;
 
   converter = NULL;
+  overflow  = 1;
   signd     = 0;
   base      = 10;
   c         = *format;
@@ -342,12 +367,16 @@ vsize_t VEC_INTERNAL_repr(char *v, char *format, char *bf, vsize_t bfsize) {
     converter = NULL;
   case 'h':
     converter = VEC_short;
+    overflow  = 5;
   case 'i':
     converter = VEC_int;
+    overflw   = 10;
   case 'l':
     converter = VEC_long;
+    overflw   = 20;
   case 'L':
     converter = VEC_longLong;
+    overflw   = 20;
   case 'z':
     converter = VEC_bigInt;
     c = *format++;
@@ -373,6 +402,9 @@ vsize_t VEC_INTERNAL_repr(char *v, char *format, char *bf, vsize_t bfsize) {
 	if (bfcnt > (bfsize - VEC_MAX_INT_LEN)) {
 	  bf[bfcnt] = bfcnt = 0;
 	  break;
+	}
+	if (overflw) {
+	  PASS;
 	}
 	converter(v+bfcnt, bfsize, signd, base);
 	bfcnt += VEC_appendComma(bf, bfcnt);

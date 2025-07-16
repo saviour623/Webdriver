@@ -187,13 +187,20 @@ enum {
 #else
      VEC_generic(V) VEC_UNKNOWN_TYPE
 #endif
-#define VEC_prettyPrint(V)			\
-       do {					\
-	 int type = tgeneric(V);		\
-       }
+#define VEC_prettyPrint(V)						\
+       do {								\
+	 char bf[VEC_BUFFER_SIZE] = "<Object %s -> Vector(%s, %s)> [";	\
+	 vsize_t type = tgeneric(V), bfcnt = 0;				\
+	 bfcnt  = VEC_memAddr(v, bf + 31) + 31;				\
+	 bfcnt += VEC_itoa(VEC_vsize(v), bf + bfcnt,  10);		\
+	 bfcnt += VEC_itoa(VEC_vused(v), bf + bfcnt,  10);		\
+	 for (;;) {							\
+									\
+	 }								\
+       } while (0)
 
 #define VEC_del(V, I)				\
-   VEC_INTERNAL_del(&V, I)
+       VEC_INTERNAL_del(&V, I)
 
 #define VEC_clear(V)\
   ( VEC_vused(V) = 0)
@@ -288,9 +295,17 @@ __NONNULL__ void VEC_INTERNAL_del(void *v, vsize_t i) {
   (((bf)[i] = ','), ((bf)[i + 1] = ' ', i + 2))
 
 #define VEC_itoa(n, bf, base)			\
-  cvtInt2Str(n, bf, base, (n) < 0)
+  cvtInt2Str(n, bf, base)
 
-__STATIC_FORCE_INLINE_F int VEC_appendStr(char *__restrict__ str, char *__restrict__ bf) {
+static uintmax_t VEC_short(void *type)    { return VEC_itoa((short *) type[0]);     }
+static uintmax_t VEC_int(void *type)      { return VEC_itoa((int *) type[0]);       }
+static uintmax_t VEC_long(void *type)     { return VEC_itoa((long *) type[0]);      }
+static uintmax_t VEC_longLong(void *type) { return VEC_itoa((long long *) type[0]); }
+static uintmax_t VEC_bigInt(void *type)   { return 0; }
+
+static long double VEC_float(void *type)  { return 0.0; }
+
+__STATIC_FORCE_INLINE_F int VEC_str(char *__restrict__ str, char *__restrict__ bf) {
   vsize_t j;
 
   for (j = 0; str[j] != 0; j++) {
@@ -298,50 +313,73 @@ __STATIC_FORCE_INLINE_F int VEC_appendStr(char *__restrict__ str, char *__restri
   }
   return j;
 }
-__STATIC_FORCE_INLINE_F int VEC_memAddr(void *__restrict__ addr, char *__restrict__ bf) {
+
+__STATIC_FORCE_INLINE_F int VEC_addr(void *__restrict__ addr, char *__restrict__ bf) {
   return  cvtInt2Str((uintptr_t)addr, bf, 16, 0);
 }
 
-char *VEC_INTERNAL_repr(char *v, int type, FILE *file) {
+vsize_t VEC_INTERNAL_repr(char *v, char *format, char *bf, vsize_t bfsize) {
   /* Return the representation of vector */
-  char bf[VEC_BUFFER_SIZE] = "<Object %s -> Vector(%s, %s)> [";
-  vsize_t bfcnt, j, i;
-  int _type;
+  typedef void (*cvtfunc)(void *, vsize_t, uint8_t, uint8_t);
+  typedef v
+  cvtfunc converter;
+  vsize_t size, bfcnt, i;
+  uint8_t signd, base, c;
 
   if (v == NULL)
-    return NULL;
+    return -1;
 
-  bfcnt = 31 + memAddr(v, bf + 31);
-  bfcnt += VEC_itoa(VEC_size(v), bf + bfcnt,  10);
-  bfcnt += VEC_itoa(VEC_used(v), bf + bfcnt,  10);
-  _type = VEC_NO_TYPE_TYPE;
+  converter = NULL;
+  signd     = 0;
+  base      = 10;
+  c         = *format;
 
-  switch (_type) {
-  case VEC_NO_TYPE_TYPE:
-    _type = type;
+  switch (c) {
+  case 'u':
+    signd = 1;
+    c = *format++;
+  case 'c':
+    converter = NULL;
+  case 'h':
+    converter = VEC_short;
+  case 'i':
+    converter = VEC_int;
+  case 'l':
+    converter = VEC_long;
+  case 'L':
+    converter = VEC_longLong;
+  case 'z':
+    converter = VEC_bigInt;
+    c = *format++;
+  case 'x':
+    base = 16;
+    goto conversion;
+  case 'f':
+  case 'd':
+  case 'D':
+    converter = VEC_float;
+    goto conversion;
+  case 's':
+    converter = NULL;
+    goto conversion;
+  case 'p':
+  default :
+    base = 16;
+    converter = NULL;
 
-    for (i = 0; i < VEC_size(v); i++) {
-      if (bfcnt > (VEC_BUFFER_SIZE - VEC_MAX_INT_LEN)) {
-	fprintf(file, "%s", bf);
-	bfcnt = 0;
-      }
-      if (bfcnt != 0)
+  conversion:
+
+      for (i = 0; i < size; i++) {
+	if (bfcnt > (bfsize - VEC_MAX_INT_LEN)) {
+	  bf[bfcnt] = bfcnt = 0;
+	  break;
+	}
+	converter(v+bfcnt, bfsize, signd, base);
 	bfcnt += VEC_appendComma(bf, bfcnt);
-      case VEC_INTEGER_TYPE:
-        bfcnt += VEC_itoa(v[i], bf + bfcnt, 10);
-      case VEC_FLOAT_TYPE:
-        PASS;
-      case VEC_STRING_TYPE:
-        bfcnt += VEC_appendStr(VEC_voidptr(v[i]), bf + bfcnt);
-      case VEC_UNKNOWN_TYPE:
-        bfcnt += VEC_memAddr(v + i, bf + bfcnt);
     }
-  default:
-    /* Always comes here */
-    fprintf(file, "%s]\n", bf);
   }
 
-  return NULL;
+  return bfcnt;
 }
 /* No need of these */
 #undef  VEC_newFrmSize

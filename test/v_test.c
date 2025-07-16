@@ -19,17 +19,25 @@ VEC_refType(int) vecUsageFuncRefAdd(VEC_refType(int) v, int i) {
   return v;
 }
 
+typedef struct {
+  long int z;
+  long long int y;
+  int x;
+} dtype;
+
+typedef struct {
+  union {
+    int x1;
+  };
+  union {
+    int x;
+  };
+} dtype;
+
 int main(void) {
   /* VECTOR TEST */
 
-  char b[1024] = "000000000000000002";
-  puts(b);
-  __int128 n;
-  int i = cvtInt2Str(UINT64_MAX, b, 16, 0);
-  puts(b);
-  puti(i);
   exit(0);
-
   VEC_type(int) v = VEC_new(32, int);
 
   puti(VEC_size(v));

@@ -313,12 +313,28 @@ __STATIC_FORCE_INLINE_F int VEC_addr(void *__restrict__ addr, char *__restrict__
   return  cvtInt2Str((uintptr_t)addr, bf, 16, 0);
 }
 
-__NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *format, char *bf, vsize_t bfsize) {
+__NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsize) {
   /* Return the representation of vector */
   struct Pp_Setup setup = {bf, VEC_vused(v), 10, 0};
+  char fc[15] = {0}, c;
+
+  fc[0] = *fmt++;
+  (c = *fmt++)   ? (fc[1] = c),
+    (c = *fmt++) ? (fc[3] = c),
+    (c = *fmt++) ? (fc[7] = c),
+    (c = *fmt)   ? (fc[15] = c)
+    : 0 : 0 : 0 : 0;
+
+
+  mask =  ((fc[0] & 0x5f) == 85 );
+  mask |= ((fc[mask] & 76) == 76 ) << 1;
+
+  mask |= ((fc[mask] & 0x5f) == 76) << 2;
+  mask |= ((fc[mask] & 0x5f) == 88 ) << 3;
+
+  mask = (mask << 8) | fc[mask];
 
   vsize_t bfcnt;
-  uint8_t c;
 
   switch ( (c = *format) ) {
   case 'u':

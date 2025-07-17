@@ -317,58 +317,38 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
   /* Return the representation of vector */
   struct Pp_Setup setup = {bf, VEC_vused(v), 10, 0};
   char fc[15] = {0}, c;
+  vsize_t bfcnt;
 
   fc[0] = *fmt++;
-  (c = *fmt++)   ? (fc[1] = c),
-    (c = *fmt++) ? (fc[3] = c),
-    (c = *fmt++) ? (fc[7] = c),
+    (c = *fmt++)   ? (fc[1]  = c),
+    (c = *fmt++) ? (fc[3]  = c),
+    (c = *fmt++) ? (fc[7]  = c),
     (c = *fmt)   ? (fc[15] = c)
-    : 0 : 0 : 0 : 0;
+    : PASS : PASS : PASS : PASS;
 
 
-  mask =  ((fc[0] & 0x5f) == 85 );
-  mask |= ((fc[mask] & 76) == 76 ) << 1;
+  mask =  ((fc[0] & 0x5fu)   == 85 );
+  mask |= ((fc[mask] & 76)   == 76 ) << 1;
 
-  mask |= ((fc[mask] & 0x5f) == 76) << 2;
-  mask |= ((fc[mask] & 0x5f) == 88 ) << 3;
+  mask |= ((fc[mask] & 0x5fu) == 76) << 2;
+  mask |= ((fc[mask] & 0x5fu) == 88) << 3;
 
   mask = (mask << 8) | fc[mask];
 
-  vsize_t bfcnt;
+  c = (mask & ~MIXED_INT_ND_STR) | (mask & ~MIXED_BASE_STR)
+    | (mask & ~MIXED_INT_FLT)    | (mask & ~MIXED_BASE_FLT);
 
-  switch ( (c = *format) ) {
-  case 'u':
-    setup.Pp_signd = 1;
-    c = *format++;
-  case 'x':
-    setup.Pp_base = 16;
-    goto conversion;
-  case 'c':
-    converter = NULL;
+  switch ( mask & TYPE ) {
   case 'h':
-    VEC_map(v, VEC_itoa, short, &setup);
-  case 'i':
-    VEC_map(v, VEC_itoa, int, &setup);
   case 'l':
-
   case 'L':
-
   case 'z':
-
   case 'f':
   case 'd':
   case 'D':
-    converter = VEC_float;
-    goto conversion;
   case 's':
-    converter = NULL;
-    goto conversion;
   case 'p':
   default :
-    base = 16;
-    converter = NULL;
-
-  conversion:
 
     for (i = 0; i < size; i++) {
       if (bfcnt > (bfsize - VEC_MAX_INT_LEN)) {

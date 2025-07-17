@@ -329,38 +329,26 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
 
   mask =  ((fc[0] & 0x5fu)   == 85 );
   mask |= ((fc[mask] & 76)   == 76 ) << 1;
-
   mask |= ((fc[mask] & 0x5fu) == 76) << 2;
   mask |= ((fc[mask] & 0x5fu) == 88) << 3;
-
   mask = (mask << 8) | fc[mask];
 
   c = (mask & ~MIXED_INT_ND_STR) | (mask & ~MIXED_BASE_STR)
     | (mask & ~MIXED_INT_FLT)    | (mask & ~MIXED_BASE_FLT);
 
-  switch ( mask & TYPE ) {
+  switch (( c = mask & TYPE )) {
+  case 'd':
+    c = mask & WIDTH;
   case 'h':
   case 'l':
   case 'L':
   case 'z':
   case 'f':
-  case 'd':
   case 'D':
   case 's':
   case 'p':
   default :
-
-    for (i = 0; i < size; i++) {
-      if (bfcnt > (bfsize - VEC_MAX_INT_LEN)) {
-	bf[bfcnt] = bfcnt = 0;
-	break;
-      }
-      if (overflw) {
-	PASS;
-      }
-      converter(v+bfcnt, bfsize, signd, base);
-      bfcnt += VEC_appendComma(bf, bfcnt);
-    }
+    PASS;
   }
 
   return bfcnt;

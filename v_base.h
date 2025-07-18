@@ -1,4 +1,3 @@
-
 /* MVPG API Vector Type
 Copyright (C) 2025 Michael Saviour
 
@@ -33,12 +32,20 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
 
 ************************************************************/
 
+/* Utils */
 #define VEC_Macro_Exec_True(...) __VA_ARGS__
 #define VEC_Macro_Exec_False(...)
-
 #define VEC_Macro_If_Args_Exec(...)					\
   VEC_Macro_Exec_ ## MACR_DO_ELSE(True, False, __VA_ARGS__) (__VA_ARGS__)
 
+#ifndef VEC_UNSAFE
+    #define VEC_assert(expr, ...) debugAssert(expr, __VA_ARGS__)
+#else
+    #define VEC_assert(...)
+#endif
+#define VEC_IGNRET(...) (void)(...)
+
+/* Types Cvt */
 #define VEC_type(T) T*
 
 #define VEC_refType(T) T**
@@ -49,12 +56,7 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
 #define VEC_voidptr(V)				\
   ( (void *)(uintptr_t)(V) )
 
-#ifndef VEC_UNSAFE
-    #define VEC_assert(expr, ...) debugAssert(expr, __VA_ARGS__)
-#else
-    #define VEC_assert(...)
-#endif
-
+/* Header Op */
 #define VEC_peekblkst(V)			\
   ( VEC_metaDataType(V) - 1 )
 
@@ -71,6 +73,7 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
    (V) = VEC_voidptr( VEC_metaDataType(V) + 1 )	\
     )
 
+/* Header contents Op */
 #define VEC_base(V)				\
   ( &(V) )
 
@@ -98,8 +101,16 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
 
 #define VEC_isfilled(V)\
   (VEC_used(V) == VEC_size(V))
-/**/
 
+/* Vector Init */
+#define VEC_new(_size, _type, ...)					\
+  VEC_INTERNAL_create(MACR_DO_ELSE(_size, 32, _size), MACR_DO_ELSE(sizeof(_type), 0, _type))
+
+#define VEC_newFrmSize(_size, _dsize, ...)					\
+  VEC_create(MACR_DO_ELSE(_size, 32, _size), MACR_DO_ELSE(_dsize, 0, _dsize))
+
+
+/* Vector Op */
 #define VEC_begin(V)				\
   ( V )
 
@@ -116,18 +127,12 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
 #define VEC_free(V)				\
   ( VEC_vsize(V) - VEC_vused(V) )
 
-#define VEC_new(_size, _type, ...)						\
-  VEC_INTERNAL_create(MACR_DO_ELSE(_size, 32, _size), MACR_DO_ELSE(sizeof(_type), 0, _type))
-
-#define VEC_newFrmSize(_size, _dsize, ...)					\
-  VEC_create(MACR_DO_ELSE(_size, 32, _size), MACR_DO_ELSE(_dsize, 0, _dsize))
-
-#define VEC_push(V, N)							\
-  (									\
-  VEC_assert((V != NULL) && (VEC_vdtype(V) == sizeof(N)), \
-   ((VEC_vsize(V) < 1) || (VEC_vsize(V) == VEC_vused(V)) ) && VEC_INTERNAL_resize(V, 1), \
-   ((V)[VEC_vused(V)++] = (N))					\
-  )
+#define VEC_push(V, N)\
+  (\
+   VEC_assert((V != NULL) && (VEC_vdtype(V) == sizeof(N))),\
+   ( (VEC_vsize(V) < 1) || (VEC_vsize(V) == VEC_vused(V)) ) && VEC_INTERNAL_resize(V, 1), \
+   ((V)[VEC_vused(V)++] = (N))\
+   )
 
 #define VEC_popni(V)				\
   (\
@@ -294,13 +299,13 @@ typedef struct {
   char   *Pp_buf;
   vsize_t Pp_size;
   vsize_t Pp_used;
+  vsize_t Pp_dtype;
   uint8_t Pp_base;
   uint8_t PP_signed;
   uint8_t Pp_overflw;
-  uint8_t Pp_genrc;
 } Pp_Setup;
 
-__STATIC_FORCE_INLINE_F int VEC_TostrInt(void *v, const Pp_Setup *cf) {
+__STATIC_FORCE_INLINE_F int VEC_TostrInt(const void *v, const Pp_Setup *cf) {
   switch (( c = cf->width )) {
   case LONG:
     VEC_map(v, VEC_itoa, long, &setup);
@@ -312,7 +317,7 @@ __STATIC_FORCE_INLINE_F int VEC_TostrInt(void *v, const Pp_Setup *cf) {
     VEC_map(v, VEC_itoa, int, &setup);
   }
 }
-__STATIC_FORCE_INLINE_F int VEC_TostrFlt(void *v, const Pp_Setup *cf) {
+__STATIC_FORCE_INLINE_F int VEC_TostrFlt(const void *v, const Pp_Setup *cf) {
   switch (( c = mask & cf->width )) {
   case LONG:
     VEC_map(v, VEC_strtof, double, &setup);
@@ -327,7 +332,7 @@ __STATIC_FORCE_INLINE_F int VEC_str(char *__restrict__ str, const Pp_Setup *cf) 
   vsize_t j, e;
   char c, *bf;
 
-  for (bf = cf->bf, e = bf->size, j = 0; (c = str[j]) && (j < e); j++) {
+  for (bf = cf->bf, e = bf->size, j = 0; (c = str[j]) | (j < e); j++) {
     bf[j] = c;
   }
   return j;
@@ -335,7 +340,7 @@ __STATIC_FORCE_INLINE_F int VEC_str(char *__restrict__ str, const Pp_Setup *cf) 
 
 __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsize) {
   /* Return the representation of vector */
-  struct Pp_Setup setup = {bf, VEC_vused(v), 10, 0};
+  struct Pp_Setup setup = {bf, bfsize, VEC_vused(v), 10, 0};
   uint16_t mask;
   uint8_t c, fc[15] = {0};
 
@@ -373,9 +378,18 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
   case 'f':
     VEC_TostrFlt(v, &setup);
   case 'c':
-    setup.Pp_char = True;
+    setup.Pp_char = true;
   case 's':
-    VEC_map(v)
+    if ((setup.Pp_used > 0) setup.)
+      do {
+	const char *Vv;
+	vsize_t j;
+
+	VEC_IGNRET( setup.Pp_char ? (Vv = v, v = NULL) : (Vv = *v) );
+	for (j = 0; (c = Vv[j]) | (j < bfsize); j++) {
+	  bf[j] = c;
+	}
+      } while(v++);
   default :
     PASS;
   }

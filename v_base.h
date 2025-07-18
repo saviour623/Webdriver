@@ -378,12 +378,13 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
       const char *Vv;
       vsize_t j;
 
+      VEC_IGNRET( setup.Pp_char ? (Vv = v, setup.Pp_used = 1) : (Vv = *v) );
       do {
-	VEC_IGNRET( setup.Pp_char ? (Vv = v, v = NULL) : (Vv = *v) );
 	for (j = 0; (c = Vv[j]) | (j < bfsize); j++) {
 	  bf[j] = c;
 	}
-      } while(v++);
+	Vv = v++;
+      } while(--setup.Pp_used);
     }
   default :
     PASS;

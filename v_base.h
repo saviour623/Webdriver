@@ -376,15 +376,16 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
 
     if (setup.Pp_used > 0) {
       const char *Vv;
-      vsize_t j;
+      vsize_t j, i, const e;
 
-      VEC_IGNRET( setup.Pp_char ? (Vv = v, setup.Pp_used = 1) : (Vv = *v) );
+      e = setup.Pp_used;
+      VEC_IGNRET( setup.Pp_char ? (Vv = v, i = e - 1) : (Vv = *v) );
       do {
 	for (j = 0; (c = Vv[j]) | (j < bfsize); j++) {
 	  bf[j] = c;
 	}
-	Vv = v++;
-      } while(--setup.Pp_used);
+	Vv = v[++i];
+      } while( i < e );
     }
   default :
     PASS;

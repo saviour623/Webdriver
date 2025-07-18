@@ -24,7 +24,8 @@ typedef struct {
 } VEC_metaData_;
 
  /* Metadata size */
-const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
+const uint16_t VEC_metadtsz       = sizeof(VEC_metaData_);
+const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX
 
 /***********************************************************
 
@@ -41,9 +42,10 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
 #ifndef VEC_UNSAFE
     #define VEC_assert(expr, ...) debugAssert(expr, __VA_ARGS__)
 #else
-    #define VEC_assert(...)
+    #define VEC_assert(...) PASS
 #endif
-#define VEC_IGNRET(...) (void)(...)
+#define VEC_IGNRET(...)       (void)(...)
+#define VEC_NsizeOverflow(N) !(N & VEC_sizeOverflwLim)
 
 /* Types Cvt */
 #define VEC_type(T) T*
@@ -142,7 +144,7 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
 
 #define VEC_popi(V, I)					\
   (								\
-   (V) = VEC_del(V, VEC_iabs(I)),					\
+   VEC_del(&V, I, I < 0)					\
   )
 
 #define VEC_pop(V, ...)\
@@ -157,24 +159,26 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
 #define VEC_foreach(S, V, T)						\
   for (MACR_DO_ELSE(VEC_type(T), TYPEOF(V), T) K = VEC_begin(V), S = K[0]; K != VEC_end(V); S = *++k)
 
-#define VEC_map(F, V, T, ...)			\
-   do {						\
-   VEC_type(T) Vv = V;
-     if (Vv != NULL && F != NULL)		\
-       for (vsize_t i = 0; i < VEC_vused(V); i++)	\
-	 F(Vv[i] VEC_Macro_If_Args_Exec(__VA_ARGS__));	\
-   }
+#define VEC_map(F, V, T, ...)				\
+  do {							\
+      VEC_type(T) Vv = V;				\
+      if (Vv != NULL && F != NULL) {			\
+	VEC_assert(VEC_dtype(Vv) == sizeof(T));		\
+	for (vsize_t end = 0; end--;)			\
+	  F(*Vv++ VEC_Macro_If_Args_Exec(__VA_ARGS__));	\
+      }							\
+  }
 
 #define VEC_slice(V, S, E)			\
    VEC_INTERNAL_slice(&V, S, E)
 
-#define VEC_shrink(V, ...) (void)			\
-  (									\
-   (V != NULL)								\
-   && (									\
-       (V) = VEC_INTERNAL_shrink(V, MACR_DO_ELSE(__VA_ARGS__, VEC_vused(V), __VA_ARGS__))\
-      ) \
-  )
+#define VEC_shrink(V, ...) (void)					\
+    (									\
+     (V != NULL)							\
+     && (								\
+	 (V) = VEC_INTERNAL_shrink(V, MACR_DO_ELSE(__VA_ARGS__, VEC_vused(V), __VA_ARGS__)) \
+										) \
+									)
 
 #if __GNUC_LLVM__
 #define VEC_tgeneric(V)\
@@ -197,7 +201,7 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
        } while (0)
 
 #define VEC_del(V, I)				\
-       VEC_INTERNAL_del(&V, I)
+       VEC_INTERNAL_del(&V, I, I < 0)
 
 #define VEC_clear(V)\
   ( VEC_vused(V) = 0)
@@ -206,8 +210,7 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
   PASS
 
 #define VEC_destroy(V)							\
-  (void)(V != NULL ? mvpgDealloc(VEC_mv2blkst(V)), (V = NULL) : (void)0)
-
+     VEC_IGNRET(V != NULL ? mvpgDealloc(VEC_mv2blkst(V)), (V = NULL) : PASS)
 
 
 /*************************************************************
@@ -216,14 +219,13 @@ const uint16_t VEC_metadtsz  = sizeof(VEC_metaData_);
 
  ************************************************************/
 
-  __STATIC_FORCE_INLINE_F __NONNULL__ vsize_t VEC_cvtindex(const void *v, vsize_t i, vsize_t lt) {
-  register vsize_t _i;
+__STATIC_FORCE_INLINE_F __NONNULL__ vsize_t VEC_cvtindex(const void *v, vsize_t i, bool lt) {
 
-  _i = lt ? (vsize_t)i + VEC_vsize(v) : i;
-  VEC_assert( ((_i > 0) && _i < VEC_vsize(v)) );
+       i = lt ? (long)i + VEC_vsize(v) : i;
+       VEC_assert( VEC_NsizeOverflow(i) && (i < VEC_vsize(v)) );
 
-  return _i;
-}
+       return i;
+     }
 
 __STATIC_FORCE_INLINE_F __WARN_UNUSED__ void *VEC_INTERNAL_create(const vsize_t size, const vsize_t dtype) {
   void *v;
@@ -265,7 +267,7 @@ __STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_INTERNAL_slice(voi
 
   void *new __MB_UNUSED__;
 
-  if(! ((b < VEC_vused(*v)) && (e < VEC_vused(*v)) && (e > b)) )
+  if (! ((b < VEC_vused(*v)) && (e < VEC_vused(*v)) && (e > b)) )
     return NULL;
 
   new = 0;
@@ -292,8 +294,7 @@ __NONNULL__ void VEC_INTERNAL_del(void *v, vsize_t i) {
 #define VEC_appendComma(bf, i)\
   (((bf)[i] = ','), ((bf)[i + 1] = ' ', i + 2))
 
-#define VEC_itoa(n, bf, cf)			\
-  cvtInt2Str(n, bf, cf->mask & BASE, cf->mask & SIGNED)
+#define VEC_itoa cvtInt2Str
 
 enum {
       PTR  = 0x01,  USIGNED = 0x02,  CHAR  = 0x04,
@@ -305,39 +306,45 @@ typedef struct {
   char    *Pp_buf;
   char    *Pp_ctrl;
   vsize_t  Pp_size;
+  vsize_t  Pp_used;
   uint16_t Pp_mask;
   uint16_t Pp_dtype;
 } Pp_Setup;
 
+__NONNULL__ __STATIC_FORCE_INLINE_F void VEC_Itoa(const intmax_t n, const Pp_Setup *cf) {
+  const int U = cf->Pp_used;
+
+  if ((cf->Pp_size - U) < cf->Pp_overflw)
+    return;
+  cf->Pp_used += cvtTostrInt(n, cf->Pp_buf+U, cf->mask & BASE, !(cf->mask & UNSIGNED) && (n < 0));
+}
+
 __NONNULL__ __STATIC_FORCE_INLINE_F int VEC_TostrInt(const void *v, const Pp_Setup *cf) {
-  VEC_assert( setup.Pp_dtype != sizeof(VEC_type(NULL)) );
 
   switch (cf->mask & SPEC) {
   case LONG:
-    VEC_map(v, VEC_itoa, long, &setup);
+    VEC_map(v, VEC_Itoa, long, setup);
   case LLNG:
-    VEC_map(v, VEC_itoa, long long, &setup);
+    VEC_map(v, VEC_Itoa, long long, setup);
   case SIZE:
-    VEC_map(v, VEC_itoa, size_t, &setup);
+    VEC_map(v, VEC_Itoa, size_t, setup);
   default:
-    VEC_map(v, VEC_itoa, int, &setup);
+    VEC_map(v, VEC_Itoa, int, setup);
   }
 }
 
 __NONNULL__ __STATIC_FORCE_INLINE_F int VEC_TostrFlt(const void *v, const Pp_Setup *cf) {
   switch (cf->mask & SPEC) {
   case LONG:
-    VEC_map(v, VEC_strtof, double, &setup);
   case LLNG:
-    VEC_map(v, VEC_strtof, long double, &setup);
   default:
-    VEC_map(v, VEC_strtof, float, &setup);
-    break;
+    PASS;
   }
+  VEC_assert(false, "TOSTRFLT: UINMPLEMENTED");
 }
 
 __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsize) {
-  struct Pp_Setup setup = {bf, bfsize, VEC_dtype(v), 0};
+  struct Pp_Setup setup = {.Pp_buf = bf, .Pp_size = bfsize, .Pp_dtype = VEC_dtype(v)};
   uint16_t mask;
   uint8_t c, fc[15] = {0};
 

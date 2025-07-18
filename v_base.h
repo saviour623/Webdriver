@@ -300,6 +300,29 @@ typedef struct {
   uint8_t Pp_genrc;
 } Pp_Setup;
 
+__STATIC_FORCE_INLINE_F int VEC_TostrInt(void *v, const Pp_Setup *cf) {
+  switch (( c = cf->width )) {
+  case LONG:
+    VEC_map(v, VEC_itoa, long, &setup);
+  case LLNG:
+    VEC_map(v, VEC_itoa, long long, &setup);
+  case SIZE:
+    VEC_map(v, VEC_itoa, size_t, &setup);
+  default:
+    VEC_map(v, VEC_itoa, int, &setup);
+  }
+}
+__STATIC_FORCE_INLINE_F int VEC_TostrFlt(void *v, const Pp_Setup *cf) {
+  switch (( c = mask & cf->width )) {
+  case LONG:
+    VEC_map(v, VEC_strtof, double, &setup);
+  case LLNG:
+    VEC_map(v, VEC_strtof, long double, &setup);
+  default:
+    VEC_map(v, VEC_strtof, float, &setup);
+    break;
+  }
+}
 __STATIC_FORCE_INLINE_F int VEC_str(char *__restrict__ str, const Pp_Setup *cf) {
   vsize_t j, e;
   char c, *bf;
@@ -345,19 +368,10 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
   case 'd':
   case 'i':
     setup.Pp_base  = mask & BASE;
-    switch (( c = mask & WIDTH )) {
-    case LONG:
-      VEC_map(v, VEC_itoa, long, &setup     );
-    case LLNG:
-      VEC_map(v, VEC_itoa, long long, &setup);
-    case SIZE:
-      VEC_map(v, VEC_itoa, size_t, &setup   );
-    default:
-      VEC_map(v, VEC_itoa, int, &setup      );
-    }
+    VEC_TostrInt(v, &setup);
     break;
   case 'f':
-  case 'D':
+    VEC_TostrFlt(v, &setup);
   case 'c':
     setup.Pp_char = True;
   case 's':

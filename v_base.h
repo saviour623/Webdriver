@@ -292,21 +292,27 @@ __NONNULL__ void VEC_INTERNAL_del(void *v, vsize_t i) {
 #define VEC_appendComma(bf, i)\
   (((bf)[i] = ','), ((bf)[i + 1] = ' ', i + 2))
 
-#define VEC_itoa(n, bf, base, negtv)			\
-  cvtInt2Str(n, bf, base, negtv)
+#define VEC_itoa(n, bf, cf)			\
+  cvtInt2Str(n, bf, cf->mask & BASE, cf->mask & SIGNED)
+
+enum {
+      PTR  = 0x01,  USIGNED = 0x02,  CHAR  = 0x04,
+      LONG = 0x100, LLNG    = 0x200, SIZE = 0x800,
+      TYPE = 0x7f,  SPEC    = 0xf00, BASE = 0x400
+};
 
 typedef struct {
-  char   *Pp_buf;
-  vsize_t Pp_size;
-  vsize_t Pp_used;
-  vsize_t Pp_dtype;
-  uint8_t Pp_base;
-  uint8_t PP_signed;
-  uint8_t Pp_overflw;
+  char    *Pp_buf;
+  char    *Pp_ctrl;
+  vsize_t  Pp_size;
+  uint16_t Pp_mask;
+  uint16_t Pp_dtype;
 } Pp_Setup;
 
-__STATIC_FORCE_INLINE_F int VEC_TostrInt(const void *v, const Pp_Setup *cf) {
-  switch (( c = cf->width )) {
+__NONNULL__ __STATIC_FORCE_INLINE_F int VEC_TostrInt(const void *v, const Pp_Setup *cf) {
+  VEC_assert( setup.Pp_dtype != sizeof(VEC_type(NULL)) );
+
+  switch (cf->mask & SPEC) {
   case LONG:
     VEC_map(v, VEC_itoa, long, &setup);
   case LLNG:
@@ -318,8 +324,8 @@ __STATIC_FORCE_INLINE_F int VEC_TostrInt(const void *v, const Pp_Setup *cf) {
   }
 }
 
-__STATIC_FORCE_INLINE_F int VEC_TostrFlt(const void *v, const Pp_Setup *cf) {
-  switch (( c = mask & cf->width )) {
+__NONNULL__ __STATIC_FORCE_INLINE_F int VEC_TostrFlt(const void *v, const Pp_Setup *cf) {
+  switch (cf->mask & SPEC) {
   case LONG:
     VEC_map(v, VEC_strtof, double, &setup);
   case LLNG:
@@ -331,20 +337,16 @@ __STATIC_FORCE_INLINE_F int VEC_TostrFlt(const void *v, const Pp_Setup *cf) {
 }
 
 __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsize) {
-  /* Return the representation of vector */
-  struct Pp_Setup setup = {bf, bfsize, VEC_vused(v), 10, 0};
+  struct Pp_Setup setup = {bf, bfsize, VEC_dtype(v), 0};
   uint16_t mask;
   uint8_t c, fc[15] = {0};
 
-  enum {
-	TYPE = 0x7f,  SPEC = 0xf00, BASE = 0x400
-	LONG = 0x100, LLNG = 0x200, SIZE = 0x300,
-  };
 
   fc[0] = *fmt++;
-  EOFMT(c, *fmt++)   ? (fc[1]  = c), EOFMT(c, *fmt++) ? (fc[3]  = c),
-    EOFMT(c, *fmt++) ? (fc[7]  = c), EOFMT(c, *fmt)   ? (fc[15] = c):
-    PASS : PASS : PASS : PASS;
+  VEC_IGNRET(
+	     EOFMT(c, *fmt++) ? (fc[1]  = c), EOFMT(c, *fmt++) ? (fc[3]  = c),
+	     EOFMT(c, *fmt++) ? (fc[7]  = c), EOFMT(c, *fmt)   ? (fc[15] = c):
+	     PASS : PASS : PASS : PASS);
 
 
   mask =  ((fc[0] & 0x5fu)    == 76);
@@ -353,33 +355,36 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
   mask |= ((fc[mask] & 0x5fu) == 90) << 3;
   mask =  (mask << 8)| fc[mask];
 
-  VEC_assert(c = (((mask & TYPE) ^ 0x73) ^ (mask & SPEC))
-	     |   (((mask & TYPE) ^ 0x66) ^ (mask & BASE))
-	     |   ( (mask & SPEC)         ^ (mask & TYPE)), "Repr: Invalid Format");
+  VEC_assert(  (((mask & TYPE) ^ 0x73) ^ (mask & SPEC))
+	     | (((mask & TYPE) ^ 0x66) ^ (mask & BASE))
+	     | ( (mask & SPEC)         ^ (mask & TYPE))
+	     |  EOFMT(c, *fmt), "Repr: Invalid Format");
 
-  switch (( c = mask & TYPE )) {
+  setup.Pp_mask = mask & SPEC;
+  setup.Pp_ctrl = fmt;
+
+  switch ( mask & TYPE ) {
   case 'p':
-    setup.Pp_genrc = true;
+    setup.Pp_mask |= PTR;
   case 'u':
-    setup.Pp_signd = mask & UNSIGNED;
-  case 'd':
-  case 'i':
-    setup.Pp_base  = mask & BASE;
+    setup.Pp_mask |= USIGNED;
+  case 'd': case 'i':
     VEC_TostrInt(v, &setup);
     break;
   case 'f':
     VEC_TostrFlt(v, &setup);
+    break;
   case 'c':
-    setup.Pp_char = true;
+    mask |= CHAR;
   case 's':
     VEC_assert((setup.Pp_dtype > 1) && (setup.Pp_dtype != sizeof(VEC_type(char))), "Repr: Type Mismatch");
 
     if (setup.Pp_used > 0) {
       const char *Vv;
-      vsize_t j, i, const e;
+      register vsize_t j, i; const vsize_t e = VEC_vused(v);
 
-      e = setup.Pp_used;
       VEC_IGNRET( setup.Pp_char ? (Vv = v, i = e - 1) : (Vv = *v) );
+
       do {
 	for (j = 0; (c = Vv[j]) | (j < bfsize); j++) {
 	  bf[j] = c;
@@ -388,10 +393,10 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
       } while( i < e );
     }
   default :
-    PASS;
+    setup.size = 0;
   }
 
-  return setup.used;
+  return setup.size;
 }
 /* No need of these */
 #undef  VEC_newFrmSize

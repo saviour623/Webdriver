@@ -1,6 +1,20 @@
 #include <limits.h>
 #include <stdio.h>
-struct abc;
+
+
+
+
+
+
+
+
+
+typedef enum {EN = 1, OP} eop;
 int main(void) {
-  printf("%llf\n", 0.09);
+
+  int EN, OP;
+
+  1 ? (EN = 5, OP = 10) : 0;
+
+  printf("%d\n", EN);
 }

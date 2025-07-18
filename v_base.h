@@ -317,6 +317,7 @@ __STATIC_FORCE_INLINE_F int VEC_TostrInt(const void *v, const Pp_Setup *cf) {
     VEC_map(v, VEC_itoa, int, &setup);
   }
 }
+
 __STATIC_FORCE_INLINE_F int VEC_TostrFlt(const void *v, const Pp_Setup *cf) {
   switch (( c = mask & cf->width )) {
   case LONG:
@@ -327,15 +328,6 @@ __STATIC_FORCE_INLINE_F int VEC_TostrFlt(const void *v, const Pp_Setup *cf) {
     VEC_map(v, VEC_strtof, float, &setup);
     break;
   }
-}
-__STATIC_FORCE_INLINE_F int VEC_str(char *__restrict__ str, const Pp_Setup *cf) {
-  vsize_t j, e;
-  char c, *bf;
-
-  for (bf = cf->bf, e = bf->size, j = 0; (c = str[j]) | (j < e); j++) {
-    bf[j] = c;
-  }
-  return j;
 }
 
 __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsize) {
@@ -363,7 +355,7 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
 
   VEC_assert(c = (((mask & TYPE) ^ 0x73) ^ (mask & SPEC))
 	     |   (((mask & TYPE) ^ 0x66) ^ (mask & BASE))
-	     |   ( (mask & SPEC)         ^ (mask & TYPE)), "Invalid Format");
+	     |   ( (mask & SPEC)         ^ (mask & TYPE)), "Repr: Invalid Format");
 
   switch (( c = mask & TYPE )) {
   case 'p':
@@ -380,16 +372,19 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsi
   case 'c':
     setup.Pp_char = true;
   case 's':
-    if ((setup.Pp_used > 0) setup.)
-      do {
-	const char *Vv;
-	vsize_t j;
+    VEC_assert((setup.Pp_dtype > 1) && (setup.Pp_dtype != sizeof(VEC_type(char))), "Repr: Type Mismatch");
 
+    if (setup.Pp_used > 0) {
+      const char *Vv;
+      vsize_t j;
+
+      do {
 	VEC_IGNRET( setup.Pp_char ? (Vv = v, v = NULL) : (Vv = *v) );
 	for (j = 0; (c = Vv[j]) | (j < bfsize); j++) {
 	  bf[j] = c;
 	}
       } while(v++);
+    }
   default :
     PASS;
   }

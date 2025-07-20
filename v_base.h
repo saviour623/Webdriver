@@ -159,7 +159,7 @@ const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX
    VEC_INTERNAL_append(V1, V2)
 
 #define VEC_foreach(S, V, T)						\
-  for (VEC_select(VEC_type(T), TYPEOF(V), T) K = VEC_begin(V), S = K[0]; K != VEC_end(V); S = *++k)
+  for (VEC_type(T) K = VEC_begin(V); T S; (S = *K++) != VEC_end(V); )
 
 /*
  * Vec_map as other map functions, iterates over an iterable object, calling a function on each member.
@@ -169,13 +169,15 @@ const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX
    */
 #define VEC_map(F, V, T, ...)						\
   do {									\
-      VEC_select(VEC_refType(T) Vv = &V, VEC_type(T) Vv = V, __VA_ARGS__); \
-      if (Vv != NULL && F != NULL) {					\
-	VEC_assert(VEC_dtype(V) == sizeof(T));				\
-	for (vsize_t end = VEC_used(V); end--;)				\
-	  F(*Vv++ VEC_Macro_If_Args_Exec(__VA_ARGS__));			\
-      }									\
-  }
+      if (V != NULL && F != NULL)					\
+	{								\
+	 VEC_select(VEC_refType, VEC_type, __VA_ARGS__)(T) Vv = VEC_select(&V, V, __VA_ARGS__) + VEC_used(V); \
+	 VEC_assert(VEC_dtype(V) == sizeof(T));				\
+									\
+	 for (T Last = Vv + VEC_used(V); Vv != Last; )			\
+	   F(*Vv++ VEC_Macro_If_Args_Exec(__VA_ARGS__));		\
+	}								\
+  } while (0)
 
 #define VEC_slice(V, S, E)			\
    VEC_INTERNAL_slice(&V, S, E)
@@ -312,7 +314,7 @@ enum {
 
 typedef struct {
   char    *Pp_buf;
-  char    *Pp_ctrl;
+  char    *Pp_fmt;
   vsize_t  Pp_size;
   vsize_t  Pp_used;
   uint16_t Pp_mask;
@@ -327,23 +329,34 @@ __NONNULL__ __STATIC_FORCE_INLINE_F void VEC_Itoa(const intmax_t n, Pp_Setup *cf
   cf->Pp_used += cvtTostrInt(n, cf->Pp_buf+U, cf->mask & BASE, !(cf->mask & UNSIGNED) && (n < 0));
 }
 
-__NONNULL__ __STATIC_FORCE_INLINE_F int VEC_TostrInt(void *v, Pp_Setup *cf) {
+__NONNULL__ __STATIC_FORCE_INLINE_F void VEC_TostrInt(const void *v, Pp_Setup *cf) {
 
-  if (mask | PTR) {
+  if (Pp_Setup->mask & PTR) {
+    VEC_map(v, VEC_Itoa, uintptr_t, setup, true);
+    Pp_Setup->overflw = 0;
+    goto end;
   }
   switch (cf->mask & SPEC) {
   case LONG:
+    Pp_Setup->overflw = 10;
     VEC_map(v, VEC_Itoa, long, setup);
+    goto end;
   case LLNG:
+    Pp_Setup->overflw = 10;
     VEC_map(v, VEC_Itoa, long long, setup);
+    goto end;
   case SIZE:
+    Pp_Setup->overflw = 10;
     VEC_map(v, VEC_Itoa, size_t, setup);
+    goto end;
   default:
+    Pp_Setup->overflw = 10;
     VEC_map(v, VEC_Itoa, int, setup);
   }
+ end:
 }
 
-__NONNULL__ __STATIC_FORCE_INLINE_F int VEC_TostrFlt(const void *v, Pp_Setup *cf) {
+__NONNULL__ __STATIC_FORCE_INLINE_F void VEC_TostrFlt(const void *v, Pp_Setup *cf) {
   switch (cf->mask & SPEC) {
   case LONG:
   case LLNG:
@@ -353,32 +366,40 @@ __NONNULL__ __STATIC_FORCE_INLINE_F int VEC_TostrFlt(const void *v, Pp_Setup *cf
   VEC_assert(false, "Repr: TOSTRFLT: UINMPLEMENTED");
 }
 
-__NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, char *fmt, char *bf, vsize_t bfsize) {
-  struct Pp_Setup setup = {.Pp_buf = bf, .Pp_size = bfsize, .Pp_dtype = VEC_dtype(v)};
-  uint16_t mask;
-  uint8_t c, fc[15] = {0};
+__NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
+  uint32_t mask;
+  uint8_t c;
 
+  if (setup->skip && (mask=setup->mask))
+    goto repr;
 
-  fc[0] = *fmt++;
-  VEC_IGNRET(
-	     EOFMT(c, *fmt++) ? (fc[1]  = c), EOFMT(c, *fmt++) ? (fc[3]  = c),
-	     EOFMT(c, *fmt++) ? (fc[7]  = c), EOFMT(c, *fmt)   ? (fc[15] = c):
-	     PASS : PASS : PASS : PASS);
+  {
+    uint8_t b, fc[32] = {0};
 
+    if (EOFMT(c, *fmt++))
+      goto repr;
 
-  mask =  ((fc[0] & 0x5fu)    == 76);
-  mask |= ((fc[mask] & 76)    == 76) << 1;
-  mask |= ((fc[mask] & 0x5fu) == 88) << 2;
-  mask |= ((fc[mask] & 0x5fu) == 90) << 3;
-  mask =  (mask << 8)| fc[mask];
+    fc[0] = c;
+    for (b = 0; (b < 6) && EOFMT(c, *fmt); i++)
+      fc[(1 << b) - 1] = c;
 
-  VEC_assert(  (((mask & TYPE) ^ 0x73) ^ (mask & SPEC))
-	     | (((mask & TYPE) ^ 0x66) ^ (mask & BASE))
-	     | ( (mask & SPEC)         ^ (mask & TYPE))
-	     |  EOFMT(c, *fmt), "Repr: Invalid Format");
+    mask = fc[0] == 0x6c;
+    mask = (mask << (c=fc[mask] == 0x6c)) | c;
+    mask = (mask << (c=fc[mask] == 0x7a)) | c;
+    mask = (mask << (c=fc[mask] == 0x78)) | c;
+    mask = (mask << (c=fc[mask] == 0x68)) | c;
+    mask = (mask << 8) | fc[mask];
 
-  setup.Pp_mask = mask & SPEC;
-  setup.Pp_ctrl = fmt;
+    VEC_assert(        (((mask & TYPE) ^ 0x73) ^ (mask & SPEC))
+		     | (((mask & TYPE) ^ 0x66) ^ (mask & BASE))
+		     | ( (mask & SPEC)         ^ (mask & TYPE))
+		     |  EOFMT(c, *fmt), "Repr: Invalid Format");
+
+    setup.Pp_mask = mask & SPEC;
+    setup.Pp_fmt = fmt;
+  }
+
+ repr:
 
   switch ( mask & TYPE ) {
   case 'p':
@@ -418,5 +439,6 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, char *fmt, char *bf, vsize_t bfsi
 /* No need of these */
 #undef  VEC_newFrmSize
 #undef  vsize_t
+undef VMAP_MEM
 
 #endif /* V_BASE_H */

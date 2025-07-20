@@ -34,10 +34,12 @@ const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX
 ************************************************************/
 
 /* Utils */
+#define VEC_select(True, False, ...)\
+  MACR_DO_ELSE(True, False, __VA_ARGS__)
 #define VEC_Macro_Exec_True(...) __VA_ARGS__
 #define VEC_Macro_Exec_False(...)
 #define VEC_Macro_If_Args_Exec(...)					\
-  VEC_Macro_Exec_ ## MACR_DO_ELSE(True, False, __VA_ARGS__) (__VA_ARGS__)
+  VEC_Macro_Exec_ ## VEC_select(True, False, __VA_ARGS__) (__VA_ARGS__)
 
 #ifndef VEC_UNSAFE
     #define VEC_assert(expr, ...) debugAssert(expr, __VA_ARGS__)
@@ -106,10 +108,10 @@ const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX
 
 /* Vector Init */
 #define VEC_new(_size, _type, ...)					\
-  VEC_INTERNAL_create(MACR_DO_ELSE(_size, 32, _size), MACR_DO_ELSE(sizeof(_type), 0, _type))
+  VEC_INTERNAL_create(VEC_select(_size, 32, _size), VEC_select(sizeof(_type), 0, _type))
 
 #define VEC_newFrmSize(_size, _dsize, ...)					\
-  VEC_create(MACR_DO_ELSE(_size, 32, _size), MACR_DO_ELSE(_dsize, 0, _dsize))
+  VEC_create(VEC_select(_size, 32, _size), VEC_select(_dsize, 0, _dsize))
 
 
 /* Vector Op */
@@ -148,7 +150,7 @@ const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX
   )
 
 #define VEC_pop(V, ...)\
-  MACR_DO_ELSE(VEC_popi(V, __VA_ARGS__), VEC_popni(V), __VA_ARGS__)
+  VEC_select(VEC_popi(V, __VA_ARGS__), VEC_popni(V), __VA_ARGS__)
 
 #define VEC_insert(V, N, I)			\
    (void)((V)[VEC_cvtindex(V, I, (I) < 0)] = (N))
@@ -157,16 +159,22 @@ const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX
    VEC_INTERNAL_append(V1, V2)
 
 #define VEC_foreach(S, V, T)						\
-  for (MACR_DO_ELSE(VEC_type(T), TYPEOF(V), T) K = VEC_begin(V), S = K[0]; K != VEC_end(V); S = *++k)
+  for (VEC_select(VEC_type(T), TYPEOF(V), T) K = VEC_begin(V), S = K[0]; K != VEC_end(V); S = *++k)
 
-#define VEC_map(F, V, T, ...)				\
-  do {							\
-      VEC_type(T) Vv = V;				\
-      if (Vv != NULL && F != NULL) {			\
-	VEC_assert(VEC_dtype(Vv) == sizeof(T));		\
-	for (vsize_t end = 0; end--;)			\
-	  F(*Vv++ VEC_Macro_If_Args_Exec(__VA_ARGS__));	\
-      }							\
+/*
+ * Vec_map as other map functions, iterates over an iterable object, calling a function on each member.
+ * The first three arguments are the callback function, vector and type. The Last (optional),
+ * is a vararg  which although being a vararg, expects only a single argument that evaluates to
+ * ’True’. When Passed, the mapping is done over the base of each member rather than their values.
+   */
+#define VEC_map(F, V, T, ...)						\
+  do {									\
+      VEC_select(VEC_refType(T) Vv = &V, VEC_type(T) Vv = V, __VA_ARGS__); \
+      if (Vv != NULL && F != NULL) {					\
+	VEC_assert(VEC_dtype(V) == sizeof(T));				\
+	for (vsize_t end = VEC_used(V); end--;)				\
+	  F(*Vv++ VEC_Macro_If_Args_Exec(__VA_ARGS__));			\
+      }									\
   }
 
 #define VEC_slice(V, S, E)			\
@@ -311,7 +319,7 @@ typedef struct {
   uint16_t Pp_dtype;
 } Pp_Setup;
 
-__NONNULL__ __STATIC_FORCE_INLINE_F void VEC_Itoa(const intmax_t n, const Pp_Setup *cf) {
+__NONNULL__ __STATIC_FORCE_INLINE_F void VEC_Itoa(const intmax_t n, Pp_Setup *cf) {
   const int U = cf->Pp_used;
 
   if ((cf->Pp_size - U) < cf->Pp_overflw)
@@ -319,8 +327,10 @@ __NONNULL__ __STATIC_FORCE_INLINE_F void VEC_Itoa(const intmax_t n, const Pp_Set
   cf->Pp_used += cvtTostrInt(n, cf->Pp_buf+U, cf->mask & BASE, !(cf->mask & UNSIGNED) && (n < 0));
 }
 
-__NONNULL__ __STATIC_FORCE_INLINE_F int VEC_TostrInt(const void *v, const Pp_Setup *cf) {
+__NONNULL__ __STATIC_FORCE_INLINE_F int VEC_TostrInt(void *v, Pp_Setup *cf) {
 
+  if (mask | PTR) {
+  }
   switch (cf->mask & SPEC) {
   case LONG:
     VEC_map(v, VEC_Itoa, long, setup);
@@ -333,17 +343,17 @@ __NONNULL__ __STATIC_FORCE_INLINE_F int VEC_TostrInt(const void *v, const Pp_Set
   }
 }
 
-__NONNULL__ __STATIC_FORCE_INLINE_F int VEC_TostrFlt(const void *v, const Pp_Setup *cf) {
+__NONNULL__ __STATIC_FORCE_INLINE_F int VEC_TostrFlt(const void *v, Pp_Setup *cf) {
   switch (cf->mask & SPEC) {
   case LONG:
   case LLNG:
   default:
     PASS;
   }
-  VEC_assert(false, "TOSTRFLT: UINMPLEMENTED");
+  VEC_assert(false, "Repr: TOSTRFLT: UINMPLEMENTED");
 }
 
-__NONNULL__ vsize_t VEC_INTERNAL_repr(char *v, char *fmt, char *bf, vsize_t bfsize) {
+__NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, char *fmt, char *bf, vsize_t bfsize) {
   struct Pp_Setup setup = {.Pp_buf = bf, .Pp_size = bfsize, .Pp_dtype = VEC_dtype(v)};
   uint16_t mask;
   uint8_t c, fc[15] = {0};

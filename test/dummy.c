@@ -11,10 +11,14 @@
 
 typedef enum {EN = 1, OP} eop;
 
-typedef struct abc {int i;}
+typedef struct {int i;} abc;
 int main(void) {
-  const abc k;
-  k.i = 0;
+  abc k;
+  k.i = 5;
+
+  const abc *p = &k;
+
+  p->i = 1;
   int EN, OP;
 
   1 ? (EN = 5, OP = 10) : 0;

@@ -364,7 +364,7 @@ __NONNULL__ void VEC_TostrInt(void *v, Pp_Setup *cf) {
   * @NoEmptyFormatStr: Format is first checked to be non-empty
   * @CopyFormatToFc:
   *
-  *             Then it is splitted into indices 0, 1, 3, 7, 15, 31 (these indices 
+  *             Then it is splitted into indices 0, 1, 3, 7, 15, 31 (these indices
   *             corresponds to the value of @mask when rshfed by 1) of format checker (fc)
   * @GetFormatInExpectedOrder:
   *
@@ -442,19 +442,19 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
 
     #undef IgnoredMaskOrFormat
 
-    setup.Pp_fmt = fmt;
+    setup->Pp_fmt = fmt;
   }
 
  TypeCheckNAction:
-  setup.Pp_mask = mask & SPEC; /* Igore Type (Already handled by local mask) */
+  setup->Pp_mask = mask & SPEC; /* Igore Type (Already handled by local mask) */
 
   switch ( mask & TYPE ) {
   case 'p':
-    setup.Pp_mask |= PTR;
+    setup->Pp_mask |= PTR;
   case 'q':
-    setup.Pp_mask |= LLONG;
+    setup->Pp_mask |= LLONG;
   case 'u':
-    setup.Pp_mask |= USIGNED;
+    setup->Pp_mask |= USIGNED;
   case 'd': case 'i':
     VEC_TostrInt(v, &setup);
     break;
@@ -462,20 +462,20 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
     VEC_TostrFlt(v, &setup);
     break;
   case 'c':
-    setup.Pp_mask |= CHAR;
+    setup->Pp_mask |= CHAR;
   case 's':
     VEC_assert(
-	       (setup.Pp_dtype > 1) && (setup.Pp_dtype != sizeof(VEC_type(char))),
+	       (setup->Pp_dtype > 1) && (setup->Pp_dtype != sizeof(VEC_type(char))),
 	       "Repr: Type Mismatch"
 	       );
 
-    if (setup.Pp_used > 0) {
+    if ( setup->Pp_used > 0 ) {
       char *Vv, *bf;
       register vsize_t j, i, e;
 
       e = VEC_vused(v);
-      Vv = setup.Pp_mask & CHAR ? (i=e-1), v : (i=0), *v;
-      bf = setup.Pp_buf;
+      Vv = setup->Pp_mask & CHAR ? (i=e-1), v : (i=0), *v;
+      bf = setup->Pp_buf;
       do {
 	for (j = 0; (c = Vv[j]) | (j < bfsize); j++) {
 	  bf[j] = c;
@@ -485,10 +485,10 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
     }
   default :
     /* TODO: Raise Error */
-    setup.size = 0;
+    setup->size = 0;
   }
 
-  setup.Pp_mask |= mask & TYPE; /* restore Type */
+  setup->Pp_mask |= mask & TYPE; /* restore Type */
   return setup.size;
 }
 /* No need of these */

@@ -25,7 +25,8 @@ typedef struct {
 
  /* Metadata size */
 const uint16_t VEC_metadtsz       = sizeof(VEC_metaData_);
-const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX
+const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX;
+const uint8_t  VEC_widthOfCInt[5] = {5, 10, 20, 0, 39   }; /* Access: (sizeof(N) >> 2) */
 
 /***********************************************************
 
@@ -131,12 +132,14 @@ const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX
 #define VEC_free(V)				\
   ( VEC_vsize(V) - VEC_vused(V) )
 
-#define VEC_push(V, N)\
-  (\
-   VEC_assert((V != NULL) && (VEC_vdtype(V) == sizeof(N))),\
+#define VEC_push(V, N)							\
+  (									\
+   VEC_assert((V != NULL) && (VEC_vdtype(V) == sizeof(N))),		\
+									\
    ( (VEC_vsize(V) < 1) || (VEC_vsize(V) == VEC_vused(V)) ) && VEC_INTERNAL_resize(V, 1), \
-   ((V)[VEC_vused(V)++] = (N))\
-   )
+									\
+   ((V)[VEC_vused(V)++] = (N))						\
+  )
 
 #define VEC_popni(V)				\
   (\
@@ -166,16 +169,17 @@ const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX
  * The first three arguments are the callback function, vector and type. The Last (optional),
  * is a vararg  which although being a vararg, expects only a single argument that evaluates to
  * ’True’. When Passed, the mapping is done over the base of each member rather than their values.
-   */
+ */
 #define VEC_map(F, V, T, ...)						\
   do {									\
+      VEC_select(VEC_refType, VEC_type, __VA_ARGS__)(T) Vv, Last;	\
       if (V != NULL && F != NULL)					\
 	{								\
-	 VEC_select(VEC_refType(T) Vv = &V, VEC_type(T) Vv = V, __VA_ARGS__); \
-	 VEC_assert(VEC_dtype(V) == sizeof(T));				\
+	  Vv = VEC_select(&V, V, __VA_ARGS__);				\
+	  VEC_assert(VEC_dtype(V) == sizeof(T));			\
 									\
-	 for (T Last = Vv + VEC_used(V); Vv != Last; )			\
-	   F(*Vv++ VEC_Macro_If_Args_Exec(__VA_ARGS__));		\
+	  for (Last = Vv + VEC_used(V); Vv != Last; )			\
+	    F(*Vv++ VEC_Macro_If_Args_Exec(__VA_ARGS__));		\
 	}								\
   } while (0)
 
@@ -298,13 +302,13 @@ __NONNULL__ void VEC_INTERNAL_del(void *v, vsize_t i) {
   VEC_vused(v)--;
 }
 
+#define DOCUMENTATION(LABEL) LABEL
 #define VEC_BUFFER_SIZE USHRT_MAX
 #define VEC_MAX_INT_LEN 32
 #define EOFMT(c, f) (((c) = (f)) & ((c) ^ 58))
 #define VEC_appendComma(bf, i)\
   (((bf)[i] = ','), ((bf)[i + 1] = ' ', i + 2))
 
-#define VEC_itoa cvtInt2Str
 
 enum {
       PTR  = 0x01,  USIGNED = 0x02,  CHAR  = 0x04,
@@ -313,12 +317,10 @@ enum {
 };
 
 typedef struct {
-  char    *Pp_buf;
-  char    *Pp_fmt;
-  vsize_t  Pp_size;
-  vsize_t  Pp_used;
-  uint16_t Pp_mask;
-  uint16_t Pp_dtype;
+  char    *Pp_buf, *Pp_fmt;
+  vsize_t  Pp_size, Pp_used;
+  uint16_t Pp_mask, Pp_dtype;
+  uint8_t  Pp_skip, Pp_overflw;
 } Pp_Setup;
 
 __NONNULL__ __STATIC_FORCE_INLINE_F void VEC_Itoa(const intmax_t n, Pp_Setup *cf) {
@@ -326,35 +328,64 @@ __NONNULL__ __STATIC_FORCE_INLINE_F void VEC_Itoa(const intmax_t n, Pp_Setup *cf
 
   if ((cf->Pp_size - U) < cf->Pp_overflw)
     return;
-  cf->Pp_used += cvtTostrInt(n, cf->Pp_buf+U, cf->mask & BASE, !(cf->mask & UNSIGNED) && (n < 0));
+  cf->Pp_used += cvtTostrInt(n, cf->Pp_buf+U, cf->Pp_mask & BASE, !(cf->Pp_mask & UNSIGNED) && (n < 0));
 }
 
-__NONNULL__ __STATIC_FORCE_INLINE_F void VEC_TostrInt(const void *v, Pp_Setup *cf) {
+__NONNULL__ void VEC_TostrInt(void *v, Pp_Setup *cf) {
 
-  if (Pp_Setup->mask & PTR) {
-    VEC_map(v, VEC_Itoa, uintptr_t, setup, true);
-    Pp_Setup->overflw = 0;
+  if (cf->mask & PTR) {
+    VEC_map(v, VEC_Itoa, uintptr_t, cf, true);
+    cf->Pp_overflw = VEC_widthOfCInt[sizeof(uintptr_t)>>2];
     goto end;
   }
-  switch (cf->mask & SPEC) {
+  switch (cf->Pp_mask & SPEC) {
   case LONG:
-    Pp_Setup->overflw = 10;
-    VEC_map(v, VEC_Itoa, long, setup);
+    cf>Pp_overflw = VEC_widthOfCInt[sizeof(long)>>2];
+    VEC_map(v, VEC_Itoa, long, cf);
     goto end;
   case LLNG:
-    Pp_Setup->overflw = 10;
-    VEC_map(v, VEC_Itoa, long long, setup);
+    cf->Pp_overflw = VEC_widthOfCInt[sizeof(long long)>>2];
+    VEC_map(v, VEC_Itoa, long long, cf);
     goto end;
   case SIZE:
-    Pp_Setup->overflw = 10;
-    VEC_map(v, VEC_Itoa, size_t, setup);
+    cf->Pp_overflw = VEC_widthOfCInt[sizeof(size_t)>>2];
+    VEC_map(v, VEC_Itoa, size_t, cf);
     goto end;
   default:
-    Pp_Setup->overflw = 10;
-    VEC_map(v, VEC_Itoa, int, setup);
+    cf->Pp_overflw = VEC_widthOfCInt[sizeof(int)>>2];
+    VEC_map(v, VEC_Itoa, int, cf);
   }
  end:
 }
+
+/*
+  DOCUMENTATION
+  *
+  * @NoEmptyFormatStr: Format is first checked to be non-empty
+  * @CopyFormatToFc:
+  *
+  *             Then it is splitted into indices 0, 1, 3, 7, 15, 31 (these indices 
+  *             corresponds to the value of @mask when rshfed by 1) of format checker (fc)
+  * @GetFormatInExpectedOrder:
+  *
+  *             The format checker buffer, is checked
+  * @CheckIgnoredSPecOrFormat:
+  *
+  *             Check if No format specifier is ignored (invalid at position) and there
+  *             are no left over characters after format chars
+  * @ErrorCheck:
+  *
+               The mask is checked for the following errors:
+               (1). ’s’ is specified with any other specifiers (width);
+               (2). ’f’ is specified with an ’x’ (hexedecimal float is unsupported);
+               (3). There is no Type specifier;
+               (4). Ignored mask value due to invalid positioning of specifiers or extra
+		    * characters in format. usually if format is correct, a right shift of
+		    * @mask by the total length of the specifier string (max: 6) should be
+		    * non-zero, else otherwise.
+  *
+  *Note* There is no significant speedup attributed to this approach, it is just chosen to minimize the use of multiple swtich and if statements for checkks.
+ */
 
 __NONNULL__ __STATIC_FORCE_INLINE_F void VEC_TostrFlt(const void *v, Pp_Setup *cf) {
   switch (cf->mask & SPEC) {
@@ -367,21 +398,25 @@ __NONNULL__ __STATIC_FORCE_INLINE_F void VEC_TostrFlt(const void *v, Pp_Setup *c
 }
 
 __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
-  uint32_t mask;
-  uint8_t c;
+  register uint32_t mask;
+  register uint8_t  c;
 
-  if (setup->skip && (mask=setup->mask))
-    goto repr;
+  /* It may be desirable to skip the format processing, especially on a repeated call after a buffer overflow case (There should be no modification of the previous returned mask else it’s UB) */
+  if (setup->Pp_skip && (mask=setup->Pp_mask))
+    goto TypeCheckNAction;
 
   {
-    uint8_t b, error, fc[32] = {0};
+    register uint8_t b, error, fc[32] = {0};
 
-    if (EOFMT(c, *fmt++))
-      goto repr;
+    DOCUMENTATION (NoEmptyFormatStr):
+    VEC_assert(EOFMT(c, *fmt++), "Repr: Empty Format is unsupported");
 
+    DOCUMENTATION (CopyFormatToFc):
     fc[0] = c;
     for (b = 0; (b < 6) && EOFMT(c, *fmt); i++)
       fc[(1 << b) - 1] = c;
+
+    DOCUMENTATION (GetFormatInExpectedOrder):
 
     mask = fc[0] == 0x6c;
     mask = (mask << (c=fc[mask] == 0x6c)) | c;
@@ -390,28 +425,34 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
     mask = (mask << (c=fc[mask] == 0x68)) | c;
     mask = (mask << 8) | fc[mask];
 
-    /* Check if No format specifier is ignored (invalid at position) and there are no left over characters after format chars */
-  #define NoIgnoredMaskOrFormat(M, L, F, C)\
-    !((M) >> (L)) && EOFMT(C, F)
+    DOCUMENTAION (CheckIgnoredSPecOrFormat):
 
-    error = (
+    #define IgnoredMaskOrFormat(M, L, F, C)		\
+    (!((M) >> ((L)+6)) || EOFMT(C, F))
+
+    DOCUMENTATION (ErrorCheck):
+
+    error = !(
 	      (((mask & TYPE) == 0x73) && (mask & SPEC))
 	    | (((mask & TYPE) == 0x66) && (mask & BASE))
-	    | ( (mask & SPEC)          && (~mask & TYPE))
-	    | NoIgnoredMaskOrFormat(mask, b, *fmt, c)
+	    | (!(mask & TYPE)          && (mask & SPEC))
+	    | IgnoredMaskOrFormat(mask, b, *fmt, c)
 	    );
     VEC_assert(error, "Repr: Invalid Format");
-    #undef NoIgnoredMaskOrFormat
 
-    setup.Pp_mask = mask & SPEC;
+    #undef IgnoredMaskOrFormat
+
     setup.Pp_fmt = fmt;
   }
 
- repr:
+ TypeCheckNAction:
+  setup.Pp_mask = mask & SPEC; /* Igore Type (Already handled by local mask) */
 
   switch ( mask & TYPE ) {
   case 'p':
     setup.Pp_mask |= PTR;
+  case 'q':
+    setup.Pp_mask |= LLONG;
   case 'u':
     setup.Pp_mask |= USIGNED;
   case 'd': case 'i':
@@ -421,16 +462,20 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
     VEC_TostrFlt(v, &setup);
     break;
   case 'c':
-    mask |= CHAR;
+    setup.Pp_mask |= CHAR;
   case 's':
-    VEC_assert((setup.Pp_dtype > 1) && (setup.Pp_dtype != sizeof(VEC_type(char))), "Repr: Type Mismatch");
+    VEC_assert(
+	       (setup.Pp_dtype > 1) && (setup.Pp_dtype != sizeof(VEC_type(char))),
+	       "Repr: Type Mismatch"
+	       );
 
     if (setup.Pp_used > 0) {
-      const char *Vv;
-      register vsize_t j, i; const vsize_t e = VEC_vused(v);
+      char *Vv, *bf;
+      register vsize_t j, i, e;
 
-      VEC_IGNRET( setup.Pp_char ? (Vv = v, i = e - 1) : (Vv = *v) );
-
+      e = VEC_vused(v);
+      Vv = setup.Pp_mask & CHAR ? (i=e-1), v : (i=0), *v;
+      bf = setup.Pp_buf;
       do {
 	for (j = 0; (c = Vv[j]) | (j < bfsize); j++) {
 	  bf[j] = c;
@@ -439,9 +484,11 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
       } while( i < e );
     }
   default :
+    /* TODO: Raise Error */
     setup.size = 0;
   }
 
+  setup.Pp_mask |= mask & TYPE; /* restore Type */
   return setup.size;
 }
 /* No need of these */

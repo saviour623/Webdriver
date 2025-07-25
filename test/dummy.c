@@ -11,12 +11,12 @@ enum {
 #define EOFMT(c, f) (((c) = (f)) & ((c) ^ 58))
 int main(void) {
   unsigned char c, b, fmt[32] = "llxhu:^0.6", fc[32] = {0};
-  uint32_t mask;
+  uint32_t mask, error;
 
-  b = 2;
+  b = 3;
   fc[0] = 'l';
-  fc[1] = 'u';
-  //fc[3] = 'x';
+  fc[1] = 'l';
+  fc[3] = 'u';
   //fc[3] = 'u';
 
   mask = fc[0] == 0x6c;
@@ -27,19 +27,19 @@ int main(void) {
   mask = (mask << 8) | fc[mask];
 
   /* Check if No format specifier is ignored (invalid at position) and there are no left over characters after format chars */
-  #define NoIgnoredMaskOrFormat(M, L, F, C)\
-    !((M) >> (L)) && EOFMT(C, F)
+  #define IgnoredMaskOrFormat(M, L, F, C)\
+    (!((M) >> ((L)+6)) || EOFMT(C, F))
 
-    mask = (
+    error = (
 	      (((mask & TYPE) == 0x73) && (mask & SPEC))
 	    | (((mask & TYPE) == 0x66) && (mask & BASE))
-	    | ( (mask & SPEC)          && (~mask & TYPE))
-	    | NoIgnoredMaskOrFormat(mask, b, *fmt, c)
+	    | (!(mask & TYPE)          && (mask & SPEC))
+	    | IgnoredMaskOrFormat(mask, b, *fmt, c)
 	    );
-    #undef NoIgnoredMaskOrFormat
-  PUTI(mask);
-  /*‘’
-ll
+
+  #undef IgnoredMaskOrFormat
+      /*‘’
+ll || EOFMT(C, F)
     1, 3, 7, 15, 31
  2, 4, 8, 16, 32
 */

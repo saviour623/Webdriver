@@ -171,7 +171,7 @@ const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX
   do {									\
       if (V != NULL && F != NULL)					\
 	{								\
-	 VEC_select(VEC_refType, VEC_type, __VA_ARGS__)(T) Vv = VEC_select(&V, V, __VA_ARGS__) + VEC_used(V); \
+	 VEC_select(VEC_refType(T) Vv = &V, VEC_type(T) Vv = V, __VA_ARGS__); \
 	 VEC_assert(VEC_dtype(V) == sizeof(T));				\
 									\
 	 for (T Last = Vv + VEC_used(V); Vv != Last; )			\
@@ -374,7 +374,7 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
     goto repr;
 
   {
-    uint8_t b, fc[32] = {0};
+    uint8_t b, error, fc[32] = {0};
 
     if (EOFMT(c, *fmt++))
       goto repr;
@@ -390,10 +390,18 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
     mask = (mask << (c=fc[mask] == 0x68)) | c;
     mask = (mask << 8) | fc[mask];
 
-    VEC_assert(        (((mask & TYPE) ^ 0x73) ^ (mask & SPEC))
-		     | (((mask & TYPE) ^ 0x66) ^ (mask & BASE))
-		     | ( (mask & SPEC)         ^ (mask & TYPE))
-		     |  EOFMT(c, *fmt), "Repr: Invalid Format");
+    /* Check if No format specifier is ignored (invalid at position) and there are no left over characters after format chars */
+  #define NoIgnoredMaskOrFormat(M, L, F, C)\
+    !((M) >> (L)) && EOFMT(C, F)
+
+    error = (
+	      (((mask & TYPE) == 0x73) && (mask & SPEC))
+	    | (((mask & TYPE) == 0x66) && (mask & BASE))
+	    | ( (mask & SPEC)          && (~mask & TYPE))
+	    | NoIgnoredMaskOrFormat(mask, b, *fmt, c)
+	    );
+    VEC_assert(error, "Repr: Invalid Format");
+    #undef NoIgnoredMaskOrFormat
 
     setup.Pp_mask = mask & SPEC;
     setup.Pp_fmt = fmt;

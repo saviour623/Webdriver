@@ -68,31 +68,20 @@ You should have received a copy of the GNU General Public License along with thi
 
 #define __STATIC_FORCE_INLINE_F static __inline__ __FORCE_INLINE__
 
+
 /***********************************************************************
 
 * TOOL MACROS
 
 ***********************************************************************/
 
-#define MACR_EMPTY_PARAM(...) 0, 0
-#define MACR_INDIRECT_EVAL(a, ...) MACR_ACCEPT_FIRST(__VA_ARGS__)
-#define MACR_ACCEPT_FIRST(a, ...) a
-#define MACR_IGNORE_FIRST(...) MACR_INDIRECT_EVAL(__VA_ARGS__)
-/* empty */
-#define MACR_IF_EMPTY_0(a, ...) __VA_ARGS__
-/* also empty */
-#define MACR_IF_EMPTY_(a, ...) __VA_ARGS__
-/* non-empty */
-#define MACR_IF_EMPTY_1(a, ...) a
-#define MACR_CAT(A, A1) MACR_INDIRECT_CAT(A, A1)
-#define MACR_INDIRECT_CAT(A, A1) A ## A1
+#include "macro/macro.h"
 
-/* Assert if argument passed to macro is not empty */
-#define MACR_NON_EMPTY(...) MACR_IGNORE_FIRST(MACR_EMPTY_PARAM  __VA_ARGS__(), 1)
-
-/* Assert If argument to macro is empty, do true else or false (actions) */
-#define MACR_DO_ELSE(_true, _false, ...) MACR_CAT(MACR_IF_EMPTY_, MACR_NON_EMPTY(__VA_ARGS__))(_true, _false)
-
+#define MvpgMacro_vaopt(...)        MAC_VA_OPT__(__VA_ARGS__)
+#define MvpgMacro_select(A, B, ...) MAC_SELECT__(A, B, __VA_ARGS__)
+#define MvpgMacro_concat(A, B)      CAT__(A, B)
+#define MvpgMacro_stringify(S)      #S
+#define MvpgMacro_ignore(...)       (void)(__VA_ARGS__)
 
 
 /***********************************************************************
@@ -161,7 +150,7 @@ __STATIC_FORCE_INLINE_F unsigned long int __bsafeUnsignedMulAddl(unsigned long i
 void _debugAssert(const char *, const unsigned long int, const char *, const char *, const char *);
 
 /* Convert integer to string */;
-uintmax_t cvtInt2Str(uintmax_t, char *, uint8_t, uint8_t);
+uintmax_t MvpgInclude_Itoa(uintmax_t, char *, uint8_t, uint8_t);
 
  /***********************************************************************
 
@@ -174,11 +163,11 @@ uintmax_t cvtInt2Str(uintmax_t, char *, uint8_t, uint8_t);
     #define debugAssert(...)
 #else
     #define debugAssert(expr, ...) (\
- (expr) || (_debugAssert(__FILE__, __LINE__, __FUNCTION__, #expr, MACR_DO_ELSE(__VA_ARGS__, "", __VA_ARGS__)), 1) \
+ (expr) || (_debugAssert(__FILE__, __LINE__, __FUNCTION__, #expr, MvpgMacro_select((__VA_ARGS__), "", __VA_ARGS__)), 1) \
 				    )
 #endif
 
-#define throwError(...) puts(__VA_ARGS__)
+#define outs(...) puts(__VA_ARGS__)
 #define puti(i)         printf("%lld\n", (long long int)(i))
 
 #endif

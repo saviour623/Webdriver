@@ -19,26 +19,14 @@ VEC_refType(int) vecUsageFuncRefAdd(VEC_refType(int) v, int i) {
   return v;
 }
 
-typedef struct {
-  long int z;
-  long long int y;
-  int x;
-} dtype;
-
-typedef struct {
-  union {
-    int x1;
-  };
-  union {
-    int x;
-  };
-} dtype;
-
 int main(void) {
   /* VECTOR TEST */
 
-  exit(0);
-  VEC_type(int) v = VEC_new(32, int);
+  char buffer[3024] = {0};
+  Pp_Setup setup;
+
+
+  VEC_type(int) v = VEC_new(2046, int);
 
   puti(VEC_size(v));
 
@@ -64,9 +52,25 @@ int main(void) {
 
   puti(VEC_back(v));
 
-  VEC_shrink(v);
-
   puti(VEC_size(v));
+
+  setup.Pp_buf = buffer;
+  setup.Pp_size  = 1024;
+  setup.Pp_fmt = "d";
+
+  //VEC_INTERNAL_repr(v, &setup);
+
+  for (int i = 0; i < 1025; i++) {
+    VEC_push(v, i);
+  }
+  //puti(VEC_pop(v));
+
+  //for (i < )
+  VEC_INTERNAL_repr(v, &setup);
+  puts(buffer);
+
+  //puti(setup.Pp_size);
+  //VEC_shrink(v);
 
   VEC_destroy(v);
 

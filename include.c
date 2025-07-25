@@ -63,7 +63,7 @@ __STATIC_FORCE_INLINE_F uintmax_t strHex(uintmax_t n, char *bf){
 }
 
 /* INTEGER TO STRING */
-uintmax_t cvtInt2Str(uintmax_t n, char *bf, uint8_t base, uint8_t lt){
+uintmax_t MvpgInclude_Itoa(uintmax_t n, char *bf, uint8_t base, uint8_t lt){
 
   if ( lt ) {
     n = -(intmax_t)n;

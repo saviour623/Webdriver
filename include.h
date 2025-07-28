@@ -149,6 +149,9 @@ __STATIC_FORCE_INLINE_F unsigned long int __bsafeUnsignedMulAddl(unsigned long i
 /* Similar to assert */
 void _debugAssert(const char *, const unsigned long int, const char *, const char *, const char *);
 
+/* Copy n bytes from src to dest; deviates from strlcpy in that dest is updated to dest + n, on return  */
+size_t MvpgInclude_strlcpy(char **, char *, size_t);
+
 /* Convert integer to string */;
 uintmax_t MvpgInclude_Itoa(uintmax_t, char *, uint8_t, uint8_t);
 

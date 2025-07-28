@@ -72,6 +72,11 @@ uintmax_t MvpgInclude_Itoa(uintmax_t n, char *bf, uint8_t base, uint8_t lt){
   return (base == 16 ? strHex : strDec)(n, bf) + !!lt;
 }
 
+/* STRINGS */
+size_t MvpgInclude_strlcpy(char **dest, char *src, size_t n) {
+  debugAssert(0, "MvpgInclude_strlcpy: uimplemented");
+}
+
 /* DEBUG */
 void _debugAssert(const char *file, const unsigned long int linenum, const char *func, const char *expr, const char *msg) {
 

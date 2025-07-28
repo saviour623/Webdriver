@@ -1,4 +1,4 @@
-qq/* MVPG API Vector Type
+/* MVPG API Vector Type
 Copyright (C) 2025 Michael Saviour
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -104,10 +104,10 @@ const uint8_t  VEC_widthOfCInt[5] = {5, 10, 20, 0, 39   }; /* Access: (sizeof(N)
 
 /* Vector Init */
 #define VEC_new(SZ, T, ...)						\
-  VEC_INTERNAL_create(SZ, MvpgMacro_select(sizeof(T), 0, T)
+  VEC_INTERNAL_create(SZ, MvpgMacro_select(sizeof(T), 0, T))
 
-#define VEC_newFrmSize(SZ, SZOF, ...)\
-   VEC_INTERNAL_create(SZ, MvpgMacro_select(SZOF, 0, SZOF)
+#define VEC_newFrmSize(SZ, SZOF)\
+  VEC_INTERNAL_create(SZ, MvpgMacro_select(SZOF, 0, SZOF))
 
 
 /* Vector Op */
@@ -169,7 +169,7 @@ const uint8_t  VEC_widthOfCInt[5] = {5, 10, 20, 0, 39   }; /* Access: (sizeof(N)
   do {								\
     VEC_type(T) Vv = V;						\
     if (Vv != NULL && F != NULL) {				\
-      VEC_assert(VEC_dtype(Vv) == sizeof(T));			\
+      VEC_assert(VEC_vdtype(Vv) == sizeof(T));			\
 								\
       for (VEC_type(T) Last = Vv + VEC_vused(Vv) - 1; Vv != Last; Vv++)	\
 	F(*Vv MvpgMacro_vaopt(,__VA_ARGS__));			\
@@ -193,7 +193,7 @@ const uint8_t  VEC_widthOfCInt[5] = {5, 10, 20, 0, 39   }; /* Access: (sizeof(N)
   PASS
 
 #define VEC_destroy(V)							\
-     VEC_IGNRET(V != NULL ? mvpgDealloc(VEC_mv2blkst(V)), (V = NULL) : PASS)
+     MvpgMacro_ignore(V != NULL ? mvpgDealloc(VEC_mv2blkst(V)), (V = NULL) : PASS)
 
 
 /*************************************************************
@@ -247,7 +247,7 @@ __STATIC_FORCE_INLINE_F __NONNULL__ __WARN_UNUSED__ void *VEC_INTERNAL_slice(voi
   if (! ((b < VEC_vused(*v)) && (e < VEC_vused(*v)) && (e > b)) )
     return NULL;
 
-  new = VEC_newFrmSize((e - b), VEC_vdtype(*v));
+  // new = VEC_newFrmSize((e - b), VEC_vdtype(*v));
 
   memcpy(new, (*v + b), e);
   memmove(*v + b, *v + e, __bsafeUnsignedMull(VEC_vdtype(*v), (e - b)));
@@ -289,7 +289,7 @@ __NONNULL__ __STATIC_FORCE_INLINE_F void VEC_Itoa(const intmax_t n, Pp_Setup *cf
 
   if ((cf->Pp_size - U) < (cf->Pp_overflw - 2))
     return;
-  cf->Pp_used += MvpgInclude_Itoa(n, cf->Pp_buf+U, cf->Pp_mask & BASE, !(cf->Pp_mask & USIGNED) && (n < 0));
+  cf->Pp_used += MvpgInclude_Itoa(n, cf->Pp_buf+U, !!(cf->Pp_mask & BASE), !(cf->Pp_mask & USIGNED) && (n < 0));
 }
 
 __NONNULL__ void VEC_TostrInt(void *v, Pp_Setup *cf) {
@@ -301,7 +301,7 @@ __NONNULL__ void VEC_TostrInt(void *v, Pp_Setup *cf) {
   }
   switch (cf->Pp_mask & SPEC) {
   case LONG:
-    cf>Pp_overflw = VEC_widthOfCInt[sizeof(long)>>2];
+    cf->Pp_overflw = VEC_widthOfCInt[sizeof(long)>>2];
     VEC_map(v, VEC_Itoa, long, cf);
     goto end;
   case LLNG:
@@ -368,7 +368,7 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
     goto TypeCheckNAction;
 
   {
-    register uint8_t b, error, fmt, fc[32] = {0};
+    uint8_t mskc, error, *fmt, fc[32] = {0};
 
     fmt = setup->Pp_fmt;
     VEC_assert(EOFMT(c, *fmt++), "Repr: Empty Format is unsupported");
@@ -376,8 +376,8 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
     DOCUMENTATION (CopyFormatToFc):
 
     fc[0] = c;
-    for (b = 0; (b < 6) && EOFMT(c, *fmt); i++)
-      fc[(1 << b) - 1] = c;
+    for (mskc = 0; (mskc < 6) && EOFMT(c, *fmt); mskc++)
+      fc[(1u << mskc) - 1] = c;
 
     DOCUMENTATION (GetFormatInExpectedOrder):
 
@@ -388,7 +388,7 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
     mask = (mask << (c=fc[mask] == 0x68)) | c;
     mask = (mask << 8) | fc[mask];
 
-    DOCUMENTAION (CheckIgnoredSPecOrFormat):
+    DOCUMENTATION (CheckIgnoredSPecOrFormat):
 
     #define IgnoredMaskOrFormat(M, L, F, C)		\
     (!((M) >> ((L)+6)) || EOFMT(C, F))
@@ -399,7 +399,7 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
 	      (((mask & TYPE) == 0x73) && (mask & SPEC))
 	    | (((mask & TYPE) == 0x66) && (mask & BASE))
 	    | (!(mask & TYPE)          && (mask & SPEC))
-	    | IgnoredMaskOrFormat(mask, b, *fmt, c)
+	    | IgnoredMaskOrFormat(mask, mskc, *fmt, c)
 	    );
     VEC_assert(error, "Repr: Invalid Format");
 
@@ -409,7 +409,7 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
   }
 
  TypeCheckNAction:
-  setup->Pp_dtype = VEC_dtype(v);
+  setup->Pp_dtype = VEC_vdtype(v);
   setup->Pp_mask  = mask & SPEC; /* Igore Type bits (Reused for other mask) */
   switch ( mask & TYPE ) {
   case 'p':
@@ -432,8 +432,7 @@ __NONNULL__ vsize_t VEC_INTERNAL_repr(void *v, Pp_Setup *setup) {
 
     if ( setup->Pp_used > 0 ) {
       char *Vv, *bf;
-      register vsize_t i = 0;
-      const vsize_t bfs = setup->Pp_size, e = VEC_vused(v);
+      register vsize_t bfs = setup->Pp_size, e = VEC_vused(v), i = 0;
 
       Vv = setup->Pp_mask & CHAR ? (i=e-1), v : VEC_typeCast(v, char *)[0];
       bf = setup->Pp_buf;

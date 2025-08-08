@@ -23,7 +23,7 @@ int main(void) {
   /* VECTOR TEST */
 
   char buffer[3024] = {0};
-  Pp_Setup setup;
+  Pp_Setup setup = {0};
 
 
   VEC_type(int) v = VEC_new(2046, int);
@@ -63,13 +63,13 @@ int main(void) {
   for (int i = 0; i < 1025; i++) {
     VEC_push(v, i);
   }
-  //puti(VEC_pop(v));
+  puti(VEC_pop(v));
 
   //for (i < )
   VEC_INTERNAL_repr(v, &setup);
   puts(buffer);
 
-  //puti(setup.Pp_size);
+  puti(setup.Pp_size);
   //VEC_shrink(v);
 
   VEC_destroy(v);

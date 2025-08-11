@@ -39,7 +39,7 @@ typedef union {
 } bits_t;
 
 void   reprfloat   (bits_t bits);
-void   reprexp     (bits_t bits);
+double reprexp     (bits_t bits);
 double approxLog2  (bits_t bits);
 double approxLog10 (bits_t bits);
 
@@ -93,10 +93,22 @@ extern inline void reprfloat(bits_t bits) {
 #define Precalc_D2ydF2Logb10f_Div2 0.1085736204758129
 #define Precalc_AllOnes52bits      0xfffffffffffffULL
 
+static inline __attribute__((pure, always_inline)) double pow10__(double x) {
+  x = x * x;
 
-extern inline void reprexp(bits_t bits) {
-  int16_t p2, p10, dp;
-  double  F,  dF,  x2;
+  // Calculate 10 ^ 10
+  return x * x * x * x * x;
+}
+static inline __attribute__((pure, always_inline)) double exp__(double x) {
+  const double x2 = x * x;
+
+  // Approximate Ln(dp) using taylor series {dp: [0, 1)}
+  return 1. + (x + (0.5 * x2) * (1. + ((0.333333333333333 * x) + ((0.17 * x2) * ((0.25 * x2) + (0.17 * x2) * x)))));
+}
+
+extern inline double reprexp(bits_t bits) {
+  int16_t p2, p10;
+  double  F,  dF,  dp, dp2;
 
   F = bits.F; //keep value
 
@@ -120,10 +132,24 @@ extern inline void reprexp(bits_t bits) {
   // Reduce F to [0, 1], given that 0 < F => F’ [F’: Float numbers > F_RNGE]
   // That is, F has to be multiplied by 10^-p such that F < 0 == f and f x 10^p == F
   p2  = Precalc_Log10b2 * p10; // log2(p10)
-  // Split 10^p * M into (2^p2 * M) + (10^dp * M); dp = p10 - p2
+  // Split 10^p into 2^-p2 * 10dp [dp = p10 - p2]
   dp     = (p10 * Precalc_Loge10) - (p2 * Precalc_Loge2);
 
-  bits.N += ((uint64_t)p2 << 52); // Multiplies M by 2^p2
+  bits.N = (1023ULL + p2) << 52; // 2^-p2
+
+#ifndef MIN_PREC_CALC_FLT
+  // reduce dp closer to 0 for better approximation
+  dp = .1 * dp;
+#endif
+
+  dp = exp__(dp); // e ^ dp ~ 10 ^ (p10 - p2)
+
+#ifndef MIN_PREC_CALC_FLT
+  // correct reduction
+  dp = pow10__(dp);
+#endif
+
+  return F / (bits.F * dp); // F * 10^p or  F * (2^-p2 * 10^dp)
 }
 
 static inline void floatRepr(double f) {
@@ -141,19 +167,6 @@ static inline void floatRepr(double f) {
   PASS();
 
   return (expOf(bitsv.N) ? reprfloat(bitsv) : reprexp(bitsv));
-}
-
-static inline double exp_(double x) {
-  const double x2 = x * x;
-
-  // Approximate Ln(x) for 0 >= x <= 1 using taylor series
-  return 1. + (x + (0.5 * x2) * (1. + ((0.333333333333 * x) + ((0.17 * x2) * ((0.25 * x2) + (0.17 * x2) * x)))));
-}
-
-static inline __attribute__((pure, always_inline)) double pow10(double x) {
-  x = x * x;
-
-  return x * x * x * x * x;
 }
 
 
@@ -181,7 +194,7 @@ int main(void) {
 
 
   bits_t k;
-  k.F = 0.4;
+  k.F = 1239342349.0;
 
   reprexp(k);
 }

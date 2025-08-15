@@ -24,12 +24,32 @@
 #define PASS(...) (void *)0
 #define expOf(...) true
 
+#if defined(__GNUC__) || defined(__clang__) || ((-16 >> 1) == -8 && ((-1 & (16 - 1)) == 15))
+// Check if compiler supports correct bit operations on signed bits (according to the standard, this is implementation defined)
+// Test is still untrusted since CPP may implemented by a different implementator from that of the actual compiler, but it is unlikely
+    #define COMPILER_SUPPORT_SIGNED_BIT_OP 1
+#else
+    #define COMPILER_SUPPORT_SIGNED_BIT_OP 0
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+    #define LIKELY___(x, p) __builtin_expect(x, p)
+#else
+    #define LIKELY___(...)
+#endif
 
 #define MAX_PREC_CALC_FLT 1
 
+#ifndef UINT64_MAX
+    #error "INT64 is unsupported"
+#else
+    typedef uint64_t U64_;
+    typedef int64_t  L64_;
+#endif
+
 typedef union {
   double   F;
-  uint64_t N;
+  U64_ N;
 } bits_t;
 
 typedef struct {
@@ -46,7 +66,7 @@ double xpow10__    (const double x);
 double exp___      (const double x);
 double exp__       (const double x);
 
-const double Precalc_2powDdivP[32] =
+static const double Precalc_2powDdivP[32] =
   {
    // 2^d/p or p_root(2^d); P = 16
    1.0000000000000000, 1.04427378242741380, 1.09050773266525770,
@@ -55,7 +75,7 @@ const double Precalc_2powDdivP[32] =
    1.4768261459394993, 1.54221082540794070, 1.61049033194925430,
    1.6817928305074290, 1.75625216037329950, 1.83400808640934250,
    1.9152065613971474
-};
+  };
 
 #define Precalc_Log10b2  3.321928094887362
 #define Precalc_Log2b10  0.3010299956639812
@@ -139,9 +159,9 @@ extern INLINE(double) xpow10__(const double x) {
 
 
 extern INLINE(double) exp__(const double x) {
-  // Calculate e^x for positive x in interval [0.1, 1);
+  /* Calculate e^x for x in interval [0, 1);
 
-  /* We first reduce x (make it smaller) and take its exponential
+   * We first reduce x (make it smaller) and take its exponential
    * Let:
    * Q, q = qoutient (truncated)
    * R, r = remainder
@@ -152,34 +172,48 @@ extern INLINE(double) exp__(const double x) {
    * We use this to split x into a qoutient Q (may be large) and a small remainder, R.
    *
    * Taking the exponential of x:
-   * e^x = e^(Q*d + R) OR e^x = e^(Q/d) * e^R
+   * e^x = e^(Q*d + R) OR e^x = e^(Q*d) * e^R
    *
-   * If Q is a rational number with Ln(k) as its numerator, where k is a simple integer (or not), then Q may be wriiten as:
-   *   Q = Ln(k) / p         (p > 0)
+   * If d is choosen to be a rational number, with Ln(k) as the dividend (where k is any positive integer---preferably), and p as the divisor, then d may be wriiten as:
+   *   d = Ln(k) / p         (p > 0)
    *
-   * Putting this into e^x:
+   * Putting d into e^x:
 
-   * e^x = e^(Ln(k)/p * d) * e^R ==== e^(d/pLn(k)) * e^R ==== e^Ln(k^(d/p)) * e^R
-   * Therefore, e^x == k^(d/p) * e^R
+   * e^x = e^(Q * Ln(k)/p) * e^R ==== e^(Q/pLn(k)) * e^R ==== e^Ln(k^(Q/p)) * e^R
+   * Therefore, e^x == k^(Q/p) * e^R
    *
-   * * Worst Case:
-   * If x < 0.1 then: Q < 1 and Q*d < 1
-   * This implies that R =~ x (No significant reduction)
    */
 
-   const uint64_t Q = x * Precalc_16DivLoge2; // If K = 2, P = 16, then d = Ln(2)/16 and Q = x / d
+  // If K = 2, P = 16, then d = Ln(2)/16 and Q = x/d = x / (Ln2/16) or Q = 16x/Ln(2)
+   const L64_ Q = x * Precalc_16DivLoge2;
 
-   /* Calculate 2^d/p, where 2^d/p == 2^q * 2^r (q = Qoutient(d/p)...)
-    * (for small range of k, [0, 15),  q == 0 since:
-    *       q = (k / 16) == 0 {k: k < 16} and k < 0 is always true since x < 0
-    * so 2^d/p == 2^q * 2^r =~ 2^r and e^x becomes ~ 2^r * e^R
+   /* Calculate 2^Q/p, where:
+            2^Q/p == 2^q * 2^r (q = Qoutient(Q/p)...),
+    *       r == Q mod p (as integer) OR r == (Q mod p) / p (as decimal),
+    *       2^r == p_root(2^(Q mod p)) and (Q mod p) < p
+    *
+    * 2^r or p_root(2^(Q mod p)) is calculated using a small lookup table of size p
     */
-   bits_t p2 = {.F = Precalc_2powDdivP[Q & 0xf]};
+   bits_t p2;
 
-   p2.N += (Q >> 4) << 52; // 2^q * 2^r
+#if COMPILER_SUPPORT_SIGNED_BIT_OP == 0
+   // Implementation defined behaviour of bitwise OP on negative numbers. Some implementators provide expected results. Rather not, we handle negative Q specially
 
-   // (2^dp = 2^q * 2^r) * e^R (2^r is precalculated using a LUtable)
-   return p2.F * exp___(x - (Q * Precalc_Loge2Div16));
+   if (LIKELY___((Q < 0), 0)) {
+     p2.F = Precalc_2powDdivP[16 - (-Q & 0xf)];  // -N mod p == 16 - (N mod 16)  // N mod 16 =~ N & (16 - 1)
+     p2.N -= (U64_)((-Q >> 4) + 1) << 52;
+
+     goto exp;
+   }
+#endif
+   // Q >= 0 | bit operations are guaranteed to be valid on signed negative integers
+   p2.F = Precalc_2powDdivP[Q & 0xf];
+   p2.N += (Q >> 4) << 52; // Safe, since Q>>4 is always small (< 5)
+
+ exp:
+
+   // (2^q * 2^r) * e^R ==== 2^(Q/d) * e^R ==== e^x
+   return  p2.F * exp___(x - (Q * Precalc_Loge2Div16));
 }
 extern INLINE(double) exp___(const double x) {
   /* By continued fraction,
@@ -210,39 +244,33 @@ extern inline double reprexp(bits_t bits) {
   //  Exponent
   p2 = (bits.N >> 52) - 1023;
 
-  // Mantissa normalized within [1, 2)
+  // Normalized Mantissa. Within [1, 2)
   bits.N = (bits.N & Precalc_AllOnes52bits) | (1023ULL << 52);
 
   // The exponent of F is Approximated using log10(f) where f ~ log(2^p * M)
   // ~ log(2^p * M) ~ log(2^p * M) ~ plog(2) + log(M)
   // And log(M) == ln(M) / ln(10):
-  // The contribution ln(M) to the exponent is approximated using taylor’s series about point b {b == SQRT(2)}
+  // The contribution log(M) to the exponent is approximated using taylor’s series of Log(M) about point b (where b == SQRT(2))
 
   // Let y = log(f)
   // The Taylor approx. is given as log(b) + plog(2) + df.dy/df - d2f.d2y/df2
   dF = bits.F - Precalc_SQRT2;
 
-  p10 = Precalc_LogSQRT2b10 + ((p2 * Precalc_Log2b10) + ((dF * Precalc_DydFLogb10_f) - (dF * (dF * Precalc_D2ydF2Logb10f_Div2)))) + 1;
+  p10 = Precalc_LogSQRT2b10 + ((p2 * Precalc_Log2b10) + ((dF * Precalc_DydFLogb10_f) - (dF * (dF * Precalc_D2ydF2Logb10f_Div2))));
 
   // Reduce F to [1, 2)
   // That is, F has to be multiplied by 10^-p such that F  1 and == f and f x 10^p == F
   p2  = (Precalc_Log10b2 * p10); // log2(p10)
-  // Split 10^p into 2^-p2 * 10^dp [dp = p10 - p2]
+  // Split 10^p into 2^-p2 * 10^dp [dp = 10 ^ (p10 - p2)]
   // 10 ^ dp is approximated using e^Ln(dp)
   dp  = (-p10 * Precalc_Loge10) + (p2 * Precalc_Loge2);
 
   bits.N = (1023ULL - p2) << 52; // 2^p2
 
-  //reduce dp closer to 0 for better approximation of exp
-  //dp = REDUCE_TO0(dp);
 
-  putf(dp);
   dp = exp__(dp); // e^Ln(dp) ~ 10^(p10 - p2)
-  putf(dp);
-  // correct reduction
-  //dp = CORRECT_REDC(dp);
 
-  return F * (bits.F * dp); // F * 10^p or  F * (2^p2 * 10^dp)
+  return 5e-14 + F * (dp * bits.F); // F * 10^p or  F * (2^p2 * 10^dp)
 }
 
 static inline void floatRepr(double f) {
@@ -265,13 +293,8 @@ static inline void floatRepr(double f) {
 
 int main(void) {
   bits_t k;
-  k.F = 292873592038420342.;
+  k.F = 8924928735920382.;
 
   putf(reprexp(k));
   putf(k.F);
-
-  double L = 0.1;
-  putf(exp(L));
-  putf(exp__(L));
-  //putf(k.F);
 }

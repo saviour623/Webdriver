@@ -38,18 +38,38 @@
     #define LIKELY___(...)
 #endif
 
-#define MAX_PREC_CALC_FLT 1
-
-#ifndef UINT64_MAX
-    #error "INT64 is unsupported"
+// We require an integer of bit-width W, wide enough to accomodate the underlying bit-width of float or double
+#if !defined(UINT64_MAX) || defined(USE_FLOAT32__)
+    #define DISABLE_DBL_SUPPORT__
+    #ifndef UINT32_MAX
+        #error "No float32 or float64 support"
+    #endif
+    #define UINT_ uint32_t
+    #define INT_  int32_t
 #else
-    typedef uint64_t U64_;
-    typedef int64_t  L64_;
+    #define UINT_ uint64_t
+    #define INT_  int64_t
 #endif
 
+// Fallback to float32: for systems without double (rarely, but some embedded system); Manually disabling use of double by defining the macro USE_FLOAT32__
+#if (defined(FLT_DIG) && defined(DBL_DIG) && (DBL_DIG == FLT_DIG)) || defined(DISABLE_DBL_SUPPORT__)
+    #define DBLT__      float
+    #define DFLT_BIAS__ 127ul
+    #define DBLT_MANT_SHFT   23
+    #define Precalc_AllOnesMantBits 0x3ffffful
+#else
+    #define DBLT__      double
+    #define DFLT_BIAS__ 1023ull
+    #define DBLT_MANT_SHFT   52
+    #define Precalc_AllOnesMantBits 0xfffffffffffffull
+#endif
+
+#define MAX_PREC_CALC_FLT 1
+
+
 typedef union {
-  double   F;
-  U64_ N;
+  DBLT__  F;
+  UINT_   N;
 } bits_t;
 
 typedef struct {
@@ -59,41 +79,40 @@ typedef struct {
 } fmt;
 
 void   reprfloat   (bits_t bits);
-double reprexp     (bits_t bits);
-double approxLog2  (bits_t bits);
-double approxLog10 (bits_t bits);
-double xpow10__    (const double x);
-double exp___      (const double x);
-double exp__       (const double x);
+DBLT__ reprexp     (bits_t bits);
+DBLT__ approxLog2  (bits_t bits);
+DBLT__ approxLog10 (bits_t bits);
+DBLT__ xpow10__    (const DBLT__ x);
+DBLT__ exp___      (const DBLT__ x);
+DBLT__ exp__       (const DBLT__ x);
 
-static const double Precalc_2powDdivP[32] =
+static const DBLT__ Precalc_2powDdivP[16] =
   {
    // 2^d/p or p_root(2^d); P = 16
-   1.0000000000000000, 1.04427378242741380, 1.09050773266525770,
-   1.1387886347566916, 1.18920711500272100, 1.24185781207348400,
-   1.2968395546510096, 1.35425554693689270, 1.41421356237309510,
-   1.4768261459394993, 1.54221082540794070, 1.61049033194925430,
-   1.6817928305074290, 1.75625216037329950, 1.83400808640934250,
-   1.9152065613971474
+   1.00000000000000000, 1.04427378242741384, 1.09050773266525766,
+   1.13878863475669165, 1.18920711500272107, 1.24185781207348405,
+   1.29683955465100967, 1.35425554693689273, 1.41421356237309505,
+   1.47682614593949931, 1.54221082540794079, 1.61049033194925431,
+   1.68179283050742909, 1.75625216037329948, 1.83400808640934246,
+   1.91520656139714729
   };
 
-#define Precalc_Log10b2  3.321928094887362
-#define Precalc_Log2b10  0.3010299956639812
-#define Precalc_Loge2    0.6931471805599453
-#define Precalc_InvLoge2 1.4426950408889634
-#define Precalc_Loge10   2.302585092994046
+#define Precalc_Log10b2  3.32192809488736235
+#define Precalc_Log2b10  0.30102999566398120
+#define Precalc_Loge2    0.69314718055994531
+#define Precalc_InvLoge2 1.44269504088896341
+#define Precalc_Loge10   2.30258509299404684
 
 #define Precalc_1_f_asInt    0x3ff0000000000000ull
 #define Precalc_FloatExpBias 0x10000000000000ull
 #define Precalc_53shift52    0x350000000000000ull
 
-#define Precalc_SQRT2              1.4142135623730951
-#define Precalc_LogSQRT2b10        0.1505149978319906
-#define Precalc_DydFLogb10_f       0.3070925731856877
-#define Precalc_D2ydF2Logb10f_Div2 0.1085736204758129
-#define Precalc_AllOnes52bits      0xfffffffffffffULL
+#define Precalc_SQRT2              1.414213562373095049
+#define Precalc_LogSQRT2b10        0.150514997831990598
+#define Precalc_DydfLogSQRT2_b10   0.307092573185687714
+#define Precalc_D2ydf2LogSQRT2_b10_Div2 0.10857362047581296
 
-#define Precalc_16DivLoge2 23.083120654223414
+#define Precalc_16DivLoge2 23.08312065422341452
 #define Precalc_Loge2Div16 4.332169878499658e-2
 
 #define approxLog2p(x) (0.5 * approxLog2(x) + approxLog2p(x*0.66667) * 0.6667)
@@ -112,7 +131,7 @@ float Alog2(const float f, const float scaled, const uint32_t oneAsFloat) {
   return asfloat(asint((asint(f)-oneAsFloat) + 0) - 0xb800000) + 0.0;/// (1 << 23);
 }
 
-extern INLINE(double) approxLog2(bits_t bits) {
+extern INLINE(DBLT__) approxLog2(bits_t bits) {
   bits_t FI;
 
   /*
@@ -123,7 +142,7 @@ extern INLINE(double) approxLog2(bits_t bits) {
   // Second iteration requires F = F * c {c: 0.6666} (FLoating Point Tricks By Blinn), however F * x may reduce to F < 0. Since this is below our limit, it is trouble. However, we can perform F * 2c, relying on the fact that LogN(F) = LogN(F * N) - 1 {F: F => 1} or LogN(F / N) - 1 {F: F < 1}
   // So Log2(F * c * 2) ~ 1 - log2(F * C) (Keeping F above 0)
   FI.F = bits.F * 1.3332;
-  //Subtract bias (double=1023) from exponent (without shifts)
+  //Subtract bias (DBLT__=1023) from exponent (without shifts)
 
   bits.F = bits.N - Precalc_1_f_asInt; //0x4000000000000000ull;
   // Subtract 52 from the exponent which effectively divides by 2^52 directly
@@ -135,7 +154,7 @@ extern INLINE(double) approxLog2(bits_t bits) {
   return bits.F + (FI.F - 0.156);
 }
 
-extern INLINE(double) approxLog10(bits_t bits) {
+extern INLINE(DBLT__) approxLog10(bits_t bits) {
   // logaX ~ logbX/logbA or logbX * 1/logbA or 1/logxA
 
   return (approxLog2(bits) * Precalc_Log2b10); // return log2(f) / log10(2)
@@ -146,8 +165,8 @@ extern inline void reprfloat(bits_t bits) {
 }
 
 
-extern INLINE(double) xpow10__(const double x) {
-  register double x2, x4, x8;
+extern INLINE(DBLT__) xpow10__(const DBLT__ x) {
+  register DBLT__ x2, x4, x8;
 
   // Calculate x ^ 10
   x2 = x  * x;
@@ -158,7 +177,7 @@ extern INLINE(double) xpow10__(const double x) {
 }
 
 
-extern INLINE(double) exp__(const double x) {
+extern INLINE(DBLT__) exp__(const DBLT__ x) {
   /* Calculate e^x for x in interval [0, 1);
 
    * We first reduce x (make it smaller) and take its exponential
@@ -185,10 +204,10 @@ extern INLINE(double) exp__(const double x) {
    */
 
   // If K = 2, P = 16, then d = Ln(2)/16 and Q = x/d = x / (Ln2/16) or Q = 16x/Ln(2)
-   const L64_ Q = x * Precalc_16DivLoge2;
+   const INT_ Q = x * Precalc_16DivLoge2;
 
    /* Calculate 2^Q/p, where:
-            2^Q/p == 2^q * 2^r (q = Qoutient(Q/p)...),
+	    2^Q/p == 2^q * 2^r (q = Qoutient(Q/p)...),
     *       r == Q mod p (as integer) OR r == (Q mod p) / p (as decimal),
     *       2^r == p_root(2^(Q mod p)) and (Q mod p) < p
     *
@@ -201,27 +220,27 @@ extern INLINE(double) exp__(const double x) {
 
    if (LIKELY___((Q < 0), 0)) {
      p2.F = Precalc_2powDdivP[16 - (-Q & 0xf)];  // -N mod p == 16 - (N mod 16)  // N mod 16 =~ N & (16 - 1)
-     p2.N -= (U64_)((-Q >> 4) + 1) << 52;
+     p2.N -= (UINT_)((-Q >> 4) + 1) << DBLT_MANT_SHFT;
 
      goto exp;
    }
 #endif
    // Q >= 0 | bit operations are guaranteed to be valid on signed negative integers
    p2.F = Precalc_2powDdivP[Q & 0xf];
-   p2.N += (Q >> 4) << 52; // Safe, since Q>>4 is always small (< 5)
+   p2.N += (Q >> 4) << DBLT_MANT_SHFT; // Safe, since Q>>4 is always small (< 5)
 
  exp:
 
    // (2^q * 2^r) * e^R ==== 2^(Q/d) * e^R ==== e^x
    return  p2.F * exp___(x - (Q * Precalc_Loge2Div16));
 }
-extern INLINE(double) exp___(const double x) {
+extern INLINE(DBLT__) exp___(const DBLT__ x) {
   /* By continued fraction,
      e^x = 1 + 2x / (2 - x + x^2 / (6 + x^2 / (10 + x^2 / 14 + ...
      =~ 1 + 2x / [[(2 - x)(840 + 20x^2) + (140 + x^2)x^2] / 840 + 20x^2]  (5 terms only)
      * Let A = 840 + 20x^2
 */
-  const double x2 = x * x, a = 840. + 20. * x2;
+  const DBLT__ x2 = x * x, a = 840. + 20. * x2;
 
   // exp(x) =~ 1 + 2x * A * [(2 - x)*A + x^2(140 + x^2)]  (simplified fraction)
   return 1. + 2. * x * a / ((2. - x) * a + x2 * (140. + x2));
@@ -235,28 +254,28 @@ extern INLINE(double) exp___(const double x) {
     #define CORRECT_REDC
 #endif
 
-extern inline double reprexp(bits_t bits) {
+extern inline DBLT__ reprexp(bits_t bits) {
   int16_t p2, p10;
-  double  F,  dF,  dp, dp2;
+  DBLT__  F,  dF,  dp, dp2;
 
   F = bits.F; //keep value
 
   //  Exponent
-  p2 = (bits.N >> 52) - 1023;
+  p2 = (bits.N >> DBLT_MANT_SHFT) - DFLT_BIAS__;
 
   // Normalized Mantissa. Within [1, 2)
-  bits.N = (bits.N & Precalc_AllOnes52bits) | (1023ULL << 52);
+  bits.N = (bits.N & Precalc_AllOnesMantBits) | (DFLT_BIAS__ << DBLT_MANT_SHFT);
 
   // The exponent of F is Approximated using log10(f) where f ~ log(2^p * M)
   // ~ log(2^p * M) ~ log(2^p * M) ~ plog(2) + log(M)
   // And log(M) == ln(M) / ln(10):
   // The contribution log(M) to the exponent is approximated using taylor’s series of Log(M) about point b (where b == SQRT(2))
 
-  // Let y = log(f)
-  // The Taylor approx. is given as log(b) + plog(2) + df.dy/df - d2f.d2y/df2
-  dF = bits.F - Precalc_SQRT2;
+  // Let y = Ln(f)
+  // The Taylor approx. is given as Ln(b) + dF*dy/df - dF^2*(1/2*d2y/df2)...
+  dF = bits.F - Precalc_SQRT2; // f - a
 
-  p10 = Precalc_LogSQRT2b10 + ((p2 * Precalc_Log2b10) + ((dF * Precalc_DydFLogb10_f) - (dF * (dF * Precalc_D2ydF2Logb10f_Div2))));
+  p10 =(p2 * Precalc_Log2b10) + (Precalc_LogSQRT2b10 + ((dF * Precalc_DydfLogSQRT2_b10) - (dF * (dF * Precalc_D2ydf2LogSQRT2_b10_Div2))));
 
   // Reduce F to [1, 2)
   // That is, F has to be multiplied by 10^-p such that F  1 and == f and f x 10^p == F
@@ -265,15 +284,13 @@ extern inline double reprexp(bits_t bits) {
   // 10 ^ dp is approximated using e^Ln(dp)
   dp  = (-p10 * Precalc_Loge10) + (p2 * Precalc_Loge2);
 
-  bits.N = (1023ULL - p2) << 52; // 2^p2
-
-
+  bits.N = (DFLT_BIAS__ - p2) << DBLT_MANT_SHFT; // 2^p2
   dp = exp__(dp); // e^Ln(dp) ~ 10^(p10 - p2)
 
   return 5e-14 + F * (dp * bits.F); // F * 10^p or  F * (2^p2 * 10^dp)
 }
 
-static inline void floatRepr(double f) {
+static inline void floatRepr(DBLT__ f) {
   bits_t bitsv;
 
   bitsv.F = f;
@@ -293,7 +310,7 @@ static inline void floatRepr(double f) {
 
 int main(void) {
   bits_t k;
-  k.F = 8924928735920382.;
+  k.F = 9802395802.;
 
   putf(reprexp(k));
   putf(k.F);

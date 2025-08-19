@@ -23,11 +23,15 @@ You should have received a copy of the GNU General Public License along with thi
 #define ICH1__(f, ...)    f
 #define ICH2__(f, s, ...) s
 
-/* @PAREN: Open a parenthesized argument of a macro */
+/* @PAREN: Open a parenthesized, first argument of a macro.
+ * The argument is checked for parentheis by @PAREN_CHK, and further checked by @PAREN_CHK2 if found parenthesis is pure (is not ’(’, ’()N’, and so on). Both check returns 0 on finding a paenthesis (pure) and follows @PAREN_FALSE_ ## 0 which opens the parenthesis. Non-parenthesized arguments are returned unchanged.
+ */
+#define __PAREN_IMPURE_0(...)  0, 0
 #define __PAREN_FALSE_0(...) __PAREN_FALSE_1 __VA_ARGS__
 #define __PAREN_FALSE_1(...) __VA_ARGS__
-#define   PAREN_CH__(...)      CH2__(MAC__ __VA_ARGS__, 1, DD__)
-#define   PAREN__(...) CAT__(__PAREN_FALSE_, PAREN_CH__( CH1__(__VA_ARGS__, DD__) ))(__VA_ARGS__)
+#define   PAREN_CHK2__(P) CH2__( CAT__(__PAREN_IMPURE_, P)(DD__), 1, DD__)
+#define   PAREN_CHK__(...)  PAREN_CHK2__( CH2__(MAC__ __VA_ARGS__, 1, DD__) )
+#define   PAREN__(...) CAT__(__PAREN_FALSE_, PAREN_CHK__( CH1__(__VA_ARGS__, DD__) ))(__VA_ARGS__)
 
 /* @MAC5: Check if a macro is (not) given an argument (see macro.md) */
 #define   MAC_(...)   0,

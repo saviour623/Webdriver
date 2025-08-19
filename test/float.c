@@ -10,7 +10,7 @@
 #define puti(i)  printf("%llu\n", (long long)(i))
 #define putd(d)  printf("%lld\n", (long long)(d))
 #define puthx(x) printf("%#llx\n", (long long)(x))
-#define putf(f)  printf("%.20f\n", (double)(f))
+#define putf(f)  printf("%.15f\n", (double)(f))
 #define PASS(...) (void *)0
 #define expOf(...) true
 
@@ -117,6 +117,7 @@ static const DBLT__ Precalc_2powDdivP[16] =
 
 #define approxLog2p(x) (0.5 * approxLog2(x) + approxLog2p(x*0.66667) * 0.6667)
 
+
 const float asfloat(uint32_t n) {
   return *(float *)&n;
 }
@@ -164,6 +165,25 @@ extern inline void reprfloat(bits_t bits) {
   PASS();
 }
 
+void split(const double a, double *hi, double *lo) {
+  const double c = (double)((1ull << 27) + 1) * a;
+
+  *hi = c - (a - c);
+  *lo = a - *hi;
+}
+
+void mul(const double a, const double b, double *s, double *t) {
+  double ahi, alo, bhi, blo;
+
+  split(a, &ahi, &alo);
+  split(b, &bhi, &blo);
+
+  *s = a * b;
+  *t = -*s + ahi * bhi;
+  *t += ahi * blo;
+  *t += alo * bhi;
+  *t += alo * blo;
+}
 
 extern INLINE(DBLT__) xpow10__(const DBLT__ x) {
   register DBLT__ x2, x4, x8;
@@ -254,7 +274,7 @@ extern INLINE(DBLT__) reprexp(bits_t bits) {
 
   //  Exponent
   p2tmp = p2 = (bits.N >> DBLT_MANT_SHFT) - DFLT_BIAS__;
-  puti(p2);
+  putd(p2);
 
   // Normalized Mantissa. Within [1, 2)
   bits.N = (bits.N & Precalc_AllOnesMantBits) | (DFLT_BIAS__ << DBLT_MANT_SHFT);
@@ -269,26 +289,27 @@ extern INLINE(DBLT__) reprexp(bits_t bits) {
    */
    dF = bits.F - Precalc_SQRT2; // f - a
 
-  p10 = (p2 * Precalc_Log2b10) + (Precalc_LogSQRT2b10 + ((dF * Precalc_DydfLogSQRT2_b10) - (dF * (dF * Precalc_D2ydf2LogSQRT2_b10_Div2))));
+  p10 = (p2 * Precalc_Log2b10) + (Precalc_LogSQRT2b10 + ((dF * Precalc_DydfLogSQRT2_b10) - (dF * (dF * Precalc_D2ydf2LogSQRT2_b10_Div2)))) - 2;
 
   /* Reduce F such that floor(abs(F)) < 10
    * That is, We divide F by 10^p (F ~ N1N2N3... becomes F ~ N1.N2N3...)
    *
-   * 10^p is spltted into 2^p2 * 10^dp (where: 2^p2 <= 10^p < 2^(p2+1))
-   *
-   * p2 = trunc( log2(p) )
-   * dp = p - p2
+   * 10^p is spltted into 2^p2 * dp
+   * where:  p2 = trunc( log2(p); 2^p2 <= 10^p < 2^(p2+1)); dp = 10^p / 2^p2
+   * 2^p2 * dp == 10^p
    */
   bits.F = F;
   p2  = (Precalc_Log10b2 * p10); // p2 = log2(p)
-  bits.N = (bits.N & Precalc_AllOnesMantBits) | ((DFLT_BIAS__ - p2 + ptmp) << DBLT_MANT_SHFT); // F / 2^p2
+  bits.N = (bits.N & Precalc_AllOnesMantBits) | ((DFLT_BIAS__ - p2 + p2tmp) << DBLT_MANT_SHFT); // F / 2^p2
 
-  // We take the natural logarithmic difference, so that 10^dp ~ e^Ln(dp)
-  // making it an ease to calculate, since dp is small and e^dp has good and cheap approximation techniques for small numbers (< 1)
+  /*
+     We can calculate dp by taking the natural logarithm of dp and approximating e^dp
+     * ln(dp) = ln(10^p / 2^p2) = ln(10^p) - ln(2^p2) ~ pln(10) - p2ln(2)
+     */
   dp  = (p10 * Precalc_Loge10) - (p2 * Precalc_Loge2); // p - p2
   dp = exp__(dp); // e^Ln(dp) ~ 10^(p10 - p2)
 
-  return 5e-14 + (bits.F / dp); // (F / 2^p) / 10^dp
+  return 5e-15 + (bits.F / dp); // (F / 2^p) / 10^dp
 }
 
 static inline void floatRepr(DBLT__ f) {
@@ -311,8 +332,9 @@ static inline void floatRepr(DBLT__ f) {
 
 int main(void) {
   bits_t k;
-  k.F = 2342344534.;
+  k.F = 9999999999999.;
 
   putf(reprexp(k));
   putf(k.F);
+
 }

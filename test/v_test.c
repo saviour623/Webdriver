@@ -66,7 +66,7 @@ int main(void) {
   puti(VEC_pop(v));
 
   //for (i < )
-  VEC_INTERNAL_repr(v, &setup);
+  VEC_Repr(v, &setup);
   puts(buffer);
 
   puti(setup.Pp_size);

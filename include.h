@@ -171,6 +171,7 @@ uintmax_t MvpgInclude_Itoa(uintmax_t, char *, uint8_t, uint8_t);
 #endif
 
 #define outs(...) puts(__VA_ARGS__)
-#define puti(i)         printf("%lld\n", (long long int)(i))
-
+#define puti(i) printf("%llu\n", (long long int)(i))
+#define putd(i) printf("%lld\n", (long long int)(i))
+#define putf(i) printf("%.20f\n", (double)(i))
 #endif

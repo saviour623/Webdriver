@@ -40,7 +40,8 @@ static const DBLT__ Precalc_2powDdivP[16] =
 #define JMP_(LABEL) goto LABEL
 #define LOCATION(LABEL) LABEL: PASS
 
-#define WIDTH_(T) (sizeof(W_ ## T) >> 1)
+
+#define WIDTH_(T) width[(sizeof(W_ ## T) >> 1)]
 #define W_INT  int
 #define W_LONG long
 #define W_LLNG long long
@@ -53,11 +54,12 @@ static const DBLT__ Precalc_2powDdivP[16] =
 
 enum {
       PTR    = 0x01,  USIGNED = 0x02,  CHAR   = 0x04,
-      LONG   = 0x200, LLNG    = 0x400, SIZE   = 0x800,
       INT_16 = 0x200, INT_32  = 0x400, INT_64 = 0x800,
       SHORT  = 0x100, H_SPEC  = 0x100, TYPE   = 0x7f,
       WIDTH  = 0xf00, BASE    = 0x400
 };
+
+static const uint8_t width[5] = {0, INT_16, INT_32, INT_64, 0, INT_64};
 
 extern INLINE(DBLT__) exp__(const DBLT__ x) {
   /* Calculate e^x for x in interval [0, 1);
@@ -190,37 +192,39 @@ static inline void floatRepr(DBLT__ f) {
 }
 
 __NONNULL__ __STATIC_FORCE_INLINE_F void VEC_Itoa(const intmax_t n, Pp_Setup *cf) {
-  int U = cf->Pp_used;
+  const vsize_t U = cf->Pp_used, O = cf->Pp_overflw;
 
-  if ((cf->Pp_size - U) < cf->Pp_overflw)
-    return;
-  U = COMMA(cf->Pp_buf);
-  U += MvpgInclude_Itoa(n, cf->Pp_buf, !!(cf->Pp_mask & BASE), !(cf->Pp_mask & USIGNED) && (n < 0));
-  cf->Pp_used = U;
+  if (LIKELY___(((cf->Pp_size - U) > O) && (U < (VSIZE_MAX - O)), 1)) {
+    MvpgMacro_Ignore(U && COMMA(cf->Pp_buf));
+
+    cf->Pp_used += MvpgInclude_Itoa(n, cf->Pp_buf+U+2, !!(cf->Pp_mask & BASE), !(cf->Pp_mask & USIGNED) && (n < 0));
+  }
 }
 
 __NONNULL__ void VEC_TostrInt(void *v, Pp_Setup *cf) {
   char *saveBuf;
 
   if (cf->Pp_mask & PTR) {
-    //VEC_map(v, VEC_Itoa, uintptr_t, cf, true);
+    // Undone
     cf->Pp_overflw = 22;
-    goto end;
+
+    return;
   }
+
   switch (cf->Pp_mask & WIDTH) {
   case INT_16:
-    cf->Pp_overflw = 7; // digits(short) + comma
-  case INT_32:
-    cf->Pp_overflw = 12;
-    VEC_map(v, VEC_Itoa, int32_t, cf);
-    goto end;
+    cf->Pp_overflw = 7; // digits(short) + len(", ")
+    VEC_map(v, VEC_Itoa, int16_t, cf);
+    break;
   case INT_64:
     cf->Pp_overflw = 22;
     VEC_map(v, VEC_Itoa, int64_t, cf);
-    goto end;
+    break;
+  default:
+    cf->Pp_overflw = 12;
+    VEC_map(v, VEC_Itoa, int32_t, cf);
+    break;
   }
- end:
-  PASS;
 }
 
 /*                    REPR (POSSIBLE REPRESENTATION OF VECTOR)
@@ -248,16 +252,16 @@ __NONNULL__ void VEC_TostrInt(void *v, Pp_Setup *cf) {
  * e
  * g
  * c   - unsigned char
- * hc   - signed char
+ * hc  - signed char
  * s   - char array
  * p   - pointer
 
- * WIDTH & SIGNESS SPECIFIERS
+   WIDTH & SIGNESS SPECIFIERS
  * l - long int / long float (double)
  * ll - long long int (if supported) / long double
  * h  - signed
 
- * OUTPUT SPECIFIERS / OTHERS
+   OUTPUT SPECIFIERS / OTHERS
  * ^ - Uppercase Hexadecimal
  * # - Append "0x" to hexadecimal
  * *
@@ -298,17 +302,18 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
     fmt = setup->Pp_fmt;
     VEC_assert(EOFMT(c, *fmt++), "Repr: Empty Format is unsupported");
 
-    fc[0] = c;
-    for (mskc = 0; (mskc < 6) && EOFMT(c, *fmt); mskc++)
-      fc[(1u << mskc) - 1] = c;
+    for (fc[0] = c; mskc = 0; (mskc < 6) && EOFMT(c, *fmt); mskc++)
+      fc[1u << mskc] = c; // starts at index 1
 
-    mask = fc[0] == 0x68; // h
-    mask = (mask << (c=fc[mask] == 0x6c)) | c; // l
-    mask = (mask << (c=fc[mask] == 0x6c)) | c; // l
-    mask = (mask << (c=fc[mask] == 0x7a)) | c; // z
-    mask = (mask << (c=fc[mask] == 0x78)) | c; // x
-    mask = (mask << 8) | fc[mask];
+    // 1
+    mask =  (c=(fc[0] == 0x68)     ); //h
+    mask |= (c=(fc[c] == 0x6c) << 1); // l
+    mask |= (c=(fc[c] == 0x6c) << 2); // l
+    mask |= (c=(fc[c] == 0x7a) << 3); // z
+    mask |= (c=(fc[c] == 0x78) << 4); // x
+    mask =  (mask << 8) | fc[mask];
 
+    puti(mask);
     #define IgnoredMaskOrFormat(M, L, F, C)		\
     (!((M) >> ((L)+6)) || EOFMT(C, F))
 
@@ -330,6 +335,7 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
   setup->Pp_mask  = mask & WIDTH; /* Igore Type bits (Reused for other mask) */
   switch ( mask & TYPE ) {
   case '0':
+    // int8_t
     PASS;
   case '1':
     setup->Pp_mask |= INT_16;
@@ -348,12 +354,7 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
     setup->Pp_mask |= LLNG;
   case 'i':
   case 'd':
-    switch (mask & WIDTH) {
-    case LONG: setup->Pp_mask |= WIDTH_(LONG);
-    case LLNG: setup->Pp_mask |= WIDTH_(LLNG);
-    case SIZE: setup->Pp_mask |= WIDTH_(SIZE);
-    default :  setup->Pp_mask |= WIDTH_(INT );
-    }
+    setup->Pp_mask |= WIDTH_(mask & WIDTH);
     LOCATION(INT);
     VEC_TostrInt(v, setup);
     break;

@@ -39,6 +39,9 @@ You should have received a copy of the GNU General Public License along with thi
     #define __GNUC_LLVM__ 1
 #elif defined(_MSC_VER) || defined(_WIN32) || defined(_win32)
     #define __WINDOWS__   1
+#else
+    #define __WINDOWS__ 0
+    #define __GNUC_LLVM__ 0
 #endif
 #if defined(__STDC__) && (__STDC_VERSION >= 201112L)
     #define __STDC_GTEQ_11__
@@ -77,11 +80,11 @@ You should have received a copy of the GNU General Public License along with thi
 
 #include "macro/macro.h"
 
-#define MvpgMacro_vaopt(...)        MAC_VA_OPT__(__VA_ARGS__)
-#define MvpgMacro_select(A, B, ...) MAC_SELECT__(A, B, __VA_ARGS__)
-#define MvpgMacro_concat(A, B)      CAT__(A, B)
-#define MvpgMacro_stringify(S)      #S
-#define MvpgMacro_ignore(...)       (void)(__VA_ARGS__)
+#define MvpgMacro_Vaopt(...)        MAC_VA_OPT__(__VA_ARGS__)
+#define MvpgMacro_Select(A, B, ...) MAC_SELECT__(A, B, __VA_ARGS__)
+#define MvpgMacro_Concat(A, B)      CAT__(A, B)
+#define MvpgMacro_Stringify(S)      #S
+#define MvpgMacro_Ignore(...)       (void)(__VA_ARGS__)
 
 
 /***********************************************************************
@@ -166,7 +169,7 @@ uintmax_t MvpgInclude_Itoa(uintmax_t, char *, uint8_t, uint8_t);
     #define debugAssert(...)
 #else
     #define debugAssert(expr, ...) (\
- (expr) || (_debugAssert(__FILE__, __LINE__, __FUNCTION__, #expr, MvpgMacro_select((__VA_ARGS__), "", __VA_ARGS__)), 1) \
+ (expr) || (_debugAssert(__FILE__, __LINE__, __FUNCTION__, #expr, MvpgMacro_Select((__VA_ARGS__), "", __VA_ARGS__)), 1) \
 				    )
 #endif
 

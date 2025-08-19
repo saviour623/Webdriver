@@ -54,11 +54,11 @@ int main(void) {
 
   puti(VEC_size(v));
 
-  setup.Pp_buf = buffer;
-  setup.Pp_size  = 1024;
-  setup.Pp_fmt = "d";
-
   //VEC_INTERNAL_repr(v, &setup);
+
+  setup.Pp_buf  = buffer;
+  setup.Pp_size = 1024;
+  setup.Pp_fmt  = "ld";
 
   for (int i = 0; i < 1025; i++) {
     VEC_push(v, i);

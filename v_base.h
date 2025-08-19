@@ -15,19 +15,19 @@ You should have received a copy of the GNU General Public License along with thi
 #include "include.h"
 #include "memtool.h"
 
-#if __GNU_LLVM__
+#if __GNUC_LLVM__
     #define FORCEI_PURE __attribute__((pure, always_inline))
     #define LIKELY___(x, p) __builtin_expect(x, p)
 #elif __WINDOWS__
     #define FORCEI_PURE __forceinline
-    #define LIKELY___()
+    #define LIKELY___(...)
 #else
     #define FORCEI_PURE
-    #define LIKELY___()
+    #define LIKELY___(...)
 #endif
 #define INLINE(T) __inline__ FORCEI_PURE T
 
-#if __GNU_LLVM__ || ((-16 >> 1) == -8 && ((-1 & (16 - 1)) == 15))
+#if __GNUC_LLVM__ || ((-16 >> 1) == -8 && ((-1 & (16 - 1)) == 15))
 // Check if compiler supports correct bit operations on signed bits (according to the standard, this is implementation defined)
 // Test is still untrusted since CPP may implemented by a different implementator from that of the actual compiler, but it is unlikely
     #define COMPILER_SUPPORT_SIGNED_BIT_OP 1
@@ -62,6 +62,8 @@ You should have received a copy of the GNU General Public License along with thi
 #endif
 
 /* Vector Metadata */
+#define VSIZE_MAX ULONG_MAX
+
 typedef unsigned long vsize_t;
 
 typedef struct {
@@ -177,10 +179,10 @@ static const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX;
 
 /* Vector Init */
 #define VEC_new(SZ, T, ...)						\
-  VEC_INTERNAL_create(SZ, MvpgMacro_select(sizeof(T), 0, T))
+  VEC_INTERNAL_create(SZ, MvpgMacro_Select(sizeof(T), 0, T))
 
 #define VEC_newFrmSize(SZ, SZOF)\
-  VEC_INTERNAL_create(SZ, MvpgMacro_select(SZOF, 0, SZOF))
+  VEC_INTERNAL_create(SZ, MvpgMacro_Select(SZOF, 0, SZOF))
 
 
 /* Vector Op */
@@ -221,7 +223,7 @@ static const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX;
   )
 
 #define VEC_pop(V, ...)\
-  MvpgMacro_select(VEC_popi, VEC_popni, __VA_ARGS__)(V, __VA_ARGS__)
+  MvpgMacro_Select(VEC_popi, VEC_popni, __VA_ARGS__)(V, __VA_ARGS__)
 
 #define VEC_insert(V, N, I)			\
    (void)((V)[VEC_cvtindex(V, I, (I) < 0)] = (N))
@@ -243,7 +245,7 @@ static const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX;
       VEC_assert(VEC_vdtype(Vv) == sizeof(T));			\
 								\
       for (VEC_type(T) Last = Vv + VEC_vused(Vv) - 1; Vv != Last; Vv++)	\
-	F(*Vv MvpgMacro_vaopt(,__VA_ARGS__));			\
+	F(*Vv MvpgMacro_Vaopt(,__VA_ARGS__));			\
     }								\
   } while (0)
 
@@ -251,8 +253,8 @@ static const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX;
    VEC_INTERNAL_slice(&V, S, E)
 
 #define VEC_shrink(V, ...)\
-  MvpgMacro_ignore(							\
-		   (V != NULL) && VEC_INTERNAL_shrink(&V, MvpgMacro_select((__VA_ARGS__), VEC_vused(V), __VA_ARGS__)) \								)
+  MvpgMacro_Ignore(							\
+		   (V != NULL) && VEC_INTERNAL_shrink(&V, MvpgMacro_Select((__VA_ARGS__), VEC_vused(V), __VA_ARGS__)) \								)
 
 #define VEC_del(V, I)				\
        VEC_INTERNAL_del(&V, I, I < 0)
@@ -264,7 +266,7 @@ static const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX;
   PASS
 
 #define VEC_destroy(V)							\
-     MvpgMacro_ignore(V != NULL ? mvpgDealloc(VEC_mv2blkst(V)), (V = NULL) : PASS)
+     MvpgMacro_Ignore(V != NULL ? mvpgDealloc(VEC_mv2blkst(V)), (V = NULL) : PASS)
 
 
 /*************************************************************

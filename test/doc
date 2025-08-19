@@ -26,3 +26,9 @@
   *
   *Note* There is no significant speedup attributed to this approach, it is just chosen to minimize the use of multiple swtich and if statements for checkks.
  */
+mask = fc[0] == 0x68; // h
+    mask = (mask << (c=fc[mask] == 0x6c)) | c; // l
+    mask = (mask << (c=fc[mask] == 0x6c)) | c; // l
+    mask = (mask << (c=fc[mask] == 0x7a)) | c; // z
+    mask = (mask << (c=fc[mask] == 0x78)) | c; // x
+    mask = (mask << 8) | fc[mask];

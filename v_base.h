@@ -99,7 +99,7 @@ vsize_t VEC_Repr(void *v, Pp_Setup *setup);
 /* Metadata size */
 static const uint16_t VEC_metadtsz       = sizeof(VEC_metaData_);
 static const vsize_t  VEC_sizeOverflwLim = ULONG_MAX & ~LONG_MAX;
-static const uint8_t  VEC_widthOfCInt[5] = {5, 10, 20, 0, 39   }; /* Access: (sizeof(N) >> 2) */
+ /* Access: (sizeof(N) >> 2) */
 
 /***********************************************************
 

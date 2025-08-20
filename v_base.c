@@ -37,15 +37,26 @@ static const DBLT__ Precalc_2powDdivP[16] =
 #define Precalc_Loge2Div16 4.3321698784997e-2
 
 #define DOCUMENTATION(LABEL) LABEL
+#define JMP_(LABEL) goto LABEL
+#define LOCATION(LABEL) LABEL: PASS
+
+#define WIDTH_(T) (sizeof(W_ ## T) >> 1)
+#define W_INT  int
+#define W_LONG long
+#define W_LLNG long long
+#define W_SIZE size_t
+
 #define VEC_BUFFER_SIZE USHRT_MAX
 #define VEC_MAX_INT_LEN 32
 #define EOFMT(c, f)         (((c) = (f)) & ((c) ^ 58))
 #define COMMA(bf) ((*(bf)++=','), (*(bf)++=' '), 2)
 
 enum {
-      PTR  = 0x01,  USIGNED = 0x02,  CHAR  = 0x04,
-      LONG = 0x100, LLNG    = 0x200, SIZE = 0x800,
-      TYPE = 0x7f,  SPEC    = 0xf00, BASE = 0x400
+      PTR    = 0x01,  USIGNED = 0x02,  CHAR   = 0x04,
+      LONG   = 0x200, LLNG    = 0x400, SIZE   = 0x800,
+      INT_16 = 0x200, INT_32  = 0x400, INT_64 = 0x800,
+      SHORT  = 0x100, H_SPEC  = 0x100, TYPE   = 0x7f,
+      WIDTH  = 0xf00, BASE    = 0x400
 };
 
 extern INLINE(DBLT__) exp__(const DBLT__ x) {
@@ -193,25 +204,20 @@ __NONNULL__ void VEC_TostrInt(void *v, Pp_Setup *cf) {
 
   if (cf->Pp_mask & PTR) {
     //VEC_map(v, VEC_Itoa, uintptr_t, cf, true);
-    cf->Pp_overflw = VEC_widthOfCInt[sizeof(uintptr_t)>>2] + 2;
+    cf->Pp_overflw = 22;
     goto end;
   }
-  switch (cf->Pp_mask & SPEC) {
-  case LONG:
-    cf->Pp_overflw = VEC_widthOfCInt[sizeof(long)>>2] + 2;
-    VEC_map(v, VEC_Itoa, long, cf);
+  switch (cf->Pp_mask & WIDTH) {
+  case INT_16:
+    cf->Pp_overflw = 7; // digits(short) + comma
+  case INT_32:
+    cf->Pp_overflw = 12;
+    VEC_map(v, VEC_Itoa, int32_t, cf);
     goto end;
-  case LLNG:
-    cf->Pp_overflw = VEC_widthOfCInt[sizeof(long long)>>2] + 2;
-    VEC_map(v, VEC_Itoa, long long, cf);
+  case INT_64:
+    cf->Pp_overflw = 22;
+    VEC_map(v, VEC_Itoa, int64_t, cf);
     goto end;
-  case SIZE:
-    cf->Pp_overflw = VEC_widthOfCInt[sizeof(size_t)>>2] + 2;
-    VEC_map(v, VEC_Itoa, size_t, cf);
-    goto end;
-  default:
-    cf->Pp_overflw = VEC_widthOfCInt[sizeof(int)>>2] + 2;
-    VEC_map(v, VEC_Itoa, int, cf);
   }
  end:
   PASS;
@@ -222,25 +228,27 @@ __NONNULL__ void VEC_TostrInt(void *v, Pp_Setup *cf) {
  * Pp_Setup.fmt -> Format
  * ---------------------
 
- * Use: .fmt = "d:^.5"
+ * Use: .fmt = "h4:^.5"
 
    TYPE SPECIFIERS
  * h   - unsigned short
- * hh  - signed short
+ * hh  - short
  * u   - unsigned int
  * i   - signed int
  * d   - signed int
  * q   - signed long long
  * z   - size_t
  * w   - wide char (unimplemented)
- * l1  - int8_t
- * l2  - int16_t
- * l4  - int32_t
- * l8  - int64_t
- * lz  - int128_t
+ * h0  - int8_t
+ * h1  - int16_t
+ * h2  - int32_t
+ * h4  - int64_t
+ * lz  - int128_t (unimplemented)
  * f   - float
+ * e
+ * g
  * c   - unsigned char
- * c   - signed char
+ * hc   - signed char
  * s   - char array
  * p   - pointer
 
@@ -267,7 +275,7 @@ __NONNULL__ void VEC_TostrInt(void *v, Pp_Setup *cf) {
  */
 
 __NONNULL__ __STATIC_FORCE_INLINE_F void VEC_TostrFlt(const void *v, Pp_Setup *cf) {
-  switch (cf->Pp_mask & SPEC) {
+  switch (cf->Pp_mask & WIDTH) {
   case LONG:
   case LLNG:
   default:
@@ -282,7 +290,7 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
 
   /* It may be desirable to skip the format processing (Usually on a second... call toRepr with the same format) */
   if (setup->Pp_skip && (mask=setup->Pp_mask))
-    goto TypeCheckNAction;
+    JMP_(Main);
 
   {
     uint8_t mskc, error, *fmt, fc[32] = {0};
@@ -290,33 +298,25 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
     fmt = setup->Pp_fmt;
     VEC_assert(EOFMT(c, *fmt++), "Repr: Empty Format is unsupported");
 
-    DOCUMENTATION (CopyFormatToFc):
-
     fc[0] = c;
     for (mskc = 0; (mskc < 6) && EOFMT(c, *fmt); mskc++)
       fc[(1u << mskc) - 1] = c;
 
-    DOCUMENTATION (GetFormatInExpectedOrder):
-
-    mask = fc[0] == 0x6c;
-    mask = (mask << (c=fc[mask] == 0x6c)) | c;
-    mask = (mask << (c=fc[mask] == 0x7a)) | c;
-    mask = (mask << (c=fc[mask] == 0x78)) | c;
-    mask = (mask << (c=fc[mask] == 0x68)) | c;
+    mask = fc[0] == 0x68; // h
+    mask = (mask << (c=fc[mask] == 0x6c)) | c; // l
+    mask = (mask << (c=fc[mask] == 0x6c)) | c; // l
+    mask = (mask << (c=fc[mask] == 0x7a)) | c; // z
+    mask = (mask << (c=fc[mask] == 0x78)) | c; // x
     mask = (mask << 8) | fc[mask];
-
-    DOCUMENTATION (CheckIgnoredSPecOrFormat):
 
     #define IgnoredMaskOrFormat(M, L, F, C)		\
     (!((M) >> ((L)+6)) || EOFMT(C, F))
 
-    DOCUMENTATION (ErrorCheck):
-
     error = !(
-	      (((mask & TYPE) == 0x73) && (mask & SPEC))
-	    | (((mask & TYPE) == 0x66) && (mask & BASE))
+	      (((mask & TYPE) == 0x73) && (mask & WIDTH))
+	    | (((mask & TYPE) == 0x66) && (mask & WIDTH))
 	    | IgnoredMaskOrFormat(mask, mskc, *fmt, c)
-	    );
+	      );
     VEC_assert(error, "Repr: Invalid Format");
 
     #undef IgnoredMaskOrFormat
@@ -324,17 +324,41 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
     setup->Pp_fmt = fmt;
   }
 
- TypeCheckNAction:
+  LOCATION(Main);
+
   setup->Pp_dtype = VEC_vdtype(v);
-  setup->Pp_mask  = mask & SPEC; /* Igore Type bits (Reused for other mask) */
+  setup->Pp_mask  = mask & WIDTH; /* Igore Type bits (Reused for other mask) */
   switch ( mask & TYPE ) {
+  case '0':
+    PASS;
+  case '1':
+    setup->Pp_mask |= INT_16;
+  case '2':
+    setup->Pp_mask |= INT_32;
+  case '4':
+    setup->Pp_mask |= INT_64;
+    if (!(mask & H_SPEC))
+      JMP_(ERROR);
+    JMP_(INT);
   case 'p':
     setup->Pp_mask |= PTR;
   case 'u':
     setup->Pp_mask |= USIGNED;
-  case 'd': case 'i':
+  case 'q':
+    setup->Pp_mask |= LLNG;
+  case 'i':
+  case 'd':
+    switch (mask & WIDTH) {
+    case LONG: setup->Pp_mask |= WIDTH_(LONG);
+    case LLNG: setup->Pp_mask |= WIDTH_(LLNG);
+    case SIZE: setup->Pp_mask |= WIDTH_(SIZE);
+    default :  setup->Pp_mask |= WIDTH_(INT );
+    }
+    LOCATION(INT);
     VEC_TostrInt(v, setup);
     break;
+  case 'e':
+  case 'g':
   case 'f':
     VEC_TostrFlt(v, setup);
     break;
@@ -359,6 +383,7 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
       } while( (i < e) && bfs );
     }
   default :
+    LOCATION(ERROR);
     /* TODO: Raise Error */
     setup->Pp_used = 0;
   }

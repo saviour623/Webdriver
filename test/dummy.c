@@ -38,6 +38,8 @@ int main(void) {
 	    );
 
   #undef IgnoredMaskOrFormat
+
+ label: 0;
       /*‘’
 ll || EOFMT(C, F)
     1, 3, 7, 15, 31

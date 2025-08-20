@@ -28,48 +28,49 @@ int main(void) {
 
   VEC_type(int) v = VEC_new(2046, int);
 
-  puti(VEC_size(v));
+  //puti(VEC_size(v));
 
-  puti(VEC_sizeof(v));
+  //puti(VEC_sizeof(v));
 
-  puti(VEC_used(v));
+  //puti(VEC_used(v));
 
-  puti(VEC_back(v));
+  //puti(VEC_back(v));
 
   VEC_push(v, 5);
 
-  puti(VEC_back(v));
+
+  //puti(VEC_back(v));
 
   vecUsageFuncAdd(v, 6);
 
-  puti(VEC_back(v));
+  //puti(VEC_back(v));
 
   vecUsageFuncRefAdd(VEC_base(v), 12);
 
-  puti(VEC_back(v));
+  //puti(VEC_back(v));
 
   VEC_pop(v);
 
-  puti(VEC_back(v));
+  //puti(VEC_back(v));
 
-  puti(VEC_size(v));
+  //puti(VEC_size(v));
 
   //VEC_INTERNAL_repr(v, &setup);
 
   setup.Pp_buf  = buffer;
   setup.Pp_size = 1024;
-  setup.Pp_fmt  = "ld";
+  setup.Pp_fmt  = "llz";
 
   for (int i = 0; i < 1025; i++) {
     VEC_push(v, i);
   }
-  puti(VEC_pop(v));
+  //puti(VEC_pop(v));
 
   //for (i < )
   VEC_Repr(v, &setup);
   puts(buffer);
 
-  puti(setup.Pp_size);
+  //puti(setup.Pp_size);
   //VEC_shrink(v);
 
   VEC_destroy(v);

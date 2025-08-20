@@ -39,27 +39,28 @@ static const DBLT__ Precalc_2powDdivP[16] =
 #define DOCUMENTATION(LABEL) LABEL
 #define JMP_(LABEL) goto LABEL
 #define LOCATION(LABEL) LABEL: PASS
-
-
-#define WIDTH_(T) width[(sizeof(W_ ## T) >> 1)]
-#define W_INT  int
-#define W_LONG long
-#define W_LLNG long long
-#define W_SIZE size_t
+x
 
 #define VEC_BUFFER_SIZE USHRT_MAX
 #define VEC_MAX_INT_LEN 32
 #define EOFMT(c, f)         (((c) = (f)) & ((c) ^ 58))
 #define COMMA(bf) ((*(bf)++=','), (*(bf)++=' '), 2)
+#define WIDTH_(T) (((T) ? Intwidth__[(T) >> 1] : sizeof(int)) << 7)
 
 enum {
-      PTR    = 0x01,  USIGNED = 0x02,  CHAR   = 0x04,
-      INT_16 = 0x200, INT_32  = 0x400, INT_64 = 0x800,
-      SHORT  = 0x100, H_SPEC  = 0x100, TYPE   = 0x7f,
-      WIDTH  = 0xf00, BASE    = 0x400
+      PTR  = 0x01,  USIGNED = 0x02,  CHAR   = 0x04,
+      L_8  = 0,     L_16    = 0x100, L_32   = 0x200,
+      L_64 = 0x400, L_128   = 0x800, H_SPEC = 0x100,
+      TYPE = 0x7f,  WIDTH   = 0xf00, BASE   = 0x1000
 };
 
-static const uint8_t width[5] = {0, INT_16, INT_32, INT_64, 0, INT_64};
+const uint8_t Intwidth__[4] =
+  {
+   sizeof( short ),
+   sizeof( long  ),
+   sizeof( long long  ), 0,
+   sizeof( size_t )
+  };
 
 extern INLINE(DBLT__) exp__(const DBLT__ x) {
   /* Calculate e^x for x in interval [0, 1);
@@ -106,7 +107,7 @@ extern INLINE(DBLT__) exp__(const DBLT__ x) {
      p2.F = Precalc_2powDdivP[16 - (-Q & 0xf)];  // -N mod p == 16 - (N mod 16)  // N mod 16 =~ N & (16 - 1)
      p2.N -= ((-Q >> 4) + 1) << DBLT_MANT_SHFT;
 
-     goto exp;
+     JMP_(Exp);
    }
 #endif
    // Q >= 0 | bit operations are guaranteed to be valid on signed negative integers
@@ -114,7 +115,7 @@ extern INLINE(DBLT__) exp__(const DBLT__ x) {
    p2.F = Precalc_2powDdivP[Q & 0xf];
    p2.N += (Q >> 4) << DBLT_MANT_SHFT; // Safe, since Q>>4 is always small (< 5)
 
- exp:
+   LOCATION(Exp);
 
    // (2^q * 2^r) * e^R ==== 2^(Q/d) * e^R ==== e^x
    return  p2.F * exp___(x - (Q * Precalc_Loge2Div16));
@@ -212,11 +213,11 @@ __NONNULL__ void VEC_TostrInt(void *v, Pp_Setup *cf) {
   }
 
   switch (cf->Pp_mask & WIDTH) {
-  case INT_16:
+  case L_16:
     cf->Pp_overflw = 7; // digits(short) + len(", ")
     VEC_map(v, VEC_Itoa, int16_t, cf);
     break;
-  case INT_64:
+  case L_64:
     cf->Pp_overflw = 22;
     VEC_map(v, VEC_Itoa, int64_t, cf);
     break;
@@ -302,7 +303,7 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
     fmt = setup->Pp_fmt;
     VEC_assert(EOFMT(c, *fmt++), "Repr: Empty Format is unsupported");
 
-    for (fc[0] = c; mskc = 0; (mskc < 6) && EOFMT(c, *fmt); mskc++)
+    for (fc[0] = c; mskc = 0; (mskc < 5) && EOFMT(c, *fmt); mskc++)
       fc[1u << mskc] = c; // starts at index 1
 
     // 1
@@ -313,8 +314,7 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
     mask |= (c=(fc[c] == 0x78) << 4); // x
     mask =  (mask << 8) | fc[mask];
 
-    puti(mask);
-    #define IgnoredMaskOrFormat(M, L, F, C)		\
+    #define IgnoredMaskOrFormat(M, L, F, C)		\xs
     (!((M) >> ((L)+6)) || EOFMT(C, F))
 
     error = !(

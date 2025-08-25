@@ -39,13 +39,14 @@ static const DBLT__ Precalc_2powDdivP[16] =
 #define DOCUMENTATION(LABEL) LABEL
 #define JMP_(LABEL) goto LABEL
 #define LOCATION(LABEL) LABEL: PASS
-x
+
 
 #define VEC_BUFFER_SIZE USHRT_MAX
 #define VEC_MAX_INT_LEN 32
-#define EOFMT(c, f)         (((c) = (f)) & ((c) ^ 58))
+#define EOFMT(c, f)         (((c) = (f)) && ((c) ^ 58))
 #define COMMA(bf) ((*(bf)++=','), (*(bf)++=' '), 2)
 #define WIDTH_(T) (((T) ? Intwidth__[(T) >> 1] : sizeof(int)) << 7)
+#define LLNG 0x30 // 0b11,00000000
 
 enum {
       PTR  = 0x01,  USIGNED = 0x02,  CHAR   = 0x04,
@@ -54,7 +55,7 @@ enum {
       TYPE = 0x7f,  WIDTH   = 0xf00, BASE   = 0x1000
 };
 
-const uint8_t Intwidth__[4] =
+const uint8_t Intwidth__[5] =
   {
    sizeof( short ),
    sizeof( long  ),
@@ -281,8 +282,8 @@ __NONNULL__ void VEC_TostrInt(void *v, Pp_Setup *cf) {
 
 __NONNULL__ __STATIC_FORCE_INLINE_F void VEC_TostrFlt(const void *v, Pp_Setup *cf) {
   switch (cf->Pp_mask & WIDTH) {
-  case LONG:
-  case LLNG:
+  case L_64:
+  case L_128:
   default:
     PASS;
   }
@@ -298,29 +299,29 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
     JMP_(Main);
 
   {
-    uint8_t mskc, error, *fmt, fc[32] = {0};
+    uint8_t mskc, error, *fmt, fc[16] = {0};
 
     fmt = setup->Pp_fmt;
     VEC_assert(EOFMT(c, *fmt++), "Repr: Empty Format is unsupported");
 
-    for (fc[0] = c; mskc = 0; (mskc < 5) && EOFMT(c, *fmt); mskc++)
+    for (fc[0] = c, mskc = 0; (mskc < 5) && EOFMT(c, fmt[mskc]); mskc++)
       fc[1u << mskc] = c; // starts at index 1
 
-    // 1
-    mask =  (c=(fc[0] == 0x68)     ); //h
-    mask |= (c=(fc[c] == 0x6c) << 1); // l
-    mask |= (c=(fc[c] == 0x6c) << 2); // l
-    mask |= (c=(fc[c] == 0x7a) << 3); // z
-    mask |= (c=(fc[c] == 0x78) << 4); // x
+    mask =  (c=(fc[0]  == 0x68)     ); //h
+    mask |= (c=(fc[c] == 0x6c) << (1-c)); // l
+    mask |= (c=(fc[c]  == 0x6c) << (1+c)); // l
+    mask |= (c=((fc[c] == 0x7a) << 3)) << c; // z
+    mask |= (c=(fc[c]  == 0x78) << 4); // x
     mask =  (mask << 8) | fc[mask];
 
-    #define IgnoredMaskOrFormat(M, L, F, C)		\xs
-    (!((M) >> ((L)+6)) || EOFMT(C, F))
+
+    #define IgnoredMaskOrFormat(M, MCNT, F, C) \
+      ((MCNT) && !(((M) >> 7) >> (MCNT)) || EOFMT(C, F[MCNT]))
 
     error = !(
 	      (((mask & TYPE) == 0x73) && (mask & WIDTH))
 	    | (((mask & TYPE) == 0x66) && (mask & WIDTH))
-	    | IgnoredMaskOrFormat(mask, mskc, *fmt, c)
+	    | IgnoredMaskOrFormat(mask, mskc, fmt, c)
 	      );
     VEC_assert(error, "Repr: Invalid Format");
 
@@ -338,11 +339,11 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
     // int8_t
     PASS;
   case '1':
-    setup->Pp_mask |= INT_16;
+    setup->Pp_mask |= L_16;
   case '2':
-    setup->Pp_mask |= INT_32;
+    setup->Pp_mask |= L_32;
   case '4':
-    setup->Pp_mask |= INT_64;
+    setup->Pp_mask |= L_64;
     if (!(mask & H_SPEC))
       JMP_(ERROR);
     JMP_(INT);
@@ -354,7 +355,7 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
     setup->Pp_mask |= LLNG;
   case 'i':
   case 'd':
-    setup->Pp_mask |= WIDTH_(mask & WIDTH);
+    setup->Pp_mask |= WIDTH_(setup->Pp_mask & WIDTH);
     LOCATION(INT);
     VEC_TostrInt(v, setup);
     break;

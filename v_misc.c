@@ -1,4 +1,4 @@
-/* MVPG API Vector Type
+e/* MVPG API Vector Type
 Copyright (C) 2025 Michael Saviour
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -193,205 +193,79 @@ static inline void floatRepr(DBLT__ f) {
   PASS;
 }
 
-__NONNULL__ __STATIC_FORCE_INLINE_F void VEC_Itoa(const intmax_t n, Pp_Setup *cf) {
-  const vsize_t U = cf->Pp_used, O = cf->Pp_overflw;
-
-  if (LIKELY___(((cf->Pp_size - U) > O) && (U < (VSIZE_MAX - O)), 1)) {
-    MvpgMacro_Ignore(U && COMMA(cf->Pp_buf));
-
-    cf->Pp_used += MvpgInclude_Itoa(n, cf->Pp_buf+U+2, !!(cf->Pp_mask & BASE), !(cf->Pp_mask & USIGNED) && (n < 0));
-  }
-}
-
-__NONNULL__ void VEC_TostrInt(void *v, Pp_Setup *cf) {
-  char *saveBuf;
-
-  if (cf->Pp_mask & PTR) {
-    // Undone
-    cf->Pp_overflw = 22;
-
-    return;
-  }
-
-  switch (cf->Pp_mask & WIDTH) {
-  case L_16:
-    cf->Pp_overflw = 7; // digits(short) + len(", ")
-    VEC_map(v, VEC_Itoa, int16_t, cf);
-    break;
-  case L_64:
-    cf->Pp_overflw = 22;
-    VEC_map(v, VEC_Itoa, int64_t, cf);
-    break;
-  default:
-    cf->Pp_overflw = 12;
-    VEC_map(v, VEC_Itoa, int32_t, cf);
-    break;
-  }
-}
 
 /*                    REPR (POSSIBLE REPRESENTATION OF VECTOR)
  *
  * Pp_Setup.fmt -> Format
  * ---------------------
 
- * Use: .fmt = "h4:^.5"
-
-   TYPE SPECIFIERS
- * h   - unsigned short
- * hh  - short
- * u   - unsigned int
- * i   - signed int
- * d   - signed int
- * q   - signed long long
- * z   - size_t
- * w   - wide char (unimplemented)
- * h0  - int8_t
- * h1  - int16_t
- * h2  - int32_t
- * h4  - int64_t
- * lz  - int128_t (unimplemented)
- * f   - float
- * e
- * g
- * c   - unsigned char
- * hc  - signed char
- * s   - char array
- * p   - pointer
-
-   WIDTH & SIGNESS SPECIFIERS
- * l - long int / long float (double)
- * ll - long long int (if supported) / long double
- * h  - signed
-
-   OUTPUT SPECIFIERS / OTHERS
- * ^ - Uppercase Hexadecimal
- * # - Append "0x" to hexadecimal
- * *
- * +
- * -
- * .N...
- *
-   NOT SUPPORTED
- * Uppercase type/width specifiers (F, L, ...)
- * Paddings (not necessary)
-
-   NOTE
- * Underlying type of Type Specifier T, must be the same size as VEC_sizeof(Vector).
- * Floats are respected and not promoted to doubles.
+ * Use: .fmt = "llu:^.5"
  */
 
-__NONNULL__ __STATIC_FORCE_INLINE_F void VEC_TostrFlt(const void *v, Pp_Setup *cf) {
-  switch (cf->Pp_mask & WIDTH) {
-  case L_64:
-  case L_128:
-  default:
-    PASS;
+#define IS_INT(mask) (mask & 0b111100000u)
+#define IS_FLOAT(mask) (mask &   0b11000000000u)
+#define IS_CHARS(mask) (mask & 0b1100000000000u)
+#define IS_ADDRS(mask) (mask & 0b10000000000000u)
+
+#define clrOldMask(c, mask, clrMaskArray)		\
+  (mask & clrMaskArray[(c = mapChar[c]) >> 5])
+
+#define setNewMask(c, cc)							\
+  (setToshftPos(c) << shft1_IfAllowRepeat(c, cc))
+
+#define setToshftPos(c)							\
+  ((uint16_t)(!!c) << (c & 0b1111))
+
+#define shft1_IfAllowRepeat(c, cc)				\
+  (!(cc ^ c) & !!(c & 0b10000))
+
+enum CLR {
+		  CLR_ALL = 0,
+		  CLR_KEEP_HASH = 0b10000u,
+		  CLR_KEEP_HLL   = 0b1101u,
+		  CLR_KEEP_HLL_HASH = 0b11101u,
+};
+
+/*
+  Map-Char-Mask: 0b 11 (clrMaskIndex) 1 (AllowRepeat) 1111 (No. of shift)
+ */
+static const uint8_t mapChar[127] =				\
+  {
+   ['h'] = 0b110000,  ['l'] = 0b110010,  ['L'] = 0b110011,  ['q'] = 0b110011,
+   ['#'] = 0b100,     ['i'] = 0b1000101, ['d'] = 0b1000101, ['u'] = 0b1000110,
+   ['x'] = 0b1100111, ['o'] = 0b1101000, ['f'] = 0b1001001, ['e'] = 0b1001010,
+   ['c'] = 0b1011,    ['s'] = 0b1100,    ['p'] = 0b1101
+  };
+
+static inline __attribute__((always_inline)) uint16_t formatMask(const char *fmt) {
+  const uint16_t clrMask[4] = {CLR_ALL, CLR_KEEP_HASH, CLR_KEEP_HLL, CLR_KEEP_HLL_HASH};
+  register uint16_t mask = 0;
+  register uint8_t  c = 0, cc = 0;
+
+  while ((c = *fmt++)) {
+	mask = clrOldMask(c, mask, clrMask) | setNewMask(c, cc);
+	cc = c; //keep old value
   }
-  VEC_assert(false, "Repr: TOSTRFLT: UINMPLEMENTED");
+  return mask;
 }
 
 __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
   register uint32_t mask;
-  register uint8_t  c;
 
-  /* It may be desirable to skip the format processing (Usually on a second... call toRepr with the same format) */
-  if (setup->Pp_skip && (mask=setup->Pp_mask))
-    JMP_(Main);
-
-  {
-    uint8_t mskc, error, *fmt, fc[16] = {0};
-
-    fmt = setup->Pp_fmt;
-    VEC_assert(EOFMT(c, *fmt++), "Repr: Empty Format is unsupported");
-
-    for (fc[0] = c, mskc = 0; (mskc < 5) && EOFMT(c, fmt[mskc]); mskc++)
-      fc[1u << mskc] = c; // starts at index 1
-
-    mask =  (c=(fc[0]  == 0x68)     ); //h
-    mask |= (c=(fc[c] == 0x6c) << (1-c)); // l
-    mask |= (c=(fc[c]  == 0x6c) << (1+c)); // l
-    mask |= (c=((fc[c] == 0x7a) << 3)) << c; // z
-    mask |= (c=(fc[c]  == 0x78) << 4); // x
-    mask =  (mask << 8) | fc[mask];
-
-
-    #define IgnoredMaskOrFormat(M, MCNT, F, C) \
-      ((MCNT) && !(((M) >> 7) >> (MCNT)) || EOFMT(C, F[MCNT]))
-
-    error = !(
-	      (((mask & TYPE) == 0x73) && (mask & WIDTH))
-	    | (((mask & TYPE) == 0x66) && (mask & WIDTH))
-	    | IgnoredMaskOrFormat(mask, mskc, fmt, c)
-	      );
-    VEC_assert(error, "Repr: Invalid Format");
-
-    #undef IgnoredMaskOrFormat
-
-    setup->Pp_fmt = fmt;
+  if (IS_INT(mask)) {
+	LOCATION(IS_INT);
   }
 
-  LOCATION(Main);
+  if (IS_FLOAT(mask))
+    ;
 
-  setup->Pp_dtype = VEC_vdtype(v);
-  setup->Pp_mask  = mask & WIDTH; /* Igore Type bits (Reused for other mask) */
-  switch ( mask & TYPE ) {
-  case '0':
-    // int8_t
-    PASS;
-  case '1':
-    setup->Pp_mask |= L_16;
-  case '2':
-    setup->Pp_mask |= L_32;
-  case '4':
-    setup->Pp_mask |= L_64;
-    if (!(mask & H_SPEC))
-      JMP_(ERROR);
-    JMP_(INT);
-  case 'p':
-    setup->Pp_mask |= PTR;
-  case 'u':
-    setup->Pp_mask |= USIGNED;
-  case 'q':
-    setup->Pp_mask |= LLNG;
-  case 'i':
-  case 'd':
-    setup->Pp_mask |= WIDTH_(setup->Pp_mask & WIDTH);
-    LOCATION(INT);
-    VEC_TostrInt(v, setup);
-    break;
-  case 'e':
-  case 'g':
-  case 'f':
-    VEC_TostrFlt(v, setup);
-    break;
-  case 'c':
-    setup->Pp_mask |= CHAR;
-  case 's':
-    VEC_assert(
-	       (setup->Pp_dtype > 1) && (setup->Pp_dtype != sizeof(VEC_type(char))),
-	       "Repr: Type Mismatch"
-	       );
+  if (IS_CHARS(mask))
+    ;
 
-    if ( setup->Pp_used > 0 ) {
-      char *Vv, *bf;
-      register vsize_t bfs = setup->Pp_size, e = VEC_vused(v), i = 0;
-
-      Vv = setup->Pp_mask & CHAR ? (i=e-1), v : VEC_typeCast(v, char *)[0];
-      bf = setup->Pp_buf;
-      do {
-	/* Iteratively Copy strings from Object v, to bf. bf is updated to the last written point for next copy */
-        bfs -= MvpgInclude_strlcpy(&bf, Vv, bfs);
-	Vv = VEC_typeCast(v, char *)[++i];
-      } while( (i < e) && bfs );
-    }
-  default :
-    LOCATION(ERROR);
-    /* TODO: Raise Error */
-    setup->Pp_used = 0;
+  if (IS_ADDRS(mask)) {
+	mask |= 0;
+	JMP(JMP_ADDRS);
   }
-
-  setup->Pp_mask |= mask & TYPE; /* restore Type */
-  return setup->Pp_used;
 }
 
 #endif

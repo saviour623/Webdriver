@@ -1,2 +1,0 @@
-#!/bin/bash/env
-cc  -Wstrict-overflow=2  -Wno-sign-conversion   -Wcast-qual -Wshift-overflow=2 -Wshift-negative-value -Wsign-compare -Wall -Wextra -pedantic mvdir.c && valgrind -s --tool=memcheck --leak-check=full --track-origins=yes ./a.out

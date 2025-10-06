@@ -1,25 +1,30 @@
-## C_Selenium_Server
-<table><tr><td> <strong><em> C selenuim wrapper for automating browsers </em></strong> </td></tr></table>
+## Webdriver
+<table><tr><td> <strong><em> C wrapper for webdrivers </em></strong> </td></tr></table>
 
 ## Basic Example
-An example to transfer a "project.mp4" file to `https://10.10.0.1:80000`
 ```C
 
-#include <mvpg.h>
-#define CLIENT_ADDRESS https://10.10.0.1:80000
-#define KEEP_ALIVE      MVPG_CONNECT_STABLE
+#include <Webdriver.h>
+#include <stdlib.h>
 
 int main(void) {
-    /* initialize transfer */
-    mvpgObject newTransfer = mvpgInitTransfer("./project.mp4", MVPG_REGULAR);
+       Webdriver Handle = WebdriverInit("chrome"); // Start session
 
-    /* transfer file to address specified by CLIENT_ADDRESS; report error if tranfer fails */
-    mvpgErrorHandler( mvpgTranferObject(newTransfer, CLIENT_ADDRESS, KEEP_ALIVE), "failed to initiate transfer");
+        if (Handle == WEBDRIVER_INIT_FAILED) {
+            fprintf(stderr, Webdriver_strerror());
+            exit(EXIT_FAILURE);
+        }
+        Handle.open("www.example.com");
+        WebdriverClass element = Handle.findElement(By.ID, "box");
+        element.sendKeys("hello world");
+        WebdriverClose(Handle); // Session is running
 
-    return 0;
+        WebdriverQuit(Handle); // close all session
+        return 0;
 }
 ```
 <br>
 
-_IMPORTANT: Project is currently ongoing.
+_Project is currently ongoing._
+
 

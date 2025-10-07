@@ -45,7 +45,7 @@ static const DBLT__ Precalc_2powDdivP[16] =
 #define VEC_MAX_INT_LEN 32
 #define EOFMT(c, f)         (((c) = (f)) && ((c) ^ 58))
 #define COMMA(bf) ((*(bf)++=','), (*(bf)++=' '), 2)
-#define WIDTH_(T) (((T) ? Intwidth__[(T) >> 1] : sizeof(int)) << 7)
+#define INT_WIDTH(T) (((T) ? Intwidth__[(T) >> 1] : sizeof(int)) << 7)
 #define LLNG 0x30 // 0b11,00000000
 
 enum {
@@ -249,11 +249,55 @@ static inline __attribute__((always_inline)) uint16_t formatMask(const char *fmt
   return mask;
 }
 
+#define minmax(a, b, c) 1
+#define intMaxDigit(a)
+#define PRINT_MAX 30
+
+vsize_t Itoa(const uintmax_t n, const Pp_Setup *setup) {
+  
+}
 __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
-  register uint32_t mask;
+  vsize_t size;
+  uint16_t mask;
+
+  if (setup->fmt == NULL)
+	return 0;
+
+  if ((mask = formatMask(setup->fmt)) == 0) {
+
+	return 0;
+  };
+
+#if defined(PRINT_MAX) && (PRINT_MAX > 0)
+  size = setup->size < PRINT_MAX ? setup->size : PRINT_MAX;
+#else
+  size = setup->size;
+#endif
+  setup->mask = mask;
 
   if (IS_INT(mask)) {
+
 	LOCATION(IS_INT);
+	if (minmax(0, size / (double)intMaxDigit(mask)), 1) {
+	  switch (mask & 0b100000000001101) {
+	  case 0b1:
+		VEC_map(v, Itoa, ushort, setup);
+		break;
+	  case 0b100:
+		VEC_map(v, Itoa, ulong, setup);
+		break;
+	  case 0b1000:
+		VEC_map(v, Itoa, ulongLong, setup);
+		break;
+	  case 0b100000000000000u:
+		for (uintmax_t po = 0 ; po < size; po++) {
+		  Itoa((uintmax_t)(v + po), setup);
+		}
+		break;
+	  default:
+	    VEC_map(v, Itoa, int);
+	  }
+	}
   }
 
   if (IS_FLOAT(mask))

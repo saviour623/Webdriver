@@ -60,15 +60,16 @@ You should have received a copy of the GNU General Public License along with thi
     #define __MB_UNUSED__   __attribute__((unused))
     #define __WARN_UNUSED__ __attribute__ ((warn_unused_result))
     #define __NONNULL__     __attribute__((nonnull))
+    #define LIKELY___(x, p) __builtin_expect(x, p)
     #define TYPEOF(T)       __typeof__(T)
 #else
     #define __MAY_ALIAS__
     #define __MB_UNUSED__
     #define __WARN_UNUSED__
     #define __NONNULL__
-    #define TYPEOF(T) void
+    #define LIKELY__(x, p) (x)
 #endif
-
+#define INLINE(T) __inline__ __FORCE_INLINE__ T
 #define __STATIC_FORCE_INLINE_F static __inline__ __FORCE_INLINE__
 
 

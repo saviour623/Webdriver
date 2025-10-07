@@ -162,7 +162,6 @@ vsize_t Dtoa(DBLT__ f, Pp_Setup *setup) {
   char *bf;
 
   if (f == .0) {
-	
   }
 }
 

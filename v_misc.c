@@ -1,4 +1,4 @@
-e/* MVPG API Vector Type
+/* MVPG API: MISC
 Copyright (C) 2025 Michael Saviour
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -8,19 +8,8 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-#include "v_base.h"
-#ifdef VEC_INTERNAL_CCS
-
-static const DBLT__ Precalc_2powDdivP[16] =
-  {
-   // 2^d/p or p_root(2^d); P = 16
-   1.00000000000000000, 1.0442737824274138, 1.0905077326652577,
-   1.13878863475669160, 1.1892071150027210, 1.2418578120734840,
-   1.29683955465100960, 1.3542555469368927, 1.4142135623730951,
-   1.47682614593949930, 1.5422108254079407, 1.6104903319492543,
-   1.68179283050742900, 1.7562521603732995, 1.8340080864093424,
-   1.91520656139714740
-  };
+#define V_MISC_VISIBLE
+#include "v_misc.h"
 
 #define Precalc_Log10b2  3.3219280948873620
 #define Precalc_Log2b10  0.3010299956639812
@@ -36,32 +25,23 @@ static const DBLT__ Precalc_2powDdivP[16] =
 #define Precalc_16DivLoge2 23.083120654223414
 #define Precalc_Loge2Div16 4.3321698784997e-2
 
-#define DOCUMENTATION(LABEL) LABEL
-#define JMP_(LABEL) goto LABEL
-#define LOCATION(LABEL) LABEL: PASS
+typedef uint16_t mask_t;
+typedef struct  {
+  DBLT__ f_val;
+  uint16_t f_digits;
+} Dtoa_expInfo;
 
-
-#define VEC_BUFFER_SIZE USHRT_MAX
-#define VEC_MAX_INT_LEN 32
-#define EOFMT(c, f)         (((c) = (f)) && ((c) ^ 58))
-#define COMMA(bf) ((*(bf)++=','), (*(bf)++=' '), 2)
-#define INT_WIDTH(T) (((T) ? Intwidth__[(T) >> 1] : sizeof(int)) << 7)
-#define LLNG 0x30 // 0b11,00000000
-
-enum {
-      PTR  = 0x01,  USIGNED = 0x02,  CHAR   = 0x04,
-      L_8  = 0,     L_16    = 0x100, L_32   = 0x200,
-      L_64 = 0x400, L_128   = 0x800, H_SPEC = 0x100,
-      TYPE = 0x7f,  WIDTH   = 0xf00, BASE   = 0x1000
-};
-
-const uint8_t Intwidth__[5] =
+static const DBLT__ Precalc_2powDdivP[16] =
   {
-   sizeof( short ),
-   sizeof( long  ),
-   sizeof( long long  ), 0,
-   sizeof( size_t )
+   // 2^d/p or p_root(2^d); P = 16
+   1.00000000000000000, 1.0442737824274138, 1.0905077326652577,
+   1.13878863475669160, 1.1892071150027210, 1.2418578120734840,
+   1.29683955465100960, 1.3542555469368927, 1.4142135623730951,
+   1.47682614593949930, 1.5422108254079407, 1.6104903319492543,
+   1.68179283050742900, 1.7562521603732995, 1.8340080864093424,
+   1.91520656139714740
   };
+
 
 extern INLINE(DBLT__) exp__(const DBLT__ x) {
   /* Calculate e^x for x in interval [0, 1);
@@ -132,7 +112,7 @@ extern INLINE(DBLT__) exp___(const DBLT__ x) {
   return 1. + 2. * x * a / ((2. - x) * a + x2 * (140. + x2));
 }
 
-extern INLINE(DBLT__) reprexp(bits_t bits) {
+extern INLINE(DBLT__) Dtoa_exp(bits_t bits) {
   int16_t p2, p10, p2tmp;
   DBLT__  F,  dF,  dp, dp2;
 
@@ -178,32 +158,34 @@ extern INLINE(DBLT__) reprexp(bits_t bits) {
   return 5e-15 + (bits.F / dp); // (F / 2^p) / 10^dp
 }
 
-static inline void floatRepr(DBLT__ f) {
-  bits_t bitsv;
+vsize_t Dtoa(DBLT__ f, Pp_Setup *setup) {
+  char *bf;
 
-  bitsv.F = f;
-  // absolute(f)
-  if (f < 0.0)
-    f = -f;
-  // Check for -0 or +0
-  PASS;
-  // check for inf
-  PASS;
-  // check for nan
-  PASS;
+  if (f == .0) {
+	
+  }
 }
 
+extern INLINE(vsize_t) hex(uintmax_t n, char *bf, _Bool prefix);
+extern INLINE(vsize_t) oct(uintmax_t n, char *bf, _Bool prefix);
+extern INLINE(vsize_t) dec(uintmax_t n, char *bf, _Bool prefix __UNUSED__);
 
-/*                    REPR (POSSIBLE REPRESENTATION OF VECTOR)
- *
- * Pp_Setup.fmt -> Format
- * ---------------------
+static __inline__ vsize_t Itoa(uintmax_t n, Pp_Setup *setup) __ {
+  mask_t mask = setup->mask;
+  uint8_t isneg __attribute__((unused));
 
- * Use: .fmt = "llu:^.5"
- */
+  if ( !(mask & USIGNED) ) {
+	if ((isneg = (intmax_t)n < 0)){
+	  n = -(intmax_t)n;
+	  setup->bf++ = '-';
+	}
+  }
+  return (mask & OCT ? oct
+		  : mask & HEX ? hex : dec)(n, setup->bf) + isneg;
+}
 
 #define IS_INT(mask) (mask & 0b111100000u)
-#define IS_FLOAT(mask) (mask &   0b11000000000u)
+#define IS_FLOAT(mask) (mask & 0b11000000000u)
 #define IS_CHARS(mask) (mask & 0b1100000000000u)
 #define IS_ADDRS(mask) (mask & 0b10000000000000u)
 
@@ -225,6 +207,17 @@ enum CLR {
 		  CLR_KEEP_HLL   = 0b1101u,
 		  CLR_KEEP_HLL_HASH = 0b11101u,
 };
+
+enum {
+	  HEX = 0b10000000u,
+	  OCT = 0b100000000u,
+	  USIGNED = 0b100000u,
+	  INTTYPE = 0b100000000001101u,
+	  SHRT = 0b1,
+	  LNG = 0b100u,
+	  LLNG = 0b1000u,
+	  PTR = 0b100000000000000u
+}
 
 /*
   Map-Char-Mask: 0b 11 (clrMaskIndex) 1 (AllowRepeat) 1111 (No. of shift)
@@ -249,13 +242,6 @@ static inline __attribute__((always_inline)) uint16_t formatMask(const char *fmt
   return mask;
 }
 
-#define minmax(a, b, c) 1
-#define intMaxDigit(a)
-#define PRINT_MAX 30
-
-vsize_t Itoa(const uintmax_t n, const Pp_Setup *setup) {
-  
-}
 __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
   vsize_t size;
   uint16_t mask;
@@ -276,20 +262,20 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
   setup->mask = mask;
 
   if (IS_INT(mask)) {
-
+	JMP(isint);
 	LOCATION(IS_INT);
 	if (minmax(0, size / (double)intMaxDigit(mask)), 1) {
-	  switch (mask & 0b100000000001101) {
-	  case 0b1:
-		VEC_map(v, Itoa, ushort, setup);
+	  switch (mask & INTTYPE) {
+	  case SHRT:
+		VEC_map(v, Itoa, ushort, setup->bf, mask & USIGNED);
 		break;
-	  case 0b100:
-		VEC_map(v, Itoa, ulong, setup);
+	  case LNG:
+		VEC_map(v, Itoa, ulong, setup->bf, mask & USIGNED);
 		break;
-	  case 0b1000:
-		VEC_map(v, Itoa, ulongLong, setup);
+	  case LLNG:
+		VEC_map(v, Itoa, ulongLong, setup->bf, mask & USIGNED);
 		break;
-	  case 0b100000000000000u:
+	  case PTR:
 		for (uintmax_t po = 0 ; po < size; po++) {
 		  Itoa((uintmax_t)(v + po), setup);
 		}

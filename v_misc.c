@@ -141,6 +141,41 @@ extern INLINE(void) Dtoa_Normal(Dtoa_IEEEFloat IE3Bit, Dtoa_expInfo *Finfo) {
   Finfo->expdig = p;
 }
 
+const uint32_t DDtoa(double f, char *bf, const int prec) {
+  uint32_t k = 0, U = 0;
+  double R = f;
+
+  union {double x; uint64_t y;} F = {.x = f};
+
+  int32_t eexp = ((F.y >> 52) & 0b11111111111) - 1023;
+  uint64_t mant = (F.y << 12) >> 12;
+  int32_t n = -(log2(mant) + eexp + 0.5);
+
+  n = n * .35;
+  double M = pow(2, n) / 2;
+
+  PUTI(eexp);
+  PUTI(mant);
+  PUTF(-1 * log2(mant)-eexp);
+
+  while (1) {
+	U = R = (10 * R);
+	R = R - U;
+	M = M * 10;
+
+	if ( !((R >= M) && (R <= (1. - M))) )
+	  break;
+	bf[k++] = U | 0x30;
+  };
+  if (R <= 0.5)
+	bf[k] = U | 0x30;
+  if (R >= 0.5)
+    bf[k] = U + 49;
+
+  bf[++k] = 0;
+  return k;
+}
+
 vsize_t Dtoa(DBLT__ f, Pp_Setup *setup) {
   Dtoa_expInfo FInfo = {0};
   Dtoa_IEEEFloat   Bit = {.F = f};

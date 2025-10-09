@@ -26,9 +26,14 @@ You should have received a copy of the GNU General Public License along with thi
 #define Precalc_Loge2Div16 4.3321698784997e-2
 
 typedef uint16_t mask_t;
+typedef union {
+  DBLT__ F;
+  UINT_  N;
+}  Dtoa_IEEEFloat;
+
 typedef struct  {
-  DBLT__ f_val;
-  uint16_t f_digits;
+  DBLT__ expval;
+  uint16_t expdig;
 } Dtoa_expInfo;
 
 static const DBLT__ Precalc_2powDdivP[16] =
@@ -45,123 +50,115 @@ static const DBLT__ Precalc_2powDdivP[16] =
 
 extern INLINE(DBLT__) exp__(const DBLT__ x) {
   /* Calculate e^x for x in interval [0, 1);
-
-   * We first reduce x (make it smaller) and take its exponential
-   * Let:
-   * Q, q = qoutient (truncated)
-   * R, r = remainder
-   * d    = divisor
    *
-   * If   Q == x/d, R == x - Q*d
-   * Then x == Q*d + R
-   * We use this to split x into a qoutient Q (may be large) and a small remainder, R.
+   * For better accuracy, we find a way to reduce x even smaller, say within [0, 0.1). We know that for any polynomial x, x = Q*d + R (where: Q->Qoutient, d->Divisor, R->Remainder).
    *
-   * Taking the exponential of x:
-   * e^x = e^(Q*d + R) OR e^x = e^(Q*d) * e^R
+   * If x -> Q*d + R, then taking the exponential of x:
+   * e^x -> e^(Q*d + R) OR e^x -> e^(Q*d) * e^R
    *
-   * If d is choosen to be a rational number, with Ln(k) as the dividend (where k is any positive integer---preferably), and p as the divisor, then d may be wriiten as:
-   *   d = Ln(k) / p         (p > 0)
+   * If we choose d carefully to be a rational fraction involving Ln(N), then d -> Ln(N) / p
+   * N and p is any positive number (N > 0, p > 0).
    *
    * Putting d into e^x:
-
-   * e^x = e^(Q * Ln(k)/p) * e^R ==== e^(Q/pLn(k)) * e^R ==== e^Ln(k^(Q/p)) * e^R
-   * Therefore, e^x == k^(Q/p) * e^R
+   * e^x -> e^(Q * Ln(N)/p) * e^R == e^(Q/p * Ln(N)) * e^R == e^Ln(N^(Q/p)) * e^R == N^(Q/p) * e^R
+   *
+   * So we get that e^x -> N^(Q/p) * e^R (where: R << x)
+   *
+   * We choose N -> 2 and p -> 16 so that e^x -> 2^(Q/16) * e^R
    *
    */
 
-  // If K = 2, P = 16, then d = Ln(2)/16 and Q = x/d = x / (Ln2/16) or Q = 16x/Ln(2)
-   const INT_ Q = x * Precalc_16DivLoge2;
+  const INT_ Q = x * Precalc_16DivLoge2; //x * (1/d)
 
-   /* Calculate 2^Q/p, where:
-	    2^Q/p == 2^q * 2^r (q = Qoutient(Q/p)...),
-    *       r == Q mod p (as integer) OR r == (Q mod p) / p (as decimal),
-    *       2^r == p_root(2^(Q mod p)) and (Q mod p) < p
+   /* Calculate 2^Q/16, where:
+	    2^Q/16 -> 2^q * 2^r (q -> Qoutient(Q/16), r -> (Q mod 16)/16 (as float),
+    *       2^r == 16_root(2^(Q mod p))
     *
-    * 2^r or p_root(2^(Q mod p)) is calculated using a small lookup table of size p
+    * 2^r or 16_root(2^(Q mod 16)) can be calculated using a small lookup table of size 16 since (Q mod 16) < 16
     */
-   bits_t p2;
+  Dtoa_IEEEFloat p2;
 
-#if COMPILER_SUPPORT_SIGNED_BIT_OP == 0
-   // Implementation defined behaviour of bitwise OP on negative numbers. Some implementators provide expected results. Rather not, we handle negative Q specially
-
-   if (LIKELY___((Q < 0), 0)) {
-     p2.F = Precalc_2powDdivP[16 - (-Q & 0xf)];  // -N mod p == 16 - (N mod 16)  // N mod 16 =~ N & (16 - 1)
-     p2.N -= ((-Q >> 4) + 1) << DBLT_MANT_SHFT;
+#if !COMPILER_SUPPORT_SIGNED_BIT_OP
+   if (Q < 0) {
+     p2.F = Precalc_2powDdivP[16 - (-Q & 0xf)];  //-Q mod p == 16 - (Q mod 16)
+     p2.N -= ((-Q >> 4) + 1) << DBLT_MANT_SHFT; // 2^q * 2^r
 
      JMP_(Exp);
    }
 #endif
-   // Q >= 0 | bit operations are guaranteed to be valid on signed negative integers
-   puti(Q & 0xf);
+   // Q >= 0 or bit operations are guaranteed to be valid on negative integers
    p2.F = Precalc_2powDdivP[Q & 0xf];
-   p2.N += (Q >> 4) << DBLT_MANT_SHFT; // Safe, since Q>>4 is always small (< 5)
+   p2.N += (Q >> 4) << DBLT_MANT_SHFT;
 
    LOCATION(Exp);
 
-   // (2^q * 2^r) * e^R ==== 2^(Q/d) * e^R ==== e^x
+   // e^x == 2^(Q/d) * e^R == (2^q * 2^r) * e^R
    return  p2.F * exp___(x - (Q * Precalc_Loge2Div16));
 }
+
 extern INLINE(DBLT__) exp___(const DBLT__ x) {
   /* By continued fraction,
      e^x = 1 + 2x / (2 - x + x^2 / (6 + x^2 / (10 + x^2 / 14 + ...)))
      =~ 1 + 2x(840 + 20x^2) / [(2 - x)(840 + 20x^2) + (140 + x^2)x^2]  (5 terms only)
 */
-  const DBLT__ x2 = x * x, a = 840. + 20. * x2; //Let A = 840 + 20x^2
+  const DBLT__ x2 = x * x, a = 840. + 20. * x2; //Let a = 840 + 20x^2
 
-  // exp(x) =~ 1 + 2x * A * [(2 - x)*A + x^2(140 + x^2)]  (simplified the C.F)
   return 1. + 2. * x * a / ((2. - x) * a + x2 * (140. + x2));
 }
 
-extern INLINE(DBLT__) Dtoa_exp(bits_t bits) {
-  int16_t p2, p10, p2tmp;
+extern INLINE(void) Dtoa_Normal(Dtoa_IEEEFloat IE3Bit, Dtoa_expInfo *Finfo) {
+  int16_t p2, p2tmp, p; //log
   DBLT__  F,  dF,  dp, dp2;
 
-  F = bits.F; // Float value
+  F = IE3Bit.F;
+  p2tmp = p2 = (IE3Bit.N >> DBLT_MANT_SHFT) - DFLT_BIAS__; // effective log2(f)
 
-  //  Exponent
-  p2tmp = p2 = (bits.N >> DBLT_MANT_SHFT) - DFLT_BIAS__;
-  putd(p2);
+  // set mantissa within [1, 2)
+  IE3Bit.N = (IE3Bit.N & Precalc_AllOnesMantBits) | (DFLT_BIAS__ << DBLT_MANT_SHFT);
 
-  // Normalized Mantissa. Within [1, 2)
-  bits.N = (bits.N & Precalc_AllOnesMantBits) | (DFLT_BIAS__ << DBLT_MANT_SHFT);
 
-  /* The exponent of F is Approximated using log10(f) where f ~ 2^p * M
-   * log(F) ~ log(2^p * M) ~ plog(2) + log(M)
-   * And log(M) == ln(M) / ln(10):
-   * The contribution log(M) to the exponent is approximated using taylor’s series of Log(M) about point b (where b == SQRT(2))
+  // Find Log(f): GIven that f ~ 2^p2 * M then Log(f) ~ Log(2^p2 * M) ~ p2*Log(2) + Log(M)
+  //  Let y = Log(M), we approximate Log(M) using taylor series about point b: Log(b) + dF*dy/df - dF^2*(1/2*d2y/df2)...
+  dF = IE3Bit.F - Precalc_SQRT2; // f - b
+  p = (p2 * Precalc_Log2b10) + (Precalc_LogSQRT2b10 + ((dF * Precalc_DydfLogSQRT2_b10) - (dF * dF * Precalc_D2ydf2LogSQRT2_b10_Div2))) - 2; // [ Log(f) or log10(f) ] - 2
 
-   * Let y = log(f)
-   * The Taylor approx. is given as log(b) + dF*dy/df - dF^2*(1/2*d2y/df2)...
-   */
-   dF = bits.F - Precalc_SQRT2; // f - a
-
-  p10 = (p2 * Precalc_Log2b10) + (Precalc_LogSQRT2b10 + ((dF * Precalc_DydfLogSQRT2_b10) - (dF * (dF * Precalc_D2ydf2LogSQRT2_b10_Div2)))) - 2;
-
-  /* Reduce F such that floor(abs(F)) < 10
-   * That is, We divide F by 10^p (F ~ N1N2N3... becomes F ~ N1.N2N3...)
-   *
-   * 10^p is spltted into 2^p2 * dp
-   * where:  p2 = trunc( log2(p); 2^p2 <= 10^p < 2^(p2+1)); dp = 10^p / 2^p2
-   * 2^p2 * dp == 10^p
-   */
-  bits.F = F;
-  p2  = (Precalc_Log10b2 * p10); // p2 = log2(p)
-  bits.N = (bits.N & Precalc_AllOnesMantBits) | ((DFLT_BIAS__ - p2 + p2tmp) << DBLT_MANT_SHFT); // F / 2^p2
+  // divide f by 10^p: to avoid over/under-flow, 10^p is splitted to 2^p2 * dp (dp -> 10^p - 2^p)
+  IE3Bit.F = F;
+  p2  = (Precalc_Log10b2 * p); // p2 = log2(p)
 
   /*
-     We can calculate dp by taking the natural logarithm of dp and approximating e^dp
-     * ln(dp) = ln(10^p / 2^p2) = ln(10^p) - ln(2^p2) ~ pln(10) - p2ln(2)
+     dp ~ 10^p - 2^p can be approximated using log and exp function:
+     * if Ln(dp) -> Ln(10^p / 2^p2) -> Ln(10^p) - Ln(2^p2) ~ p*Ln(10) - p2*Ln(2)
+	 * then dp = e^(p*ln(10) - p2ln(2))
      */
-  dp  = (p10 * Precalc_Loge10) - (p2 * Precalc_Loge2); // p - p2
+  dp  = (p * Precalc_Loge10) - (p2 * Precalc_Loge2); // p - p2
   dp = exp__(dp); // e^Ln(dp) ~ 10^(p10 - p2)
 
-  return 5e-15 + (bits.F / dp); // (F / 2^p) / 10^dp
+  IE3Bit.N = (IE3Bit.N & Precalc_AllOnesMantBits) | ((DFLT_BIAS__ - p2 + p2tmp) << DBLT_MANT_SHFT); // F / 2^p2
+  IE3Bit.F = IE3Bit.F / dp; // (F / 2^p) / 10^dp ~ F / 10^p
+
+  Finfo->expval = IE3Bit.F;
+  Finfo->expdig = p;
 }
 
 vsize_t Dtoa(DBLT__ f, Pp_Setup *setup) {
-  char *bf;
+  Dtoa_expInfo FInfo = {0};
+  Dtoa_IEEEFloat   Bit = {.F = f};
 
   if (f == .0) {
+	return appendPrefix(ZeroFloat, setup->bf);
+  }
+
+  if (IS_NAN(Bit.N)) {
+	return appendPrefix(Nan, setup->bf);
+  }
+
+  if (IS_INF(Bit.N)) {
+	return appendPrefix(Inf, setup->bf);
+  }
+
+  if (minmax(SMALL_FLOAT, f, BIG_FLOAT)) {
+	Dtoa_Normal(Bit, &FInfo);
   }
 }
 
@@ -169,7 +166,7 @@ extern INLINE(vsize_t) hex(uintmax_t n, char *bf, _Bool prefix);
 extern INLINE(vsize_t) oct(uintmax_t n, char *bf, _Bool prefix);
 extern INLINE(vsize_t) dec(uintmax_t n, char *bf, _Bool prefix __UNUSED__);
 
-static __inline__ vsize_t Itoa(uintmax_t n, Pp_Setup *setup) __ {
+static INLINE(vsize_t) Itoa(uintmax_t n, Pp_Setup *setup) {
   mask_t mask = setup->mask;
   uint8_t isneg __attribute__((unused));
 
@@ -182,6 +179,12 @@ static __inline__ vsize_t Itoa(uintmax_t n, Pp_Setup *setup) __ {
   return (mask & OCT ? oct
 		  : mask & HEX ? hex : dec)(n, setup->bf) + isneg;
 }
+
+const INLINE(uintmax_t) valInt(const void *u, const mask_t mask) {
+  return mask & LNG ? *(long *)(u) : mask & LLNG ? *(long long *)(u)
+	: mask & SHRT ? *(short *)(u) : *(int *)(u);
+}
+
 
 #define IS_INT(mask) (mask & 0b111100000u)
 #define IS_FLOAT(mask) (mask & 0b11000000000u)
@@ -245,11 +248,7 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
   vsize_t size;
   uint16_t mask;
 
-  if (setup->fmt == NULL)
-	return 0;
-
-  if ((mask = formatMask(setup->fmt)) == 0) {
-
+  if ((setup->fmt == NULL) || (mask = formatMask(setup->fmt)) == 0) {
 	return 0;
   };
 
@@ -261,26 +260,11 @@ __NONNULL__ vsize_t VEC_Repr(void *v, Pp_Setup *setup) {
   setup->mask = mask;
 
   if (IS_INT(mask)) {
-	JMP(isint);
 	LOCATION(IS_INT);
 	if (minmax(0, size / (double)intMaxDigit(mask)), 1) {
-	  switch (mask & INTTYPE) {
-	  case SHRT:
-		VEC_map(v, Itoa, ushort, setup->bf, mask & USIGNED);
-		break;
-	  case LNG:
-		VEC_map(v, Itoa, ulong, setup->bf, mask & USIGNED);
-		break;
-	  case LLNG:
-		VEC_map(v, Itoa, ulongLong, setup->bf, mask & USIGNED);
-		break;
-	  case PTR:
-		for (uintmax_t po = 0 ; po < size; po++) {
-		  Itoa((uintmax_t)(v + po), setup);
-		}
-		break;
-	  default:
-	    VEC_map(v, Itoa, int);
+	  for (int oo = 0; oo < size; oo++) {
+		Itoa(valInt(v+oo, mask), setup->bf, mask & USIGNED);
+		appendPrefix(sep, setup->bf);
 	  }
 	}
   }

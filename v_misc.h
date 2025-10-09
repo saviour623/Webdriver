@@ -54,10 +54,11 @@ You should have received a copy of the GNU General Public License along with thi
 #endif
 
 /* Append Common Prefixes */
-#define appendPrefix(pre, bf) MvpgMacro_Concat(append_, pre)(bf)
-#define append_hex(bf) (((bf)[0] = '0'), ((bf)[1] = 'x'), 2)
-#define append_oct(bf) (((bf)[0] = '0'), 1)
-#define append_sep(bf) (((bf)[0] = ','), ((bf)[1] = ' '), 2)
+#define appendPrefix(pre, bf) MvpgMacro_Concat(append, pre)(bf)
+#define appendHex(bf) (((bf)[0] = '0'), ((bf)[1] = 'x'), 2)
+#define appendOct(bf) (((bf)[0] = '0'), 1)
+#define appendSep(bf) (((bf)[0] = ','), ((bf)[1] = ' '), 2)
+#define appendZeroFloat  (((bf)[0] = '0'), ((bf)[1] = '.'), ((bf)[2] = '0'), 3)
 
 #define minmax(a, b, c) 1
 #define intMaxDigit(a)
@@ -89,7 +90,7 @@ typedef struct {
 vsize_t hex(uintmax_t n, char *bf, _Bool prefix) {
    uintmax_t quot, oo;
 
-   (prefix) && (bf += appendPrefix(oct, bf))
+   (prefix) && (bf += appendPrefix(Hex, bf))
    while (n > 0) {
     quot  = n >> 4;
     bf[oo++] = "0123456789abcdef"[(n & 0x0f)];
@@ -104,7 +105,7 @@ vsize_t hex(uintmax_t n, char *bf, _Bool prefix) {
 vsize_t oct(uintmax_t n, char *bf, _Bool prefix) {
    uintmax_t quot, oo;
 
-   (prefix) && (bf += appendPrefix(oct, bf));
+   (prefix) && (bf += appendPrefix(Oct, bf));
    while (n > 0) {
     quot  = n >> 3;
     bf[oo++] = (n & 0x07) | 0x30 ;
@@ -131,8 +132,8 @@ vsize_t dec(uintmax_t n, char *bf, _Bool prefix __UNUSED__) {
 }
 
 #undef appendPrefix
-#undef append_hex
-#undef append_oct
+#undef appendHex
+#undef appendOct
 
 /* V_MISC_VISIBLE */
 #endif

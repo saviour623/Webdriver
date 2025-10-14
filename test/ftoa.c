@@ -4,54 +4,107 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <math.h>
+#include <stdbool.h>
+#include <fenv.h>
 
 #define PUTI(n) printf( "%" PRId64 "\n", (int64_t)(n))
 #define PUTF(f) printf("%f\n", (double)(f))
 // N = 2 + |n/LogbB|
 
+#define abs_(n) ((n) < 0 ? -(n) : (n))
+#define INT_ uint64_t
+#define itoa_(n,  bf) ((bf[0] = '0'), 1)
+#define LARGE_FLOAT(f) 0
+#define SUBNORM_FLOAT(f) 0
 
-#define DBL_ERROR 2.710505431213761e-20
+const uint32_t ftoa(double f, char *bf, int p) {
+  int32_t k = 0, j = 0, U = 0;
+  double R, M;
 
-const uint32_t ftoa(double f, char *bf, const int prec) {
-  uint32_t k = 0, U = 0;
-  double R = f;
+  union {
+	double x;
+	uint64_t y;
+  } F = {.x = f};
 
-  union {double x; uint64_t y;} F = {.x = f};
+  int32_t  e = ((F.y >> 52) & 0b11111111111u) - 1023;
+  uint64_t m = (F.y << 12) >> 12;
+  int32_t  n = -(log2(m) + abs_(e) + 0.5);
 
-  int32_t eexp = ((F.y >> 52) & 0b11111111111) - 1023;
-  uint64_t mant = (F.y << 12) >> 12;
-  int32_t n = -(log2(mant) + eexp + 0.5);
+  R = f;
+  F.y = (uint64_t)(1 + n) << 52;
+  
+  M = pow(2, n) / 2;
 
-  n = n * .35;
-  double M = pow(2, n) / 2;
+  //PUTF(F.y);
+  //PUTF(M);
 
-  PUTI(eexp);
-  PUTI(mant);
-  PUTF(-1 * log2(mant)-eexp);
+  if (LARGE_FLOAT(R) || (SUBNORM_FLOAT(R))) {
+	//
+	R = 0;
+  }
+  j = itoa_((INT_)(R), bf);
+  bf[j] = '.';
+  k = j + 1;
 
-  while (1) {
+  if (R == .0) {
+	bf[k++] = '0';
+	bf[k] = 0;
+
+	return k;
+  }
+  if (p < 1)
+	goto formating;
+  p += 2;
+
+  do {
 	U = R = (10 * R);
 	R = R - U;
 	M = M * 10;
 
-	if ( !((R >= M) && (R <= (1. - M))) )
-	  break;
 	bf[k++] = U | 0x30;
-  };
-  if (R <= 0.5)
-	bf[k] = U | 0x30;
-  if (R >= 0.5)
-    bf[k] = U + 49;
+  } while  ( ((R >= M) && (R <= (1. - M))) && (k < p));
 
-  bf[++k] = 0;
+  if (R >= 0.5) {
+	char c;
+
+	puts("here");
+
+	c = bf[--k] += 1;
+	if (c > '9') {
+	  while (k-- && ((c = bf[k]) == '9') || (c == '.')){}
+	  bf[k] += 1;
+	}
+  }
+
+ formating:
+  if (k < j) {
+	bf[++k] = '.';
+	bf[++k] = '0';
+	bf[++k] = 0;
+  }
+  else {
+	bf[++k] = 0;
+  }
+  // formatting
   return k;
 }
 int main(void) {
-  double f = 0.12312318613712;
-  char bf[100];
+  double f;
+  char bf[1024];
 
-  ftoa(f, bf, 5);
-  puts(bf);
-  printf("%.5f\n", f);
+  for (int i = 0; i < 20; i++) {
+	f = 1 / rand();
+	ftoa(f, bf, 6);
+	puts(bf);
+  }
+  /*
+   ftoa(f, bf, 2);
+   puts(bf);
+  printf("%f\n", f);
+  */
   return 0;
 }
+/*
+E_TONEAREST,  FE_UPWARD,  FE_DOWNWARD,  and  FE_TO‐
+       WARDZERO
+*/

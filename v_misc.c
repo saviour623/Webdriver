@@ -141,7 +141,7 @@ extern INLINE(void) Dtoa_Normal(Dtoa_IEEEFloat IE3Bit, Dtoa_expInfo *Finfo) {
   Finfo->expdig = p;
 }
 
-const uint32_t DDtoa(double f, char *bf, const int prec) {
+const uint32_t DDtoa(double f, char *bf, const int p) {
   uint32_t k = 0, U = 0;
   double R = f;
 
@@ -163,15 +163,22 @@ const uint32_t DDtoa(double f, char *bf, const int prec) {
 	R = R - U;
 	M = M * 10;
 
-	if ( !((R >= M) && (R <= (1. - M))) )
+	if ( !((R >= M) && (R <= (1. - M))))
 	  break;
 	bf[k++] = U | 0x30;
   };
-  if (R <= 0.5)
-	bf[k] = U | 0x30;
-  if (R >= 0.5)
-    bf[k] = U + 49;
 
+  if (k > p) {
+	for (;;) {
+	  if (b[k--]) > 0
+	}
+  }
+  else {
+	if (R <= 0.5)
+	  bf[k] = U | 0x30;
+	if (R >= 0.5)
+	  bf[k] = U + 49;
+  }
   bf[++k] = 0;
   return k;
 }

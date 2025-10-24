@@ -231,7 +231,7 @@ static __inline__ __attribute__((nonnull)) ssize_t strroutine_JoinTab(void * __r
        (ptabI != NULL) && (b > 0); j++, b--)
     {
       (void)(
-	     (buf[j] = ptabI[j]) && ((buf[j] = sep), (ptabI = *ptab++))
+	     NOT(buf[j] = ptabI[j]) && ((buf[j] = sep), (ptabI = *ptab++))
 	     );
     }
   if (b < 2)

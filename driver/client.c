@@ -222,6 +222,24 @@ __attribute__((nonnull)) void WebdriverUnsetreqBuf(Webdriver_Client client) {
   client->bufsize__ = 0;
 }
 
+static __inline__ __attribute__((nonnull)) ssize_t strroutine_JoinTab(void * __restrict__ buf, void * __restrict__ tab, size_t *size, const int sep) {
+  size_t j, b;
+  char *ptbI, **tab_;
+
+  ptab_ = tab;
+  for (j = 0, b = *size, ptbI = *ptab_++;
+       (ptbI != NULL) && (b > 0); j++, b--)
+    {
+      (void)(
+	     (buf[j] = ptbI[j]) && ((buf[j] = sep), (ptbI = *ptab_++))
+	     );
+    }
+
+  if (b < 2)
+    return -1;
+
+  return ( *size = b - WEBDR_APPEND_DELIM(buf, j) );
+}
 static __inline__ __attribute__((nonnull)) void *WebdriverSetHttpCmd(Webdriver_Client client, const int method, const char *__restrict cmd) {
   size_t j, b;
   char *tab[4] = {NULL}, tptr, bptr;
@@ -232,18 +250,12 @@ static __inline__ __attribute__((nonnull)) void *WebdriverSetHttpCmd(Webdriver_C
   tab[0] = WDHttpMethodStr[method];
   tab[1] = cmd;
   tab[2] = WEDR_HTTP_PROTOCOL;
-  for (j = 0, b = client->bufc__, bptr = client->buf__, tptr = *tab++;
-       tptr && (b > 0); j++, b--)
-    {
-      (void)(
-	     (bptr[j] = tptr[j]) && ((tptr[j] = ' '), (tptr = *tab++))
-	     );
-    }
-  if (b < 2)
+
+  if (strroutine_JoinTab(client->buf__, tab, &(client->bufc__), de.SP) < 0)
     return (void *)WEBDR_INCOMPLETE;
 
-  client->bufc__ = b - WEBDR_APPEND_DELIM(buf, j);
   return (void *)WEDR_SUCCESS;
 }
 static __inline__ __attribute__((nonnull)) void WebdriverAddHttpHeader(Webdriver_Client, const char * __restrict field, const char * __restrict value) {
+  
 }

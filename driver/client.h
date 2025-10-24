@@ -115,6 +115,7 @@ enum Webdriver_httpMethodSupport {
 enum de {
       CR = '\r',
       LF = '\n',
+      SP = ' ',
       TAB = 0,
       EOC = '\0',
       EOF

@@ -190,11 +190,11 @@ void WebdriverDestroyClient(Webdriver_Client client)
   if (client != NULL)
     {
       WerrorOccured(close(client->sock__), fd);
-      WebdriverUnsetreqBuf(client);
+      WebdriverUnsetbuf(client);
       WebdriverDealloc(client);
     }
 }
-__attribute__((nonnull)) WebdriverSetreqBuf(Webdriver_Client client, const char *buf, const size_t size) {
+__attribute__((nonnull)) WebdriverSetbuf(Webdriver_Client client, const char *buf, const size_t size) {
   if (client->buf__ != NULL) {
     if (buf == NULL) 
       {
@@ -215,7 +215,7 @@ __attribute__((nonnull)) WebdriverSetreqBuf(Webdriver_Client client, const char 
   return (void *)WEDR_EONOTEMPT;
 }
 
-__attribute__((nonnull)) void WebdriverUnsetreqBuf(Webdriver_Client client) {
+__attribute__((nonnull)) void WebdriverUnsetbuf(Webdriver_Client client) {
   if (client->buf__ && client->memrelease__)
     WebdriverDealloc(client->buf__);
   client->buf__ = NULL;

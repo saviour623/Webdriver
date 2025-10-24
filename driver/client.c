@@ -1,6 +1,6 @@
 #include "client.h"
 
-void *WebdriverMalloc(const size_t size)
+void *webdriverMalloc(const size_t size)
 {
   void *p;
 
@@ -11,7 +11,7 @@ void *WebdriverMalloc(const size_t size)
 
   return p;
 }
-static __inline__ __attribute__((always_inline)) void WebdriverDealloc(void *p)
+static __inline__ __attribute__((always_inline)) void webdriverDealloc(void *p)
 {
   return free(p);
 }
@@ -67,7 +67,7 @@ static const __inline__ __attribute__((always_inline, pure)) struct Webdriver_It
   return uibf;
 }
 
-Webdriver_Client WebdriverCreateClient(const Webdriver_Config *conf)
+Webdriver_Client webdriverCreateClient(const Webdriver_Config *conf)
 {
   Webdriver_Client client;
   char *host;
@@ -82,7 +82,7 @@ Webdriver_Client WebdriverCreateClient(const Webdriver_Config *conf)
     host = NULL, port = server = domain = 0;
 
   // Reserve space for wdClient
-  WerrorOccured( WebdriverMalloc(WEBDR_BASE_SIZE), client)
+  WerrorOccured( webdriverMalloc(WEBDR_BASE_SIZE), client)
     return (void *)WEBDR_EOMEM;
 
   if (host == NULL || !strcmp(host, "localhost"))
@@ -107,7 +107,7 @@ Webdriver_Client WebdriverCreateClient(const Webdriver_Config *conf)
 
     WerrorOccured(getaddrinfo(host, port ? uitoa(port).ibf : NULL, &hint, &info), stat)
       {
-	WebdriverDealloc(client);
+	webdriverDealloc(client);
 
 	return (void *)WEBDR_ADDRINFO;
       }
@@ -128,7 +128,7 @@ Webdriver_Client WebdriverCreateClient(const Webdriver_Config *conf)
 	  {
 	    client->errno__ = errno;
 	    freeaddrinfo(info);
-	    WebdriverDealloc(client);
+	    webdriverDealloc(client);
 
 	    return (void *)WEBDR_EOSOCK;
 	  };
@@ -154,7 +154,7 @@ Webdriver_Client WebdriverCreateClient(const Webdriver_Config *conf)
     if (stat != 0)
       {
 	Debug(WEBDR_EOBIND);
-	WebdriverDealloc(client);
+	webdriverDealloc(client);
 	return (void *)WEBDR_EOBIND;
       }
     JMP(Jmp_return);
@@ -170,7 +170,7 @@ Webdriver_Client WebdriverCreateClient(const Webdriver_Config *conf)
     WerrorOccured(socket(domain, SOCK_STREAM, IPPROTO_TCP), fd)
       {
 	client->errno__ = errno;
-	WebdriverDealloc(client);
+	webdriverDealloc(client);
 
 	return (void *)WEBDR_EOSOCK;
       }
@@ -183,23 +183,23 @@ Webdriver_Client WebdriverCreateClient(const Webdriver_Config *conf)
   return client;
 }
 
-void WebdriverDestroyClient(Webdriver_Client client)
+void webdriverDestroyClient(Webdriver_Client client)
 {
   int fd;
 
   if (client != NULL)
     {
       WerrorOccured(close(client->sock__), fd);
-      WebdriverUnsetbuf(client);
-      WebdriverDealloc(client);
+      webdriverUnsetbuf(client);
+      webdriverDealloc(client);
     }
 }
-__attribute__((nonnull)) WebdriverSetbuf(Webdriver_Client client, const char *buf, const size_t size) {
+__attribute__((nonnull)) webdriverSetbuf(Webdriver_Client client, const char *buf, const size_t size) {
   if (client->buf__ != NULL) {
     if (buf == NULL) 
       {
 	client->bufsize__ = size ? size : WEDR_DEF_MALLOC_SIZE;
-	WerrorOccured(WebdriverMalloc(client->bufsize__), client->buf__)
+	WerrorOccured(webdriverMalloc(client->bufsize__), client->buf__)
 	  {
 	    client->bufsize__ = 0;
 	    return (void *)WEBDR_EOMEM;
@@ -215,9 +215,9 @@ __attribute__((nonnull)) WebdriverSetbuf(Webdriver_Client client, const char *bu
   return (void *)WEDR_EONOTEMPT;
 }
 
-__attribute__((nonnull)) void WebdriverUnsetbuf(Webdriver_Client client) {
+__attribute__((nonnull)) void webdriverUnsetbuf(Webdriver_Client client) {
   if (client->buf__ && client->memrelease__)
-    WebdriverDealloc(client->buf__);
+    webdriverDealloc(client->buf__);
   client->buf__ = NULL;
   client->bufsize__ = 0;
 }
@@ -239,11 +239,11 @@ static __inline__ __attribute__((nonnull)) ssize_t strroutine_JoinTab(void * __r
 
   return ( *size = b - WEBDR_APPEND_DELIM(buf, j) );
 }
-static __inline__ __attribute__((nonnull)) void *WebdriverSetHttpCmd(Webdriver_Client client, const int method, const char *__restrict cmd) {
+static __inline__ __attribute__((nonnull)) void *webdriverSetHttpCmd(Webdriver_Client client, const int method, const char *__restrict cmd) {
   size_t j, b;
   char *tab[4] = {NULL}, tptr, bptr;
 
-  if (! WebdriverSupportedMethods(method))
+  if (! webdriverSupportedMethods(method))
     return (void *)WEBDR_EOMETHOD;
 
   tab[0] = WDHttpMethodStr[method];
@@ -255,6 +255,6 @@ static __inline__ __attribute__((nonnull)) void *WebdriverSetHttpCmd(Webdriver_C
 
   return (void *)WEDR_SUCCESS;
 }
-static __inline__ __attribute__((nonnull)) void WebdriverAddHttpHeader(Webdriver_Client, const char * __restrict field, const char * __restrict value) {
+static __inline__ __attribute__((nonnull)) void webdriverAddHttpHeader(Webdriver_Client client, const char * __restrict field, const char * __restrict value) {
   
 }

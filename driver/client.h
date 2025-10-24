@@ -42,7 +42,7 @@
 #define ERROR_socket(...)      < 0) && Debug(WEBDR_EOSOCK
 #define ERROR_bind(...)        < 0) && Debug(WEBDR_EOBIND
 #define ERROR_close(...)       < 0) && Debug(WEBDR_CLOSE
-#define ERROR_WebdriverMalloc(...)  == NULL) && Debug(WEBDR_EOMEM
+#define ERROR_webdriverMalloc(...)  == NULL) && Debug(WEBDR_EOMEM
 #define ERROR_getaddrinfo(...) != 0) && Debug(0, gai_strerror(stat)
 
 #define WerrorOccured(funcall, stat, ...)			\
@@ -53,7 +53,7 @@
 #else
     #define Debug(symbol, ...) fprintf(stderr, "%s\n", "http error")
 #endif
-#define Webdriver_strerror(err) "error"
+#define webdriverStrerror(err) "error"
 
 #define JMP(label) goto label
 #define LOCATION(label) label: (void)0
@@ -117,6 +117,7 @@ enum de {
       CR = '\r',
       LF = '\n',
       SP = ' ',
+      COL = ':',
       TAB = 0,
       EOC = '\0',
       EOF
@@ -127,22 +128,22 @@ static const WDHttpMethodStr[3] = {
 					   [WDHttpMethod.DELETE] = "DELETE"
 };
 
-Webdriver_Client WebdriverCreateClient( const Webdriver_Config * );
-void             WebdriverDestroyClient( Webdriver_Client );
-_Bool            WebdriverSupportedMethods( const int );
-_Bool            WebdriverError( const void * );
-void *           WebdriverPerror( const void * )
+Webdriver_Client webdriverCreateClient( const Webdriver_Config * );
+void             webdriverDestroyClient( Webdriver_Client );
+_Bool            webdriverSupportedMethods( const int );
+_Bool            webdriverError( const void * );
+void *           webdriverPerror( const void * )
 
-   extern const __inline__ __attribute__((always_inline, pure)) _Bool WebdriverSupportedMethods(const int method) {
+   extern const __inline__ __attribute__((always_inline, pure)) _Bool webdriverSupportedMethods(const int method) {
   return method >= WdHttpMethod.GET && method <= WDHttpMethod.DELETE;
 }
 
-extern const __inline__ __attribute__((always_inline)) _Bool WebdriverError(const void *perr) {
+extern const __inline__ __attribute__((always_inline)) _Bool webdriverError(const void *perr) {
 
   return (const uintptr_t)no > MIN_NERROR && (const uintptr_t)no < MAX_NERROR;
 }
 
-extern const __inline__ __attribute__((always_inline)) void *WebdriverPerror(const void *perr) {
+extern const __inline__ __attribute__((always_inline)) void *webdriverPerror(const void *perr) {
   // Unimplemented
   return NULL;
 }

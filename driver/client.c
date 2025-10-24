@@ -224,14 +224,14 @@ __attribute__((nonnull)) void WebdriverUnsetbuf(Webdriver_Client client) {
 
 static __inline__ __attribute__((nonnull)) ssize_t strroutine_JoinTab(void * __restrict__ buf, void * __restrict__ tab, size_t *size, const int sep) {
   size_t j, b;
-  char *ptbI, **tab_;
+  char *ptabI, **ptab;
 
-  ptab_ = tab;
-  for (j = 0, b = *size, ptbI = *ptab_++;
-       (ptbI != NULL) && (b > 0); j++, b--)
+  ptab = tab;
+  for (j = 0, b = *size, ptabI = *ptab++;
+       (ptabI != NULL) && (b > 0); j++, b--)
     {
       (void)(
-	     (buf[j] = ptbI[j]) && ((buf[j] = sep), (ptbI = *ptab_++))
+	     (buf[j] = ptabI[j]) && ((buf[j] = sep), (ptabI = *ptab++))
 	     );
     }
   if (b < 2)

@@ -4,6 +4,9 @@
 a.out
 v_output
 ../backup/1 ../backup/a.out ../backup/backup.c ../backup/bin ../backup/c.c ../backup/macr.c ../backup/tjs0.json ../backup/tjs.json ../backup/v_base.c ../backup/vector.c
+test
+log
+run
 .~*
 .#*
 .#*

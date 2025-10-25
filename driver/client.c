@@ -5,9 +5,9 @@ void *webdriverMalloc(const size_t size)
   void *p;
 
   if ((p = calloc(1, size)) == NULL)
-    {
-      return (void *)WEBDR_EOMEM;
-    };
+	{
+	  return (void *)WEBDR_EOMEM;
+	};
 
   return p;
 }
@@ -42,11 +42,11 @@ static struct sockaddr_storage setsockaddr(const uint16_t port, const char *ipad
 static __inline__ __attribute__((always_inline)) struct addrinfo *inetmatchf(const int family, struct addrinfo *addr)
 {
   while (addr != NULL)
-    {
-      if (addr->ai_family == family)
-	break;
-      addr = addr->ai_next;
-    }
+	{
+	  if (addr->ai_family == family)
+		break;
+	  addr = addr->ai_next;
+	}
   return addr;
 }
 
@@ -57,12 +57,12 @@ static const __inline__ __attribute__((always_inline, pure)) struct Webdriver_It
 
   pb = pf = uibf.ibf;
   while (n)
-    *pb++ = (n - ((n /= 10) * 10)) | 0x30;
+	*pb++ = (n - ((n /= 10) * 10)) | 0x30;
   *pb = '\0';
   uibf.len = pb - uibf.ibf;
 
   while (pf < pb)
-    c = *pf, *pf++ = *--pb, *pb = c;
+	c = *pf, *pf++ = *--pb, *pb = c;
 
   return uibf;
 }
@@ -74,106 +74,106 @@ Webdriver_Client webdriverCreateClient(const Webdriver_Config *conf)
   int   fd = -1, stat = 0, dobind = true, server, domain, port;
 
   if (conf)
-    {
-      port   = conf->port,   host   = conf->host;
-      domain = conf->domain, server = conf->server;
-    }
+	{
+	  port   = conf->port,   host   = conf->host;
+	  domain = conf->domain, server = conf->server;
+	}
   else
-    host = NULL, port = server = domain = 0;
+	host = NULL, port = server = domain = 0;
 
-  // Reserve space for wdClient
+  // Reserve space for client
   WerrorOccured( webdriverMalloc(WEBDR_BASE_SIZE), client)
-    return (void *)WEBDR_EOMEM;
+	return (void *)WEBDR_EOMEM;
 
   if (host == NULL || !strcmp(host, "localhost"))
-    host = domain == AF_INET6 ? WEBDR_LOCALHOST_I6 : WEBDR_LOCALHOST_I4;
+	host = domain == AF_INET6 ? WEBDR_LOCALHOST_I6 : WEBDR_LOCALHOST_I4;
 
   if (! server)
-    {
-      if (port && host)
-	JMP(Jmp_cclient);
-      // [fallthrough] Get port/host from getaddrinfo
-      dobind = false;
-    }
+	{
+	  if (port && host)
+		JMP(Jmp_cclient);
+	  // [fallthrough] Get port/host from getaddrinfo
+	  dobind = false;
+	}
 
   /* SERVER */
   {
-    struct addrinfo hint, *info, *node;
+	struct addrinfo hint, *info, *node;
 
-    memset(&hint, 0, sizeof hint);
-    domain = WEBDR_SET_AFNET(hint.ai_family, domain, AF_UNSPEC);
-    hint.ai_socktype = WEBDR_SOCKTYPE;
-    hint.ai_protocol = WEBDR_PROTOCOL;
+	memset(&hint, 0, sizeof hint);
+	domain = WEBDR_SET_AFNET(hint.ai_family, domain, AF_UNSPEC);
+	hint.ai_socktype = WEBDR_SOCKTYPE;
+	hint.ai_protocol = WEBDR_PROTOCOL;
 
-    WerrorOccured(getaddrinfo(host, port ? uitoa(port).ibf : NULL, &hint, &info), stat)
-      {
-	webdriverDealloc(client);
-
-	return (void *)WEBDR_ADDRINFO;
-      }
-
-    node = info;
-    do
-      {
-	if (domain && !(node = inetmatchf(domain, info)))
+	WerrorOccured(getaddrinfo(host, port ? uitoa(port).ibf : NULL, &hint, &info), stat)
 	  {
-	    /* Unable to find any address of type domain that binds: default to any af_family. This cost a second loop over the struct list
-	     * To disable default behaviour, #define WEBDR_STRICT_INET (see socket.h:WEBDR_SET_AFNET)
-	     */
-	    domain = WEBDR_DOMRESET;
-	    node = info;
+		webdriverDealloc(client);
+
+		return (void *)WEBDR_ADDRINFO;
 	  }
 
-	WerrorOccured(socket(node->ai_family, SOCK_STREAM, IPPROTO_TCP), fd)
+	node = info;
+	do
 	  {
-	    client->errno__ = errno;
-	    freeaddrinfo(info);
-	    webdriverDealloc(client);
+		if (domain && !(node = inetmatchf(domain, info)))
+		  {
+			/* Unable to find any address of type domain that binds: default to any af_family. This cost a second loop over the struct list
+			 * To disable default behaviour, #define WEBDR_STRICT_INET (see socket.h:WEBDR_SET_AFNET)
+			 */
+			domain = WEBDR_DOMRESET;
+			node = info;
+		  }
 
-	    return (void *)WEBDR_EOSOCK;
-	  };
+		WerrorOccured(socket(node->ai_family, SOCK_STREAM, IPPROTO_TCP), fd)
+		  {
+			client->errno__ = errno;
+			freeaddrinfo(info);
+			webdriverDealloc(client);
 
-	dobind && (
-		   stat = bind(fd, (struct sockaddr *)(node->ai_addr), sizeof(struct sockaddr))
-		   );
-	if (stat == 0 || stat != EADDRINUSE)
+			return (void *)WEBDR_EOSOCK;
+		  };
+
+		dobind && (
+				   stat = bind(fd, (struct sockaddr *)(node->ai_addr), sizeof(struct sockaddr))
+				   );
+		if (stat == 0 || stat != EADDRINUSE)
+		  {
+			client->errno__ = errno;
+
+			break;
+		  }
+		WerrorOccured(close(fd), stat);
+		node = node->ai_next;
+	  } while (node != NULL);
+
+	if (node != NULL)
+	  client->addr__ = *(struct sockaddr_storage *)(node->ai_addr);
+
+	freeaddrinfo(info);
+
+	if (stat != 0)
 	  {
-	    client->errno__ = errno;
-
-	    break;
+		Debug(WEBDR_EOBIND);
+		webdriverDealloc(client);
+		return (void *)WEBDR_EOBIND;
 	  }
-	WerrorOccured(close(fd), stat);
-	node = node->ai_next;
-      } while (node != NULL);
-
-    if (node != NULL)
-      client->addr__ = *(struct sockaddr_storage *)(node->ai_addr);
-
-    freeaddrinfo(info);
-
-    if (stat != 0)
-      {
-	Debug(WEBDR_EOBIND);
-	webdriverDealloc(client);
-	return (void *)WEBDR_EOBIND;
-      }
-    JMP(Jmp_return);
+	JMP(Jmp_return);
   }
 
   // CLIENT
   {
-    LOCATION(Jmp_cclient);
+	LOCATION(Jmp_cclient);
 
-    client->addr__ = (domain == AF_INET6 ? setsockaddr6
-		      : ((domain = AF_INET), setsockaddr))(port, host, &(client->addr__));
+	client->addr__ = (domain == AF_INET6 ? setsockaddr6
+					  : ((domain = AF_INET), setsockaddr))(port, host, &(client->addr__));
 
-    WerrorOccured(socket(domain, SOCK_STREAM, IPPROTO_TCP), fd)
-      {
-	client->errno__ = errno;
-	webdriverDealloc(client);
+	WerrorOccured(socket(domain, SOCK_STREAM, IPPROTO_TCP), fd)
+	  {
+		client->errno__ = errno;
+		webdriverDealloc(client);
 
-	return (void *)WEBDR_EOSOCK;
-      }
+		return (void *)WEBDR_EOSOCK;
+	  }
   }
 
   LOCATION(Jmp_return);
@@ -188,73 +188,89 @@ void webdriverDestroyClient(Webdriver_Client client)
   int fd;
 
   if (client != NULL)
-    {
-      WerrorOccured(close(client->sock__), fd);
-      webdriverUnsetbuf(client);
-      webdriverDealloc(client);
-    }
+	{
+	  WerrorOccured(close(client->sock__), fd);
+	  webdriverUnsetbuf(client);
+	  webdriverDealloc(client);
+	}
 }
-__attribute__((nonnull)) webdriverSetbuf(Webdriver_Client client, const char *buf, const size_t size) {
-  if (client->buf__ != NULL) {
-    if (buf == NULL) 
-      {
-	client->bufsize__ = size ? size : WEDR_DEF_MALLOC_SIZE;
-	WerrorOccured(webdriverMalloc(client->bufsize__), client->buf__)
+__attribute__((nonnull)) void *webdriverSetbuf(Webdriver_Client client, void *buf, const size_t size) {
+  if (client->buf__ == NULL) {
+	if (buf == NULL)
 	  {
-	    client->bufsize__ = 0;
-	    return (void *)WEBDR_EOMEM;
+		client->bufsize__ = size ? size : WEBDR_DEF_MALLOC_SIZE;
+		WerrorOccured(webdriverMalloc(client->bufsize__), client->buf__)
+		  {
+			client->bufsize__ = 0;
+			return (void *)WEBDR_EOMEM;
+		  }
+		client->bufc__ = client->bufsize__;
+		client->memrelease__ = true;
 	  }
-	client->bufc__ = client->bufsize__;
-	client->memrelease__ = true;
-      }
-    else {
-      client->buf__ = buf, client->bufsize__ = client->bufc__ = size;
-    }
-    return (void *)WEDR_SUCCESS;
+	else {
+	  client->buf__ = buf, client->bufsize__ = client->bufc__ = size;
+	}
+	return (void *)WEBDR_SUCCESS;
   }
   return (void *)WEDR_EONOTEMPT;
 }
 
 __attribute__((nonnull)) void webdriverUnsetbuf(Webdriver_Client client) {
   if (client->buf__ && client->memrelease__)
-    webdriverDealloc(client->buf__);
+	webdriverDealloc(client->buf__);
   client->buf__ = NULL;
   client->bufsize__ = 0;
 }
 
-static __inline__ __attribute__((nonnull)) ssize_t strroutine_JoinTab(void * __restrict__ buf, void * __restrict__ tab, size_t *size, const int sep) {
-  size_t j, b;
+static __inline__ __attribute__((nonnull)) ssize_t strroutine_JoinTab(char * __restrict__ buf, const void * __restrict__ tab, size_t *size, const int sep) {
+  uintmax_t j, b;
   char *ptabI, **ptab;
 
-  ptab = tab;
+  ptab = (void *)tab;
   for (j = 0, b = *size, ptabI = *ptab++;
-       (ptabI != NULL) && (b > 0); j++, b--)
-    {
-      (void)(
-	     NOT(buf[j] = ptabI[j]) && ((buf[j] = sep), (ptabI = *ptab++))
-	     );
-    }
+	   (ptabI != NULL) && (b > 0); j++, b--)
+	{
+	  (void)(
+			 NOT( buf[j] = ptabI[j] ) && (( buf[j] = sep ), ( ptabI = *ptab++ ))
+			 );
+	}
   if (b < 2)
-    return -1;
+	return -1;
 
   return ( *size = b - WEBDR_APPEND_DELIM(buf, j) );
 }
-static __inline__ __attribute__((nonnull)) void *webdriverSetHttpCmd(Webdriver_Client client, const int method, const char *__restrict cmd) {
-  size_t j, b;
-  char *tab[4] = {NULL}, tptr, bptr;
+
+__attribute__((nonnull)) void *webdriverSetHttpCmd(Webdriver_Client client, const int method, const void *cmd) {
+  const void *tab[4] = {
+						WDHttpMethodStr[method],
+						cmd,
+						WEDR_HTTP_PROTOCOL,
+						NULL
+  };
 
   if (! webdriverSupportedMethods(method))
-    return (void *)WEBDR_EOMETHOD;
+	return (void *)WEBDR_EOMETHOD;
 
-  tab[0] = WDHttpMethodStr[method];
-  tab[1] = cmd;
-  tab[2] = WEDR_HTTP_PROTOCOL;
+  if (strroutine_JoinTab(client->buf__, tab, &(client->bufc__), SP) < 0)
+	return (void *)WEBDR_INCOMPLETE;
 
-  if (strroutine_JoinTab(client->buf__, tab, &(client->bufc__), de.SP) < 0)
-    return (void *)WEBDR_INCOMPLETE;
-
-  return (void *)WEDR_SUCCESS;
+  return (void *)WEBDR_SUCCESS;
 }
-static __inline__ __attribute__((nonnull)) void webdriverAddHttpHeader(Webdriver_Client client, const char * __restrict field, const char * __restrict value) {
-  
+
+__attribute__((nonnull)) void *webdriverAddHttpHeader(Webdriver_Client client, const void * __restrict field, const void * __restrict value) {
+  const void *tab[3] = {
+						field,
+						value,
+						NULL
+  };
+  if (strroutine_JoinTab(client->buf__ + (client->bufsize__ - client->bufc__), tab, &(client->bufc__), COL) < 0)
+	return (void *)WEBDR_INCOMPLETE;
+
+  return (void *)WEBDR_SUCCESS;
+}
+
+__attribute__((nonnull)) void webdriverShowHttpHeaders(Webdriver_Client client) {
+  return (void)(
+				(client->bufc__) && puts(client->buf__)
+				);
 }

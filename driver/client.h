@@ -10,6 +10,7 @@
     #include <sys/socket.h>
     #include <sys/types.h>
     #include <arpa/inet.h>
+    #include <unistd.h>
 #else
     #error "no support for this system"
 #endif
@@ -37,7 +38,7 @@
   ((af) = (def), (hint) != 0 ? (hint) : WEBDR_DOMRESET)
 #endif
 
-#define WEBDR_APPEND_DELIM(buf, n) ((buf[n] = de.CR), (buf[n + 1] = de.LF), 2)
+#define WEBDR_APPEND_DELIM(buf, n) (((buf)[n] = CR), ((buf)[n + 1] = LF), 2)
 
 #define ERROR_socket(...)      < 0) && Debug(WEBDR_EOSOCK
 #define ERROR_bind(...)        < 0) && Debug(WEBDR_EOBIND
@@ -51,6 +52,7 @@
   #ifdef NDEBUG
     #define Debug(...) true
 #else
+    #include <stdio.h>
     #define Debug(symbol, ...) fprintf(stderr, "%s\n", "http error")
 #endif
 #define webdriverStrerror(err) "error"
@@ -78,6 +80,7 @@ struct Webdriver_Client__ {
 };
 
 #define WEBDR_BASE_SIZE sizeof (Webdriver_Client__)
+#define WEBDR_DEF_MALLOC_SIZE 2048
 
 typedef struct {
   char    *host;
@@ -93,7 +96,7 @@ struct Webdriver_Itoabf
 };
 
 enum {
-      MAX_NERROR     = 10,
+      MAX_NERROR     = 20,
       MIN_NERROR     = 0,
       WEBDR_DOMRESET = 0,
       WEBDR_EOMEM    = 0,
@@ -103,49 +106,55 @@ enum {
       WEBDR_ADDRINFO,
       WEBDR_EOMETHOD,
       WEDR_EONOTEMPT, // attempt to reset buffer already allocated
+	  WEBDR_INCOMPLETE,
       WEBDR_SUCCESS,
       WEBDR_FAILURE,
 };
 
-enum Webdriver_httpMethodSupport {
-	     GET,
-	     POST,
-	     DELETE
-} WDHttpMethod;
+enum {
+	  GET,
+	  POST,
+	  DELETE
+};
 
-enum de {
+enum {
       CR = '\r',
       LF = '\n',
       SP = ' ',
       COL = ':',
-      TAB = 0,
+      TAB = '\t',
       EOC = '\0',
-      EOF
-}
-static const WDHttpMethodStr[3] = {
-					   [WDHttpMethod.GET]    = "GET",
-					   [WDHttpMethod.POST]   = "POST",
-					   [WDHttpMethod.DELETE] = "DELETE"
+      EEOF
+};
+
+static const void *WDHttpMethodStr[3] = {
+					   [ GET ]    = "GET",
+					   [ POST ]   = "POST",
+					   [ DELETE ] = "DELETE"
 };
 
 Webdriver_Client webdriverCreateClient( const Webdriver_Config * );
-void             webdriverDestroyClient( Webdriver_Client );
-_Bool            webdriverSupportedMethods( const int );
-_Bool            webdriverError( const void * );
-void *           webdriverPerror( const void * )
+void   webdriverDestroyClient( Webdriver_Client );
+static bool   webdriverSupportedMethods( const int );
+static bool   webdriverError ( const void * );
+static void   webdriverPerror( const void * );
+void * webdriverSetbuf( Webdriver_Client, void *, const size_t );
+void   webdriverUnsetbuf( Webdriver_Client );
+void * webdriverSetHttpCmd ( Webdriver_Client, const int, const void * );
+void * webdriverAddHttpHeader( Webdriver_Client, const void * __restrict, const void * __restrict );
+void   webdriverShowHttpHeaders( Webdriver_Client );
 
-   extern const __inline__ __attribute__((always_inline, pure)) _Bool webdriverSupportedMethods(const int method) {
-  return method >= WdHttpMethod.GET && method <= WDHttpMethod.DELETE;
+extern __inline__ __attribute__((always_inline, pure)) bool webdriverSupportedMethods(const int method) {
+  return method >= GET && method <= DELETE;
 }
 
-extern const __inline__ __attribute__((always_inline)) _Bool webdriverError(const void *perr) {
+extern __inline__ __attribute__((always_inline)) bool webdriverError(const void *pno) {
 
-  return (const uintptr_t)no > MIN_NERROR && (const uintptr_t)no < MAX_NERROR;
+  return (const uintptr_t)pno > MIN_NERROR && (const uintptr_t)pno < MAX_NERROR;
 }
 
-extern const __inline__ __attribute__((always_inline)) void *webdriverPerror(const void *perr) {
+extern __inline__ __attribute__((always_inline)) void webdriverPerror(const void *perr) {
   // Unimplemented
-  return NULL;
 }
 
 //HTTP CLIENT

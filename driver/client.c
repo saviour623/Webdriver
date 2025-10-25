@@ -11,6 +11,19 @@ void *webdriverMalloc(const size_t size)
 
   return p;
 }
+
+static __inline__ __attribute__((always_inline)) void *webdriverRealloc(void *p, const size_t size)
+{
+  void *re;
+
+  if ((re = realloc(p, size)) == NULL)
+	{
+	  return (void *)WEBDR_EOMEM;
+	};
+  p = re;
+  return re;
+}
+
 static __inline__ __attribute__((always_inline)) void webdriverDealloc(void *p)
 {
   return free(p);
@@ -215,6 +228,38 @@ __attribute__((nonnull)) void *webdriverSetbuf(Webdriver_Client client, void *bu
   return (void *)WEDR_EONOTEMPT;
 }
 
+}
+
+static __inline__ __attribute__((always_inline, nonnull)) void *webdriverPurgebuf(Webdriver_Client client)
+{
+  client->memrelease__ && webdriverDealloc(client->buf__);
+  client->buf__ = NULL;
+  client->bufsize__ = client->bufc__ = client->memrelease__ = client->hascmd__ = 0;
+
+  return (void *)WEBDR_SUCCESS;
+}
+
+__attribute__((nonnull)) void *webdriverModifybuf(Webdriver_Client client, void *buf, size_t size)
+{
+  if (client->buf__ == NULL)
+	  return webdriverSetbuf(client, buf, size);
+
+  if (buf == NULL)
+	{
+	  if (size == 0)
+		return webdriverPurgebuf(client);
+	  // TODO: i. set bufc correctly ii. store cmd size, if cmdsize > size, disable hascmd
+	  return webdriverRealloc(client, size);
+	}
+
+#define CRITICAL_REPORT
+  fprintf(stderr, "<client: %p> %s\n", client, "reassigning a new buffer to client may cause loss of data in the former");
+#endif
+
+  webdriverPurgebuf(client);
+  return webdriverSetbuf(client, buf, size);
+}
+
 __attribute__((nonnull)) void webdriverUnsetbuf(Webdriver_Client client) {
   if (client->buf__ && client->memrelease__)
 	webdriverDealloc(client->buf__);
@@ -223,21 +268,28 @@ __attribute__((nonnull)) void webdriverUnsetbuf(Webdriver_Client client) {
 }
 
 static __inline__ __attribute__((nonnull)) ssize_t strroutine_JoinTab(char * __restrict__ buf, const void * __restrict__ tab, size_t *size, const int sep) {
-  uintmax_t j, b;
-  char *ptabI, **ptab;
+  uintmax_t j, n;
+  char *node, **ptab;
 
   ptab = (void *)tab;
-  for (j = 0, b = *size, ptabI = *ptab++;
-	   (ptabI != NULL) && (b > 0); j++, b--)
+  j = *size;
+  while (
+		 (node = *ptab++)
+		 && j > (n = strlen(node) + 1)
+		 )
 	{
-	  (void)(
-			 NOT( buf[j] = ptabI[j] ) && (( buf[j] = sep ), ( ptabI = *ptab++ ))
-			 );
+	  __builtin_memcpy(buf, node, n - 1);
+	  (buf += n)[-1] = sep;
+	  j -= n;
 	}
-  if (b < 2)
-	return -1;
 
-  return ( *size = b - WEBDR_APPEND_DELIM(buf, j) );
+  if (node != NULL || n < 2) {
+	return (void *)(--ptab);
+  }
+
+  WEBDR_APPEND_DELIM(buf, -1);
+  *size = j - 1;
+  return (void *)WEBDR_SUCCESS;
 }
 
 __attribute__((nonnull)) void *webdriverSetHttpCmd(Webdriver_Client client, const int method, const void *cmd) {
@@ -247,13 +299,27 @@ __attribute__((nonnull)) void *webdriverSetHttpCmd(Webdriver_Client client, cons
 						WEDR_HTTP_PROTOCOL,
 						NULL
   };
+  void *ptab = tab; // We need this since pointers array cannot be assigned directly to
 
-  if (! webdriverSupportedMethods(method))
+  if (! webdriverSupportedMethods(method) || (client->bufc__ != client->bufsize__))
+	{
+	// Invalid method || attempt to set cmd on a buffer already wriiten to
 	return (void *)WEBDR_EOMETHOD;
+  }
 
-  if (strroutine_JoinTab(client->buf__, tab, &(client->bufc__), SP) < 0)
-	return (void *)WEBDR_INCOMPLETE;
+  LOCATION(TryAgain);
 
+  ptab = strroutine_JoinTab(client->buf__, ptab, &(client->bufc__), SP);
+  if (ptab != (void *)WEBDR_SUCCESS)
+	{
+	  if (__bAddOverflowBuf(client->bufsize__, WEBDR_DEF_MALLOC_GRW, &(client->bufsize__)) == true)
+		return (void *)WEBDR_INCOMPLETE;
+	  webdriverModifybuf(client, NULL, client->bufsize__);
+
+	  JMP(TryAgain);
+	}
+
+  client->hascmd__ = true;
   return (void *)WEBDR_SUCCESS;
 }
 
@@ -263,14 +329,32 @@ __attribute__((nonnull)) void *webdriverAddHttpHeader(Webdriver_Client client, c
 						value,
 						NULL
   };
+  // TODO: check if command is already set
   if (strroutine_JoinTab(client->buf__ + (client->bufsize__ - client->bufc__), tab, &(client->bufc__), COL) < 0)
 	return (void *)WEBDR_INCOMPLETE;
 
   return (void *)WEBDR_SUCCESS;
 }
 
+__attribute__((nonnull)) void *webdriverRawHttpHeader(Webdriver_Client client, const void *content) {
+  const size_t n = strlen(content);
+
+  if (NOT (n))
+	return (void *)WEBDR_SUCCESS;
+  if (client->bufc__ < n)
+	return (void *)WEBDR_INCOMPLETE;
+
+  // TODO: check if command is already set
+  memcpy(client->buf__, content, n);
+  return (void *)WEBDR_SUCCESS;
+}
+
 __attribute__((nonnull)) void webdriverShowHttpHeaders(Webdriver_Client client) {
   return (void)(
-				(client->bufc__) && puts(client->buf__)
+				(client->buf__) && puts(client->buf__)
 				);
 }
+__attribute__((nonnull)) size_t webdriverBufferUsed(Webdriver_Client client) {
+  return (client->bufsize__ - client->bufc__);
+}
+

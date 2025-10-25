@@ -122,7 +122,7 @@ You should have received a copy of the GNU General Public License along with thi
     #define __bAddOverflow(a, b, c) !( ((a) < (ULONG_MAX - (b)))) && ((*(c) = (a) + (b)), 0)
     #define __bMulOverflow(a, b, c) !( !(((a) > (ULONG_MAX>>1)) || ((b) > (ULONG_MAX>>1))) && ((*(c) = a * b), 0)
 #endif
-
+#define __bAddOverflowBuf(a, b, c) !( ((a) < (SIZE_MAX - (b)))) && ((*(c) = (a) + (b)), 0)
 /* Add */
     __STATIC_FORCE_INLINE_F unsigned long int __bsafeUnsignedAddl(unsigned long int a, unsigned long int b) {
       assert(( "INTEGER OVERFLOW -> ADD", __bAddOverflow(a, b, &b) == 0 ));

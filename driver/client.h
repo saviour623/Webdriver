@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>
+#include "include.h"
 
 
 #define WEBDR_PROTOCOL IPPROTO_TCP
@@ -49,12 +50,13 @@
 #define WerrorOccured(funcall, stat, ...)			\
   if (((stat = funcall) ERROR_##funcall, __VA_ARGS__))
 
-  #ifdef NDEBUG
+#ifdef NDEBUG
     #define Debug(...) true
 #else
     #include <stdio.h>
     #define Debug(symbol, ...) fprintf(stderr, "%s\n", "http error")
 #endif
+
 #define webdriverStrerror(err) "error"
 
 #define JMP(label) goto label
@@ -77,10 +79,12 @@ struct Webdriver_Client__ {
   int errno__;
   const int sock__;
   _Bool memrelease__;
+  _Bool hascmd__;
 };
 
 #define WEBDR_BASE_SIZE sizeof (Webdriver_Client__)
 #define WEBDR_DEF_MALLOC_SIZE 2048
+#define WEBDR_DEF_MALLOC_GRW  1024
 
 typedef struct {
   char    *host;
@@ -143,6 +147,7 @@ void   webdriverUnsetbuf( Webdriver_Client );
 void * webdriverSetHttpCmd ( Webdriver_Client, const int, const void * );
 void * webdriverAddHttpHeader( Webdriver_Client, const void * __restrict, const void * __restrict );
 void   webdriverShowHttpHeaders( Webdriver_Client );
+size_t webdriverBufferUsed( Webdriver_Client client );
 
 extern __inline__ __attribute__((always_inline, pure)) bool webdriverSupportedMethods(const int method) {
   return method >= GET && method <= DELETE;

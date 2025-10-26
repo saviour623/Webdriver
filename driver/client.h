@@ -64,6 +64,7 @@
 #define JMP(label) goto label
 #define LOCATION(label) label: (void)0
 #define NOT(e) !(e)
+#define ASSERT assert
 
 typedef struct {
   char *header;

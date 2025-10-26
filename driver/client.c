@@ -192,7 +192,6 @@ Webdriver_Client webdriverCreateClient(const Webdriver_Config *conf)
   LOCATION(Jmp_return);
 
   *(int *)(void *)&(client->sock__) = fd;
-  client->malloc__ = false;
   return client;
 }
 
@@ -281,7 +280,7 @@ static __inline__ __attribute__((always_inline, nonnull)) void *strroutine_Join(
 	return (void *)(--ptab);
 
   if (delim) {
-	if (n < 2)
+	if (j < 2)
 	  return (void *)ptab;
 	*size -= WEBDR_APPEND_DELIM(buf, 0);
   }
@@ -335,7 +334,7 @@ __attribute__((nonnull)) void *webdriverRawHttpHeader(Webdriver_Client client, c
   if (client->bufc__ < n)
 	return (void *)WEBDR_INCOMPLETE;
 
-  memcpy(client->buf__, content, n);
+  memcpy(client->buf__ + (client->bufsize__ - client->bufc__), content, n);
   return (void *)WEBDR_SUCCESS;
 }
 
@@ -348,3 +347,49 @@ __attribute__((nonnull)) size_t webdriverBufferUsed(Webdriver_Client client) {
   return (client->bufsize__ - client->bufc__);
 }
 
+enum {
+	  OBJECT,
+	  ARRAY,
+	  STRING,
+	  NUMBER,
+	  BOOLEAN
+};
+
+#define webdriverObjectNList 16
+#define webdriverObjectDefArenaSize 32768
+#define webdriverObjectDefAllocSize 8
+
+struct webdriver_MemoryPool {
+  void *__memory__;
+  void *__free__;
+  void *__next__;
+} mempool__;
+
+struct webdriver_TObject {
+  void *ObjectCon[ webdriverObjectNList ];
+  struct webdriver_Store __malloc__;
+  uint8_t __meta__;
+};
+
+__attribute__((nonnull)) void webdriverObject(webdriver_TObject *object) {
+  object->__malloc__ = webdriverObjectStore(webdriverObjectDefAllocSize);
+  object->__meta__  |= OBJECT;
+}
+
+
+static __inline__ __attribute__((nonnull, always_inline)) void webdriverMemoryPool(void) {
+
+  ASSERT (WerrorOccurred(webdriverMalloc(allocs), mempool__.__memory__));
+  mempool__.__free__ = NULL;
+  mempool__.__next__ = NULL;
+}
+
+void *webdriverMemoryPoolGet(uint16_t allocs) {
+  
+}
+
+void *webdriverMemoryPoolDelete(webdriver_TObject object) {
+}
+
+void *webdriverMemorypoolGrow(webdriver_TObject) {
+}

@@ -192,7 +192,7 @@ Webdriver_Client webdriverCreateClient(const Webdriver_Config *conf)
   LOCATION(Jmp_return);
 
   *(int *)(void *)&(client->sock__) = fd;
-  client->memrelease__ = false;
+  client->malloc__ = false;
   return client;
 }
 
@@ -207,7 +207,8 @@ void webdriverDestroyClient(Webdriver_Client client)
 	  webdriverDealloc(client);
 	}
 }
-__attribute__((nonnull)) void *webdriverSetbuf(Webdriver_Client client, void *buf, const size_t size) {
+__attribute__((nonnull)) void *webdriverSetbuf(Webdriver_Client client, void *buf, const size_t size)
+{
   if (client->buf__ == NULL) {
 	if (buf == NULL)
 	  {
@@ -218,7 +219,7 @@ __attribute__((nonnull)) void *webdriverSetbuf(Webdriver_Client client, void *bu
 			return (void *)WEBDR_EOMEM;
 		  }
 		client->bufc__ = client->bufsize__;
-		client->memrelease__ = true;
+		client->malloc__ = true;
 	  }
 	else {
 	  client->buf__ = buf, client->bufsize__ = client->bufc__ = size;
@@ -228,46 +229,36 @@ __attribute__((nonnull)) void *webdriverSetbuf(Webdriver_Client client, void *bu
   return (void *)WEDR_EONOTEMPT;
 }
 
+static __attribute__((nonnull)) void *webdriverGrowbuf(Webdriver_Client client)
+{
+  size_t size = client->bufsize__;
+
+  if (client->malloc__ == false)
+	return (void *)WEBDR_EOMEM;
+
+  if (client->buf__ == NULL)
+	return webdriverSetbuf(client, NULL, size);
+
+  if (NOT (safeUnsignedSize_Add(size, WEBDR_DEF_MALLOC_GRW, &size))
+	  ||  webdriverRealloc(client->buf__, size) != (void *)(WEBDR_SUCCESS))
+	return (void *)WEBDR_EOMEM;
+
+  client->bufsize__ = size;
+  client->bufc__ +=  WEBDR_DEF_MALLOC_GRW;
 }
 
-static __inline__ __attribute__((always_inline, nonnull)) void *webdriverPurgebuf(Webdriver_Client client)
+__attribute__((nonnull)) void *webdriverUnsetbuf(Webdriver_Client client)
 {
-  client->memrelease__ && webdriverDealloc(client->buf__);
-  client->buf__ = NULL;
-  client->bufsize__ = client->bufc__ = client->memrelease__ = client->hascmd__ = 0;
+  if (client->buf__ && client->malloc__)
+	webdriverDealloc(client->buf__);
 
+  client->buf__ = NULL;
+  client->bufsize__ = client->bufc__ = client->malloc__ = 0;
   return (void *)WEBDR_SUCCESS;
 }
 
-__attribute__((nonnull)) void *webdriverModifybuf(Webdriver_Client client, void *buf, size_t size)
+static __inline__ __attribute__((always_inline, nonnull)) void *strroutine_Join(char * __restrict__ buf, const void * __restrict__ tab, size_t *size, const bool delim)
 {
-  if (client->buf__ == NULL)
-	  return webdriverSetbuf(client, buf, size);
-
-  if (buf == NULL)
-	{
-	  if (size == 0)
-		return webdriverPurgebuf(client);
-	  // TODO: i. set bufc correctly ii. store cmd size, if cmdsize > size, disable hascmd
-	  return webdriverRealloc(client, size);
-	}
-
-#define CRITICAL_REPORT
-  fprintf(stderr, "<client: %p> %s\n", client, "reassigning a new buffer to client may cause loss of data in the former");
-#endif
-
-  webdriverPurgebuf(client);
-  return webdriverSetbuf(client, buf, size);
-}
-
-__attribute__((nonnull)) void webdriverUnsetbuf(Webdriver_Client client) {
-  if (client->buf__ && client->memrelease__)
-	webdriverDealloc(client->buf__);
-  client->buf__ = NULL;
-  client->bufsize__ = 0;
-}
-
-static __inline__ __attribute__((nonnull)) ssize_t strroutine_JoinTab(char * __restrict__ buf, const void * __restrict__ tab, size_t *size, const int sep) {
   uintmax_t j, n;
   char *node, **ptab;
 
@@ -275,65 +266,64 @@ static __inline__ __attribute__((nonnull)) ssize_t strroutine_JoinTab(char * __r
   j = *size;
   while (
 		 (node = *ptab++)
-		 && j > (n = strlen(node) + 1)
+		 && j > (n = strlen(node))
 		 )
 	{
-	  __builtin_memcpy(buf, node, n - 1);
-	  (buf += n)[-1] = sep;
+	  __builtin_memcpy(buf, node, n);
+	  buf += n;
 	  j -= n;
 	}
+  *size = j;
 
-  if (node != NULL || n < 2) {
+  if (node != NULL)
 	return (void *)(--ptab);
-  }
 
-  WEBDR_APPEND_DELIM(buf, -1);
-  *size = j - 1;
+  if (delim) {
+	if (n < 2)
+	  return (void *)ptab;
+	*size -= WEBDR_APPEND_DELIM(buf, 0);
+  }
   return (void *)WEBDR_SUCCESS;
 }
 
-__attribute__((nonnull)) void *webdriverSetHttpCmd(Webdriver_Client client, const int method, const void *cmd) {
-  const void *tab[4] = {
+static const __inline__ __attribute__((always_inline, nonnull)) void *webdriverAddHttpContent(Webdriver_Client client, void *cc)
+{
+  do
+	{
+	  // Attempt to join until success or memory error (if buffer was malloc’d)
+	  cc = strroutine_Join(client->buf__, cc, &(client->bufc__), true);
+	} while (cc != (void *)WEBDR_SUCCESS && webdriverGrowbuf(client) != (void *)WEBDR_EOMEM);
+
+  return (cc == (void *)WEBDR_SUCCESS ? (void *)WEBDR_SUCCESS : (void *)WEBDR_EOMEM);
+}
+
+__attribute__((nonnull)) const void *webdriverSetHttpCmd(Webdriver_Client client, const int method, const void *cmd)
+{
+  const void *tab[6] = {
 						WDHttpMethodStr[method],
+						" ",
 						cmd,
+						" ",
 						WEDR_HTTP_PROTOCOL,
 						NULL
   };
-  void *ptab = tab; // We need this since pointers array cannot be assigned directly to
 
-  if (! webdriverSupportedMethods(method) || (client->bufc__ != client->bufsize__))
-	{
-	// Invalid method || attempt to set cmd on a buffer already wriiten to
+  if (NOT (webdriverSupportedMethods(method)) )
 	return (void *)WEBDR_EOMETHOD;
-  }
 
-  LOCATION(TryAgain);
-
-  ptab = strroutine_JoinTab(client->buf__, ptab, &(client->bufc__), SP);
-  if (ptab != (void *)WEBDR_SUCCESS)
-	{
-	  if (__bAddOverflowBuf(client->bufsize__, WEBDR_DEF_MALLOC_GRW, &(client->bufsize__)) == true)
-		return (void *)WEBDR_INCOMPLETE;
-	  webdriverModifybuf(client, NULL, client->bufsize__);
-
-	  JMP(TryAgain);
-	}
-
-  client->hascmd__ = true;
-  return (void *)WEBDR_SUCCESS;
+  return webdriverAddHttpContent(client, tab);
 }
 
-__attribute__((nonnull)) void *webdriverAddHttpHeader(Webdriver_Client client, const void * __restrict field, const void * __restrict value) {
-  const void *tab[3] = {
+__attribute__((nonnull)) const void *webdriverAddHttpHeader(Webdriver_Client client, const void * __restrict field, const void * __restrict value)
+{
+  const void *tab[4] = {
 						field,
+						":",
 						value,
 						NULL
   };
-  // TODO: check if command is already set
-  if (strroutine_JoinTab(client->buf__ + (client->bufsize__ - client->bufc__), tab, &(client->bufc__), COL) < 0)
-	return (void *)WEBDR_INCOMPLETE;
 
-  return (void *)WEBDR_SUCCESS;
+  return webdriverAddHttpContent(client, tab);
 }
 
 __attribute__((nonnull)) void *webdriverRawHttpHeader(Webdriver_Client client, const void *content) {

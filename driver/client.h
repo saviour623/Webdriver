@@ -20,7 +20,6 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>
-#include "include.h"
 
 
 #define WEBDR_PROTOCOL IPPROTO_TCP
@@ -39,12 +38,15 @@
   ((af) = (def), (hint) != 0 ? (hint) : WEBDR_DOMRESET)
 #endif
 
+// TODO: Move safeUnsignedSize_Add to include.h
+#define safeUnsignedSize_Add(a, b, c) ( ((a) < (SIZE_MAX - (b))) && ((*(c) = (a) + (b)), 1) )
 #define WEBDR_APPEND_DELIM(buf, n) (((buf)[n] = CR), ((buf)[n + 1] = LF), 2)
 
 #define ERROR_socket(...)      < 0) && Debug(WEBDR_EOSOCK
 #define ERROR_bind(...)        < 0) && Debug(WEBDR_EOBIND
 #define ERROR_close(...)       < 0) && Debug(WEBDR_CLOSE
 #define ERROR_webdriverMalloc(...)  == NULL) && Debug(WEBDR_EOMEM
+#define ERROR_webdriverRealloc(...) ERROR_webdriverMalloc(__VA_ARGS__)
 #define ERROR_getaddrinfo(...) != 0) && Debug(0, gai_strerror(stat)
 
 #define WerrorOccured(funcall, stat, ...)			\
@@ -78,7 +80,7 @@ struct Webdriver_Client__ {
   size_t bufc__;
   int errno__;
   const int sock__;
-  _Bool memrelease__;
+  _Bool malloc__;
   _Bool hascmd__;
 };
 
@@ -143,9 +145,9 @@ static bool   webdriverSupportedMethods( const int );
 static bool   webdriverError ( const void * );
 static void   webdriverPerror( const void * );
 void * webdriverSetbuf( Webdriver_Client, void *, const size_t );
-void   webdriverUnsetbuf( Webdriver_Client );
-void * webdriverSetHttpCmd ( Webdriver_Client, const int, const void * );
-void * webdriverAddHttpHeader( Webdriver_Client, const void * __restrict, const void * __restrict );
+void * webdriverUnsetbuf( Webdriver_Client );
+const void * webdriverSetHttpCmd ( Webdriver_Client, const int, const void * );
+const void * webdriverAddHttpHeader( Webdriver_Client, const void * __restrict, const void * __restrict );
 void   webdriverShowHttpHeaders( Webdriver_Client );
 size_t webdriverBufferUsed( Webdriver_Client client );
 

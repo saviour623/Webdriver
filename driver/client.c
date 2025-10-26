@@ -95,7 +95,7 @@ Webdriver_Client webdriverCreateClient(const Webdriver_Config *conf)
 	host = NULL, port = server = domain = 0;
 
   // Reserve space for client
-  WerrorOccured( webdriverMalloc(WEBDR_BASE_SIZE), client)
+  WerrorOccured( webdriverMalloc(WEBDR_BASE_SIZE), client )
 	return (void *)WEBDR_EOMEM;
 
   if (host == NULL || !strcmp(host, "localhost"))
@@ -207,18 +207,18 @@ void webdriverDestroyClient(Webdriver_Client client)
 	  webdriverDealloc(client);
 	}
 }
-__attribute__((nonnull)) void *webdriverSetbuf(Webdriver_Client client, void *buf, const size_t size)
+void *webdriverSetbuf(Webdriver_Client client, void *buf, size_t size)
 {
   if (client->buf__ == NULL) {
 	if (buf == NULL)
 	  {
-		client->bufsize__ = size ? size : WEBDR_DEF_MALLOC_SIZE;
-		WerrorOccured(webdriverMalloc(client->bufsize__), client->buf__)
+		NOT (size) && (size = WEBDR_DEF_MALLOC_SIZE);
+		WerrorOccured(webdriverMalloc(size), client->buf__)
 		  {
 			client->bufsize__ = 0;
 			return (void *)WEBDR_EOMEM;
 		  }
-		client->bufc__ = client->bufsize__;
+		client->bufc__ = client->bufsize__ = size;
 		client->malloc__ = true;
 	  }
 	else {
@@ -239,8 +239,10 @@ static __attribute__((nonnull)) void *webdriverGrowbuf(Webdriver_Client client)
   if (client->buf__ == NULL)
 	return webdriverSetbuf(client, NULL, size);
 
-  if (NOT (safeUnsignedSize_Add(size, WEBDR_DEF_MALLOC_GRW, &size))
-	  ||  webdriverRealloc(client->buf__, size) != (void *)(WEBDR_SUCCESS))
+  if (NOT(
+		  safeUnsignedSize_Add(size, WEBDR_DEF_MALLOC_GRW, &size)
+		  && webdriverRealloc(client->buf__, size)
+		  ))
 	return (void *)WEBDR_EOMEM;
 
   client->bufsize__ = size;
@@ -266,7 +268,7 @@ static __inline__ __attribute__((always_inline, nonnull)) void *strroutine_Join(
   j = *size;
   while (
 		 (node = *ptab++)
-		 && j > (n = strlen(node))
+		 && (n = strlen(node)) < j
 		 )
 	{
 	  __builtin_memcpy(buf, node, n);
@@ -290,14 +292,14 @@ static const __inline__ __attribute__((always_inline, nonnull)) void *webdriverA
 {
   do
 	{
-	  // Attempt to join until success or memory error (if buffer was malloc’d)
-	  cc = strroutine_Join(client->buf__, cc, &(client->bufc__), true);
+	  // if buffer was malloc’d, attempt to join until success or memory error
+	  cc = strroutine_Join(client->buf__ + (client->bufsize__ - client->bufc__), cc, &(client->bufc__), true);
 	} while (cc != (void *)WEBDR_SUCCESS && webdriverGrowbuf(client) != (void *)WEBDR_EOMEM);
 
   return (cc == (void *)WEBDR_SUCCESS ? (void *)WEBDR_SUCCESS : (void *)WEBDR_EOMEM);
 }
 
-__attribute__((nonnull)) const void *webdriverSetHttpCmd(Webdriver_Client client, const int method, const void *cmd)
+  __attribute__((nonnull)) const void *webdriverSetHttpCmd(Webdriver_Client client, const int method, const void *cmd)
 {
   const void *tab[6] = {
 						WDHttpMethodStr[method],
@@ -322,7 +324,6 @@ __attribute__((nonnull)) const void *webdriverAddHttpHeader(Webdriver_Client cli
 						value,
 						NULL
   };
-
   return webdriverAddHttpContent(client, tab);
 }
 
@@ -334,7 +335,6 @@ __attribute__((nonnull)) void *webdriverRawHttpHeader(Webdriver_Client client, c
   if (client->bufc__ < n)
 	return (void *)WEBDR_INCOMPLETE;
 
-  // TODO: check if command is already set
   memcpy(client->buf__, content, n);
   return (void *)WEBDR_SUCCESS;
 }

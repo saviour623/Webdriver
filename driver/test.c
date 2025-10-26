@@ -2,7 +2,7 @@
 #include <stdio.h>
 
 int main(void) {
-  char bf[102];
+  //char bf[102];
 
   Webdriver_Config conf = {
 						   .port = 32432
@@ -13,7 +13,8 @@ int main(void) {
 	fprintf(stderr, "Could not start web client");
 	return EXIT_FAILURE;
   }
-  int stat = (long)webdriverSetbuf(client, bf, 102);
+
+  int stat = (long)webdriverSetbuf(client, NULL, 0);
   if (stat != WEBDR_SUCCESS){
 	fprintf(stderr, "setbuf failed with: %d\n",stat);
 	exit(EXIT_FAILURE);
@@ -23,8 +24,7 @@ int main(void) {
   webdriverAddHttpHeader(client, "Content-Type", "application/json");
   webdriverAddHttpHeader(client, "Allow", "*/*");
   webdriverAddHttpHeader(client, "Content-Type", "application/json");
-  printf("%lu\n", webdriverBufferUsed(client));
-  
+
   webdriverShowHttpHeaders(client);
 
   webdriverDestroyClient(client);

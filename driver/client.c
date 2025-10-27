@@ -255,6 +255,7 @@ __attribute__((nonnull)) void *webdriverUnsetbuf(Webdriver_Client client)
 
   client->buf__ = NULL;
   client->bufsize__ = client->bufc__ = client->malloc__ = 0;
+
   return (void *)WEBDR_SUCCESS;
 }
 
@@ -389,7 +390,7 @@ static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryP
 
 void *webdriverMemoryPoolGet(Webdriver_TMemoryPool *mempool, uint16_t size)
 {
-  Webdriver_MemoryPool *mpe __attribute__((unused)) = NULL;
+  Webdriver_MemoryPool *node, *mpe __attribute__((unused)) = NULL;
 
   if (mempool.__free__)
 	{
@@ -397,13 +398,18 @@ void *webdriverMemoryPoolGet(Webdriver_TMemoryPool *mempool, uint16_t size)
 	}
   // TODO: we loop over __mp__
   (size < webdriverMemoryPoolMinAlloc) && (size = alignUp(size, webdriverMemoryPoolMinAlloc));
-  if ((ptrdiff_t)(mempool.__mp__ - mempool.__memory__) < size)
+
+  for (node = mempool; node->__mp__ && (ptrdiff_t)(node->__mp__ - node->__memory__) < size;)
+	node = mempool->__next__;
+
+  if (node == NULL)
 	{
 	  mpe = webdriverMemoryPool(mempool->__next__);
 	  *(uint16_t *)mpe = size;
 	  mpe += 2; // sizeof uint16_t
 	  mempool->next->__mp__ = mpe + size;
 	}
+
   return mpe;
 }
 

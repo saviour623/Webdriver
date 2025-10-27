@@ -358,48 +358,61 @@ enum {
 #define webdriverObjectArraySize 16
 #define webdriverObjecAllocSize 1024
 
-struct webdriver_MemoryPool {
+struct Webdriver_MemoryPool {
   void *__memory__;
   void *__mp__;
   void *__free__;
-  void *__next__;
-} mempool__;
+  struct Wedbriver_Memory *__next__;
+} * mempool__ = NULL;
 
-struct webdriver_TObject {
+struct Webdriver_TObject {
   void *ObjectCon[ webdriverObjectArraySize ];
-  struct webdriver_Store __malloc__;
+  void * __malloc__;
   uint8_t __meta__;
 };
 
 __attribute__((nonnull)) void webdriverObject(webdriver_TObject *object)
 {
-  object->__malloc__ = webdriverMemoryPoolGet(webdriverObjectAllocSize);
+  if ( (object->__malloc__ = webdriverMemoryPoolGet(mempool__, webdriverObjectAllocSize)) == (void *)WEBDR_EOMEM )
+	{
+	  fprintf(stderr, "Error<EOMEM>: unable to create object");
+	  exit(WEBDR_FAILURE);
+	}
   object->__meta__  |= OBJECT;
 }
 
 #define webdriverMemoryPoolSize 32768
 #define webdriverMemoryPoolMinAlloc 8
 #define webdriverMemoryPoolMaxAlloc 63355
+#define webdriverSizeofMemoryPool sizeof (struct webdriver_MemoryPool)
+
 #define alignUp(n, p2) (((n) + ((p2) - 1)) & ~((p2) - 1))
 
-static __inline__ __attribute__((nonnull, always_inline)) void webdriverMemoryPool(void)
+static __inline__ __attribute__((nonnull, always_inline)) void webdriverMemoryPool(struct  *mempool)
 {
 
-  ASSERT ("Bad call: Pool is non-empty", mempool__.__memory__ == NULL);
-  ASSERT (WerrorOccurred(webdriverMalloc(), mempool__.__memory__));
-  mempool__.__mp__   = mempool__.__memory__;
-  mempool__.__free__ = NULL;
-  mempool__.__next__ = NULL;
+  ASSERT ("Bad call: Pool is non-empty", mempool == NULL);
+  ASSERT (NOT (
+			   WerrorOccured (webdriverMalloc( webdriverSizeofMemoryPool ),   mempool) ||
+		       WerrorOccurred(webdriverMalloc( webdriverMemoryPoolMaxAlloc ), mempool.__memory__)
+			   )
+		  );
+  mempool.__mp__   = mempool.__memory__;
+  mempool.__free__ = NULL;
+  mempool.__next__ = NULL;
 }
 
-void *webdriverMemoryPoolGet(uint16_t size)
+void *webdriverMemoryPoolGet(char *mempool, uint16_t size)
 {
   if (mempool__.__free__)
 	{
-	// Transverse;
+	  // Transverse;
 	}
-  (size < webdriverMemoryPoolMinAlloc) && (size = alignUp(size));
-  if ((ptrdiff_t)(mempool__.__mp__ - mempool__.__memory__) > allocs)
+  (size < webdriverMemoryPoolMinAlloc) && (size = alignUp(size, webdriverMemoryPoolMinAlloc));
+  if ((ptrdiff_t)(mempool__.__mp__ - mempool__.__memory__) < size)
+	{
+	  mempool__
+	}
 }
 
 void *webdriverMemoryPoolDelete(webdriver_TObject object)

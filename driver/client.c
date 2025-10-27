@@ -389,20 +389,22 @@ static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryP
 
 void *webdriverMemoryPoolGet(Webdriver_TMemoryPool *mempool, uint16_t size)
 {
+  Webdriver_MemoryPool *mpe __attribute__((unused)) = NULL;
+
   if (mempool.__free__)
 	{
 	  // Transverse;
 	}
+  // TODO: we loop over __mp__
   (size < webdriverMemoryPoolMinAlloc) && (size = alignUp(size, webdriverMemoryPoolMinAlloc));
   if ((ptrdiff_t)(mempool.__mp__ - mempool.__memory__) < size)
 	{
-	  Webdriver_MemoryPool *pe = webdriverMemoryPool(mempool->__next__);
-	  *(uint16_t *)pe = size;
-	  pe += 2; // sizeof uint16_t
-	  mempool->next->__mp__ = pe + size;
-
-	  return pe;
+	  mpe = webdriverMemoryPool(mempool->__next__);
+	  *(uint16_t *)mpe = size;
+	  mpe += 2; // sizeof uint16_t
+	  mempool->next->__mp__ = mpe + size;
 	}
+  return mpe;
 }
 
 void *webdriverMemoryPoolDelete(webdriver_TObject object)

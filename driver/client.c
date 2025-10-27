@@ -355,9 +355,8 @@ enum {
 	  BOOLEAN
 };
 
-#define webdriverObjectNList 16
-#define webdriverObjectDefArenaSize 32768
-#define webdriverObjectDefAllocSize 8
+#define webdriverObjectArraySize 16
+#define webdriverObjecAllocSize 1024
 
 struct webdriver_MemoryPool {
   void *__memory__;
@@ -367,34 +366,40 @@ struct webdriver_MemoryPool {
 } mempool__;
 
 struct webdriver_TObject {
-  void *ObjectCon[ webdriverObjectNList ];
+  void *ObjectCon[ webdriverObjectArraySize ];
   struct webdriver_Store __malloc__;
   uint8_t __meta__;
 };
 
 __attribute__((nonnull)) void webdriverObject(webdriver_TObject *object)
 {
-  object->__malloc__ = webdriverMemoryPoolGet(webdriverObjectDefAllocSize);
+  object->__malloc__ = webdriverMemoryPoolGet(webdriverObjectAllocSize);
   object->__meta__  |= OBJECT;
 }
 
+#define webdriverMemoryPoolSize 32768
+#define webdriverMemoryPoolMinAlloc 8
+#define webdriverMemoryPoolMaxAlloc 63355
+#define alignUp(n, p2) (((n) + ((p2) - 1)) & ~((p2) - 1))
 
 static __inline__ __attribute__((nonnull, always_inline)) void webdriverMemoryPool(void)
 {
 
   ASSERT ("Bad call: Pool is non-empty", mempool__.__memory__ == NULL);
-  ASSERT (WerrorOccurred(webdriverMalloc(allocs), mempool__.__memory__));
+  ASSERT (WerrorOccurred(webdriverMalloc(), mempool__.__memory__));
   mempool__.__mp__   = mempool__.__memory__;
   mempool__.__free__ = NULL;
   mempool__.__next__ = NULL;
 }
 
-void *webdriverMemoryPoolGet(uint16_t allocs)
+void *webdriverMemoryPoolGet(uint16_t size)
 {
   if (mempool__.__free__)
 	{
 	// Transverse;
 	}
+  (size < webdriverMemoryPoolMinAlloc) && (size = alignUp(size));
+  if ((ptrdiff_t)(mempool__.__mp__ - mempool__.__memory__) > allocs)
 }
 
 void *webdriverMemoryPoolDelete(webdriver_TObject object)

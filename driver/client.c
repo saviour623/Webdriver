@@ -347,18 +347,19 @@ __attribute__((nonnull)) size_t webdriverBufferUsed(Webdriver_Client client) {
   return (client->bufsize__ - client->bufc__);
 }
 
-struct Webdriver_MemoryPool {
+typedef struct Webdriver_TMemoryPool Webdriver_TMemoryPool;
+struct Webdriver_TMemoryPool {
   void *__memory__;
   void *__mp__;
   void *__free__;
-  struct Webbriver_Memory *__next__;
+  struct Webbriver_TMemoryPool *__next__;
 } * mempool__ = NULL;
 
-struct Webdriver_TObject {
+typedef struct {
   void *ObjectCon[ webdriverObjectArraySize ];
   void * __malloc__;
   uint8_t __meta__;
-};
+} Webdriver_TObject;
 
 __attribute__((nonnull)) void webdriverObject(Webdriver_TObject *object)
 {
@@ -370,7 +371,7 @@ __attribute__((nonnull)) void webdriverObject(Webdriver_TObject *object)
   object->__meta__  |= OBJECT;
 }
 
-static __inline__ __attribute__((nonnull, always_inline)) void webdriverMemoryPool(struct  *mempool)
+static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryPool(struct Webdriver_TMemoryPool *mempool)
 {
 
   ASSERT ("Bad call: Pool is non-empty", mempool == NULL);
@@ -382,18 +383,25 @@ static __inline__ __attribute__((nonnull, always_inline)) void webdriverMemoryPo
   mempool.__mp__   = mempool.__memory__;
   mempool.__free__ = NULL;
   mempool.__next__ = NULL;
+
+  return mempool;
 }
 
-void *webdriverMemoryPoolGet(char *mempool, uint16_t size)
+void *webdriverMemoryPoolGet(Webdriver_TMemoryPool *mempool, uint16_t size)
 {
-  if (mempool__.__free__)
+  if (mempool.__free__)
 	{
 	  // Transverse;
 	}
   (size < webdriverMemoryPoolMinAlloc) && (size = alignUp(size, webdriverMemoryPoolMinAlloc));
-  if ((ptrdiff_t)(mempool__.__mp__ - mempool__.__memory__) < size)
+  if ((ptrdiff_t)(mempool.__mp__ - mempool.__memory__) < size)
 	{
-	  mempool__
+	  Webdriver_MemoryPool *pe = webdriverMemoryPool(mempool->__next__);
+	  *(uint16_t *)pe = size;
+	  pe += 2; // sizeof uint16_t
+	  mempool->next->__mp__ = pe + size;
+
+	  return pe;
 	}
 }
 
@@ -401,6 +409,6 @@ void *webdriverMemoryPoolDelete(webdriver_TObject object)
 {
 }
 
-void *webdriverMemorypoolGrow(webdriver_TObject)
+void *webdriverMemoryPoolGrow(webdriver_TObject)
 {
 }

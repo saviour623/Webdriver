@@ -361,6 +361,7 @@ enum {
 
 struct webdriver_MemoryPool {
   void *__memory__;
+  void *__mp__;
   void *__free__;
   void *__next__;
 } mempool__;
@@ -371,25 +372,35 @@ struct webdriver_TObject {
   uint8_t __meta__;
 };
 
-__attribute__((nonnull)) void webdriverObject(webdriver_TObject *object) {
-  object->__malloc__ = webdriverObjectStore(webdriverObjectDefAllocSize);
+__attribute__((nonnull)) void webdriverObject(webdriver_TObject *object)
+{
+  object->__malloc__ = webdriverMemoryPoolGet(webdriverObjectDefAllocSize);
   object->__meta__  |= OBJECT;
 }
 
 
-static __inline__ __attribute__((nonnull, always_inline)) void webdriverMemoryPool(void) {
+static __inline__ __attribute__((nonnull, always_inline)) void webdriverMemoryPool(void)
+{
 
+  ASSERT ("Bad call: Pool is non-empty", mempool__.__memory__ == NULL);
   ASSERT (WerrorOccurred(webdriverMalloc(allocs), mempool__.__memory__));
+  mempool__.__mp__   = mempool__.__memory__;
   mempool__.__free__ = NULL;
   mempool__.__next__ = NULL;
 }
 
-void *webdriverMemoryPoolGet(uint16_t allocs) {
-  
+void *webdriverMemoryPoolGet(uint16_t allocs)
+{
+  if (mempool__.__free__)
+	{
+	// Transverse;
+	}
 }
 
-void *webdriverMemoryPoolDelete(webdriver_TObject object) {
+void *webdriverMemoryPoolDelete(webdriver_TObject object)
+{
 }
 
-void *webdriverMemorypoolGrow(webdriver_TObject) {
+void *webdriverMemorypoolGrow(webdriver_TObject)
+{
 }

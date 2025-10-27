@@ -376,11 +376,15 @@ static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryP
 {
 
   ASSERT ("Bad call: Pool is non-empty", mempool == NULL);
-  ASSERT (NOT (
-			   WerrorOccured (webdriverMalloc( webdriverSizeofMemoryPool ),   mempool) ||
-		       WerrorOccurred(webdriverMalloc( webdriverMemoryPoolMaxAlloc ), mempool.__memory__)
-			   )
-		  );
+  if (NOT (
+		   (mempool = webdriverMalloc( webdriverSizeofMemoryPool )) &&
+		   (mempool->__memory__  = webdriverMalloc( webdriverMemoryPoolMaxAlloc ))
+		   )
+	  )
+	{
+	  errno = ENOMEM;
+	  return (void *)WEBDR_EOMEM;
+	}
   mempool.__mp__   = mempool.__memory__;
   mempool.__free__ = NULL;
   mempool.__next__ = NULL;
@@ -390,26 +394,45 @@ static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryP
 
 void *webdriverMemoryPoolGet(Webdriver_TMemoryPool *mempool, uint16_t size)
 {
-  Webdriver_MemoryPool *node, *mpe __attribute__((unused)) = NULL;
+  Webdriver_MemoryPool *node, *pe __attribute__((unused)) = NULL;
 
   (size < webdriverMemoryPoolMinAlloc) && (size = alignUp(size, webdriverMemoryPoolMinAlloc));
 
-  // is any fit in the free list?
-  if (mempool.__free__)
-	{
-	  // Transverse;
-	}
   // find a pool with required size
-  for (node = mempool; node->__mp__ && (ptrdiff_t)(node->__mp__ - node->__memory__) < size;)
-	mempool->__ = mempool->__next__;
+  for (node = mempool; node->__mp__ && (ptrdiff_t)(node->__mp__ - node->__memory__) < size+2;)
+	node = node->__next__;
+  if ( node ) {
+	pe = node->__mp__;
+	node->__mp__ += size;
+	(++(uint16_t *)pe)[-1] = size;
 
-  if (node == NULL)
+	return ((uint16_t *)pe);
+  }
+
+  // Any fit in the free list?
+  for (fe = &(mempool->__free__), size -= 2; (fe = *fe) && size < ((uint16_t *)fe)[-1]; );
+  if ( fe )
 	{
-	  // couldn’t find any: Add a new pool
-	  webdriverMemoryPool(mempool->__next__);
-	}
+	  // TODO: remove found from list. XOR List?
+	  ((uint16_t *)(fe))[-1] = size;
 
-  return NULL;
+	  return fe;
+	}
+#ifdef WEBDR_NO_FIXED_POOL
+  // Add a new pool
+  if ((node = webdriverMemoryPool(node)))
+	{
+	  (++(uint16_t *)node)[-1] = size;
+	  node->__mp__ = node + size;
+
+	  return node;
+	}
+#endif
+  errno = ENOMEM;
+  return (void *)WEBDR_EOMEM;
+}
+
+return NULL;
 }
 
 void *webdriverMemoryPoolDelete(webdriver_TObject object)

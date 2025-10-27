@@ -348,14 +348,6 @@ __attribute__((nonnull)) size_t webdriverBufferUsed(Webdriver_Client client) {
   return (client->bufsize__ - client->bufc__);
 }
 
-typedef struct Webdriver_TMemoryPool Webdriver_TMemoryPool;
-struct Webdriver_TMemoryPool {
-  void *__memory__;
-  void *__mp__;
-  void *__free__;
-  struct Webbriver_TMemoryPool *__next__;
-} * mempool__ = NULL;
-
 typedef struct {
   void *ObjectCon[ webdriverObjectArraySize ];
   void * __malloc__;
@@ -371,6 +363,14 @@ __attribute__((nonnull)) void webdriverObject(Webdriver_TObject *object)
 	}
   object->__meta__  |= OBJECT;
 }
+
+typedef struct Webdriver_TMemoryPool Webdriver_TMemoryPool;
+struct Webdriver_TMemoryPool {
+  void *__memory__;
+  void *__mp__;
+  void *__free__;
+  struct Webbriver_TMemoryPool *__next__;
+} *mempool__ = NULL;
 
 static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryPool(struct Webdriver_TMemoryPool *mempool)
 {
@@ -392,25 +392,24 @@ void *webdriverMemoryPoolGet(Webdriver_TMemoryPool *mempool, uint16_t size)
 {
   Webdriver_MemoryPool *node, *mpe __attribute__((unused)) = NULL;
 
+  (size < webdriverMemoryPoolMinAlloc) && (size = alignUp(size, webdriverMemoryPoolMinAlloc));
+
+  // is any fit in the free list?
   if (mempool.__free__)
 	{
 	  // Transverse;
 	}
-  // TODO: we loop over __mp__
-  (size < webdriverMemoryPoolMinAlloc) && (size = alignUp(size, webdriverMemoryPoolMinAlloc));
-
+  // find a pool with required size
   for (node = mempool; node->__mp__ && (ptrdiff_t)(node->__mp__ - node->__memory__) < size;)
-	node = mempool->__next__;
+	mempool->__ = mempool->__next__;
 
   if (node == NULL)
 	{
-	  mpe = webdriverMemoryPool(mempool->__next__);
-	  *(uint16_t *)mpe = size;
-	  mpe += 2; // sizeof uint16_t
-	  mempool->next->__mp__ = mpe + size;
+	  // couldn’t find any: Add a new pool
+	  webdriverMemoryPool(mempool->__next__);
 	}
 
-  return mpe;
+  return NULL;
 }
 
 void *webdriverMemoryPoolDelete(webdriver_TObject object)

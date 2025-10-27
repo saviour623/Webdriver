@@ -347,22 +347,11 @@ __attribute__((nonnull)) size_t webdriverBufferUsed(Webdriver_Client client) {
   return (client->bufsize__ - client->bufc__);
 }
 
-enum {
-	  OBJECT,
-	  ARRAY,
-	  STRING,
-	  NUMBER,
-	  BOOLEAN
-};
-
-#define webdriverObjectArraySize 16
-#define webdriverObjecAllocSize 1024
-
 struct Webdriver_MemoryPool {
   void *__memory__;
   void *__mp__;
   void *__free__;
-  struct Wedbriver_Memory *__next__;
+  struct Webbriver_Memory *__next__;
 } * mempool__ = NULL;
 
 struct Webdriver_TObject {
@@ -371,7 +360,7 @@ struct Webdriver_TObject {
   uint8_t __meta__;
 };
 
-__attribute__((nonnull)) void webdriverObject(webdriver_TObject *object)
+__attribute__((nonnull)) void webdriverObject(Webdriver_TObject *object)
 {
   if ( (object->__malloc__ = webdriverMemoryPoolGet(mempool__, webdriverObjectAllocSize)) == (void *)WEBDR_EOMEM )
 	{
@@ -380,13 +369,6 @@ __attribute__((nonnull)) void webdriverObject(webdriver_TObject *object)
 	}
   object->__meta__  |= OBJECT;
 }
-
-#define webdriverMemoryPoolSize 32768
-#define webdriverMemoryPoolMinAlloc 8
-#define webdriverMemoryPoolMaxAlloc 63355
-#define webdriverSizeofMemoryPool sizeof (struct webdriver_MemoryPool)
-
-#define alignUp(n, p2) (((n) + ((p2) - 1)) & ~((p2) - 1))
 
 static __inline__ __attribute__((nonnull, always_inline)) void webdriverMemoryPool(struct  *mempool)
 {

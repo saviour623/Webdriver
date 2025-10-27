@@ -38,8 +38,10 @@
   ((af) = (def), (hint) != 0 ? (hint) : WEBDR_DOMRESET)
 #endif
 
-// TODO: Move safeUnsignedSize_Add to include.h
+// TODO: Move safeUnsignedSize_Add and alignUp to include.h
 #define safeUnsignedSize_Add(a, b, c) ( ((a) < (SIZE_MAX - (b))) && ((*(c) = (a) + (b)), 1) )
+#define alignUp(n, p2) (((n) + ((p2) - 1)) & ~((p2) - 1))
+
 #define WEBDR_APPEND_DELIM(buf, n) (((buf)[n] = CR), ((buf)[n + 1] = LF), 2)
 
 #define ERROR_socket(...)      < 0) && Debug(WEBDR_EOSOCK
@@ -89,6 +91,14 @@ struct Webdriver_Client__ {
 #define WEBDR_DEF_MALLOC_SIZE 2048
 #define WEBDR_DEF_MALLOC_GRW  1024
 
+#define webdriverObjectArraySize 16
+#define webdriverObjecAllocSize 1024
+
+#define webdriverMemoryPoolSize 32768
+#define webdriverMemoryPoolMinAlloc 8
+#define webdriverMemoryPoolMaxAlloc 63355
+#define webdriverSizeofMemoryPool sizeof (struct Webdriver_MemoryPool)
+
 typedef struct {
   char    *host;
   uint16_t port;
@@ -100,6 +110,14 @@ struct Webdriver_Itoabf
 {
   uint8_t ibf[22];
   uint8_t len;
+};
+
+enum {
+	  OBJECT,
+	  ARRAY,
+	  STRING,
+	  NUMBER,
+	  BOOLEAN
 };
 
 enum {

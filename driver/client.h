@@ -68,6 +68,9 @@
 #define NOT(e) !(e)
 #define ASSERT assert
 
+#define _LOCK() //TODO: Implement a thread locking mechanism
+#define _UNLOCK()
+
 typedef struct {
   char *header;
   char *body;
@@ -96,8 +99,8 @@ struct Webdriver_Client__ {
 
 #define webdriverMemoryPoolSize 32768
 #define webdriverMemoryPoolMinAlloc 8
-#define webdriverMemoryPoolMaxAlloc 63355
 #define webdriverSizeofMemoryPool sizeof (struct Webdriver_MemoryPool)
+#define webdriverMemoryPoolMaxAlloc UINT16_MAX - webdriverSizeofMemoryPool - 2
 
 typedef struct {
   char    *host;

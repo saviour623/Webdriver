@@ -378,7 +378,7 @@ static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryP
 
   ASSERT ("Bad call: Pool is non-empty", mempool == NULL);
   if (NOT
-	  ((mempool = webdriverMalloc( webdriverSizeofMemoryPool + webdriverMemoryPoolMaxAlloc)))
+	  ((mempool = webdriverMalloc( webdriverMemoryPoolMaxAlloc )))
 	  )
 	{
 	  errno = ENOMEM;

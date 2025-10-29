@@ -299,7 +299,7 @@ static const __inline__ __attribute__((always_inline, nonnull)) void *webdriverA
   return (cc == (void *)WEBDR_SUCCESS ? (void *)WEBDR_SUCCESS : (void *)WEBDR_EOMEM);
 }
 
-  __attribute__((nonnull)) const void *webdriverSetHttpCmd(Webdriver_Client client, const int method, const void *cmd)
+__attribute__((nonnull)) const void *webdriverSetHttpCmd(Webdriver_Client client, const int method, const void *cmd)
 {
   const void *tab[6] = {
 						WDHttpMethodStr[method],
@@ -366,7 +366,7 @@ __attribute__((nonnull)) void webdriverObject(Webdriver_TObject *object)
 
 typedef struct Webdriver_TMemoryPool Webdriver_TMemoryPool;
 struct Webdriver_TMemoryPool {
-  void *__memory__;
+  void *__tp__;
   void *__mp__;
   void *__free__;
   void *__tail__;
@@ -385,33 +385,44 @@ static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryP
 	  return (void *)WEBDR_EOMEM;
 	}
 
-  mempool.__mp__   = mempool.__memory__ = (char *)mempool + webdriverSizeofMemoryPool;
-  mempool.__free__ = NULL;
-  mempool.__tail__ = NULL;
-  mempool.__next__ = NULL;
+  mempool->__tp__ = (uint8_t *)mempool + (webdriverMemoryPoolMaxAlloc - 1);
+  mempool->__mp__ = (uint8_t *)mempool +  webdriverSizeofMemoryPool;
+  mempool->__free__ = NULL;
+  mempool->__tail__ = NULL;
+  mempool->__next__ = NULL;
 
   return mempool;
 }
 
-static __inline__ __attribute__((always_inline)) void *freeFit(void **freeList, const uint16_t size) {
+static __inline__ __attribute__((always_inline)) void *free_firstFit(Webdriver_TMemoryPool mempool, const uint16_t size) {
   uint16_t *cnode, *pnode = NULL;
 
-  for (cnode = *freeList; cnode && (cnode[-1] < size); pnode = cnode, cnode = *cnode);
+  for (cnode = mempool->__free__; cnode && (cnode[-1] < size); pnode = cnode, cnode = *cnode);
   if (cnode)
-	*pnode == NULL ? (*freeList = *cnode) : *pnode = *cnode;
+	*pnode == NULL ? (mempool->__free__ = *cnode)
+	  : cnode == mempool->__tail__ ? (mempool->__tail__ = pnode) : (*pnode = *cnode);
 
   return cnode;
 }
 
-void *webdriverMemoryPoolGetUnlocked(Webdriver_TMemoryPool *mempool, uint16_t size)
+#ifdef WEBDR_MEMPOOL_LINK
+static __inline__ __attribute__((always_inline)) pool_firstFit(const Webdriver_TMemoryPool mempool, const uint16_t size) {
+  void *endp = mempool->__tp__ - size - webdriverMemoryPoolMetaSize;
+
+  for (Webdriver_TMemoryPool cpool = mempool; cpool && (cpool->__mp__ < endp); cpool = cpool->__next__);
+
+  return cpool;
+}
+#else
+#define pool_firstFit(mempool, size) (mempool && (mempool)->__mp__ < ((mempool)->__tp__ - size - webdriverMemoryPoolMetaSize) ? (mempool) : NULL)
+#endif
+
+void *webdriverMemoryPoolGetUnlocked(Webdriver_TMemoryPool mempool, uint16_t size)
 {
-  Webdriver_MemoryPool *cpool, *ctmp __attribute__((unused)) = NULL;
+  Webdriver_MemoryPool cpool; void *ctmp __attribute__((unused)) = NULL;
 
   (size < webdriverMemoryPoolMinAlloc) && (size = alignUp(size, webdriverMemoryPoolMinAlloc));
-
-  // find a pool with required size
-  for (cpool = mempool; cpool->__mp__ && (ptrdiff_t)(cpool->__mp__ - cpool->__memory__) < size+2;)
-	cpool = cpool->__next__;
+  cpool = pool_firstFit(mempool, size);
   if ( cpool ) {
 	ctmp = cpool->__mp__;
 	cpool->__mp__ += size;
@@ -421,8 +432,8 @@ void *webdriverMemoryPoolGetUnlocked(Webdriver_TMemoryPool *mempool, uint16_t si
   }
 
   // Any fit in the free list?
-  if ( (ctmp = freeFit(&(mempool->__free__), size)) )
-	   return ctmp;
+  if ( (ctmp = free_firstFit(&(mempool->__free__), size)) )
+	return ctmp;
 
 #ifdef WEBDR_NO_FIXED_POOL
   // Add a new pool
@@ -461,7 +472,7 @@ void webdriverMemoryPoolDelete(Webdriver_TMemoryPool *mempool, void *chunk)
 	return;
   }
   *(mempool.__tail__) = chunk;
-    mempool.__tail__  = chunk;
+  mempool.__tail__  = chunk;
 }
 
 void webdriverMemoryPoolGrow(webdriver_TObject *mempool, const uin16_t flags, const uint16_t factor)

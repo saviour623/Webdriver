@@ -394,7 +394,7 @@ HIDDEN() static __inline__ __attribute__((nonnull, always_inline)) void *webdriv
   return mempool;
 }
 
-static __inline__ __attribute__((always_inline)) void *free_firstFit(Webdriver_TMemoryPool mempool, const uint16_t size) {
+HIDDEN() static __inline__ __attribute__((always_inline)) void *free_firstFit(Webdriver_TMemoryPool mempool, const uint16_t size) {
   uint16_t *cnode, *pnode = NULL;
 
   for (cnode = mempool->__free__; cnode && (cnode[-1] < size); pnode = cnode, cnode = *cnode);
@@ -406,7 +406,7 @@ static __inline__ __attribute__((always_inline)) void *free_firstFit(Webdriver_T
 }
 
 #ifdef WEBDR_MEMPOOL_LINK
-static __inline__ __attribute__((always_inline)) pool_firstFit(const Webdriver_TMemoryPool mempool, const uint16_t size) {
+HIDDEN() static __inline__ __attribute__((always_inline)) pool_firstFit(const Webdriver_TMemoryPool mempool, const uint16_t size) {
   void *endp = mempool->__tp__ - size - webdriverMemoryPoolMetaSize;
 
   for (Webdriver_TMemoryPool cpool = mempool; cpool && (cpool->__mp__ < endp); cpool = cpool->__next__);

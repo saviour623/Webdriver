@@ -68,6 +68,9 @@
 #define NOT(e) !(e)
 #define ASSERT assert
 
+#ifdef defined(__GCC__) || defined(__gcc__) || defined(__clang__)
+#define HIDDEN() __attribute__((visibility("hidden")))
+#endif
 #define _LOCK() //TODO: Implement a thread locking mechanism
 #define _UNLOCK()
 

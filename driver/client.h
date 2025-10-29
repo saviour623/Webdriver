@@ -66,9 +66,9 @@
 #define JMP(label) goto label
 #define LOCATION(label) label: (void)0
 #define NOT(e) !(e)
-#define ASSERT assert
+#define ASSERT(...) assert((__VA_ARGS__))
 
-#ifdef defined(__GCC__) || defined(__gcc__) || defined(__clang__)
+#if defined(__GNUC__) || defined(__gcc__) || defined(__clang__)
 #define HIDDEN() __attribute__((visibility("hidden")))
 #endif
 #define _LOCK() //TODO: Implement a thread locking mechanism
@@ -100,11 +100,11 @@ struct Webdriver_Client__ {
 #define webdriverObjectArraySize 16
 #define webdriverObjecAllocSize 1024
 
-#define webdriverMemoryPoolMinAlloc 8
+#define webdriverMemoryPoolMinAlloc (sizeof(void *))
 #define webdriverMemoryPoolMetaSize 2
-#define webdriverSizeofMemoryPool sizeof (struct Webdriver_MemoryPool)
+#define webdriverSizeofMemoryPool sizeof (struct Webdriver_TMemoryPool__)
 #define webdriverMemoryPoolSize   (UINT16_MAX - webdriverSizeofMemoryPool - webdriverMemoryPoolMetaSize)
-#define webdriverMemoryPoolMaxAlloc UINT16_MAX
+#define webdriverMemoryPoolMaxAlloc webdriverMemoryPoolSize
 
 typedef struct {
   char    *host;

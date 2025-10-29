@@ -348,32 +348,19 @@ __attribute__((nonnull)) size_t webdriverBufferUsed(Webdriver_Client client) {
   return (client->bufsize__ - client->bufc__);
 }
 
-typedef struct {
-  void *ObjectCon[ webdriverObjectArraySize ];
-  void * __malloc__;
-  uint8_t __meta__;
-} Webdriver_TObject;
+#define chunkSize(chunk) ((uint16_t *)(void *)chunk)[-1]
+typedef struct Webdriver_TMemoryPool__ * Webdriver_TMemoryPool;
+typedef uint8_t Byte;
 
-__attribute__((nonnull)) void webdriverObject(Webdriver_TObject *object)
-{
-  if ( (object->__malloc__ = webdriverMemoryPoolGet(mempool__, webdriverObjectAllocSize)) == (void *)WEBDR_EOMEM )
-	{
-	  fprintf(stderr, "Error<EOMEM>: unable to create object");
-	  exit(WEBDR_FAILURE);
-	}
-  object->__meta__  |= OBJECT;
-}
-
-typedef struct Webdriver_TMemoryPool Webdriver_TMemoryPool;
-HIDDEN() struct Webdriver_TMemoryPool {
-  void *__tp__;
-  void *__mp__;
+struct Webdriver_TMemoryPool__ {
+  Byte *__tp__;
+  Byte *__mp__;
   void *__free__;
   void *__tail__;
-  struct Webbriver_TMemoryPool *__next__;
-} *mempool__ = NULL;
+  Webdriver_TMemoryPool __next__;
+};
 
-HIDDEN() static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryPool(struct Webdriver_TMemoryPool *mempool)
+static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryPool(Webdriver_TMemoryPool mempool)
 {
 
   ASSERT ("Bad call: Pool is non-empty", mempool == NULL);
@@ -385,8 +372,8 @@ HIDDEN() static __inline__ __attribute__((nonnull, always_inline)) void *webdriv
 	  return (void *)WEBDR_EOMEM;
 	}
 
-  mempool->__tp__ = (uint8_t *)mempool + (webdriverMemoryPoolMaxAlloc - 1);
-  mempool->__mp__ = (uint8_t *)mempool +  webdriverSizeofMemoryPool;
+  mempool->__tp__ = (Byte *)mempool + (webdriverMemoryPoolMaxAlloc - 1);
+  mempool->__mp__ = (Byte *)mempool +  webdriverSizeofMemoryPool;
   mempool->__free__ = NULL;
   mempool->__tail__ = NULL;
   mempool->__next__ = NULL;
@@ -394,20 +381,25 @@ HIDDEN() static __inline__ __attribute__((nonnull, always_inline)) void *webdriv
   return mempool;
 }
 
-HIDDEN() static __inline__ __attribute__((always_inline)) void *free_firstFit(Webdriver_TMemoryPool mempool, const uint16_t size) {
-  uint16_t *cnode, *pnode = NULL;
+static __inline__ __attribute__((always_inline)) void *free_firstFit(Webdriver_TMemoryPool mempool, const uint16_t size) {
+  void **cnode, **pnode = NULL;
 
-  for (cnode = mempool->__free__; cnode && (cnode[-1] < size); pnode = cnode, cnode = *cnode);
+  for (cnode = mempool->__free__; cnode && chunkSize(cnode) < size; pnode = cnode, cnode = *cnode);
   if (cnode)
-	*pnode == NULL ? (mempool->__free__ = *cnode)
+	{
+	  if (chunkSize(cnode) > ((uint32_t)size * 2.5))
+		{
+		  // TODO: Split into chunk; keep half in free list and return the other
+		}
+	pnode == NULL ? (mempool->__free__ = *cnode)
 	  : cnode == mempool->__tail__ ? (mempool->__tail__ = pnode) : (*pnode = *cnode);
-
+	}
   return cnode;
 }
 
 #ifdef WEBDR_MEMPOOL_LINK
-HIDDEN() static __inline__ __attribute__((always_inline)) pool_firstFit(const Webdriver_TMemoryPool mempool, const uint16_t size) {
-  void *endp = mempool->__tp__ - size - webdriverMemoryPoolMetaSize;
+static __inline__ __attribute__((always_inline)) pool_firstFit(const Webdriver_TMemoryPool mempool, const uint16_t size) {
+  const void *endp = mempool->__tp__ - size - webdriverMemoryPoolMetaSize;
 
   for (Webdriver_TMemoryPool cpool = mempool; cpool && (cpool->__mp__ < endp); cpool = cpool->__next__);
 
@@ -417,23 +409,26 @@ HIDDEN() static __inline__ __attribute__((always_inline)) pool_firstFit(const We
 #define pool_firstFit(mempool, size) (mempool && (mempool)->__mp__ < ((mempool)->__tp__ - size - webdriverMemoryPoolMetaSize) ? (mempool) : NULL)
 #endif
 
-HIDDEN() void *webdriverMemoryPoolGetUnlocked(Webdriver_TMemoryPool mempool, uint16_t size)
+static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryPoolGetUnlocked(Webdriver_TMemoryPool mempool, uint16_t size)
 {
-  Webdriver_MemoryPool cpool; void *ctmp __attribute__((unused)) = NULL;
+  Webdriver_TMemoryPool cpool; void *ctmp __attribute__((unused)) = NULL;
+
+  if (webdriverMemoryPoolMaxAlloc < size)
+	return (void *)WEBDR_EOMEM;
 
   (size < webdriverMemoryPoolMinAlloc) && (size = alignUp(size, webdriverMemoryPoolMinAlloc));
   cpool = pool_firstFit(mempool, size);
   if ( cpool ) {
-	ctmp = cpool->__mp__;
-	cpool->__mp__ += size;
-	(++(uint16_t *)ctmp)[-1] = size;
+	ctmp = cpool->__mp__  += webdriverMemoryPoolMetaSize;
+	cpool->__mp__  += size;
+	chunkSize(ctmp) = size;
 
-	return ((uint16_t *)ctmp);
+	return ctmp;
   }
 
   // Any fit in the free list?
-  if ( (ctmp = free_firstFit(&(mempool->__free__), size)) )
-	return ctmp;
+  if ( (ctmp = free_firstFit(mempool->__free__, size)) )
+	  return memset(ctmp, 0, chunkSize(ctmp));
 
 #ifdef WEBDR_NO_FIXED_POOL
   // Add a new pool
@@ -450,7 +445,7 @@ HIDDEN() void *webdriverMemoryPoolGetUnlocked(Webdriver_TMemoryPool mempool, uin
   return (void *)WEBDR_EOMEM;
 }
 
-HIDDEN() static __inline__ __attribute__((always_inline, nonnull)) void *webdriverMemoryPoolGet(Webdriver_TMemoryPool *mempool, uint16_t size)
+static __inline__ __attribute__((always_inline, nonnull)) void *webdriverMemoryPoolGet(Webdriver_TMemoryPool mempool, uint16_t size)
 {
   void *memp;
 
@@ -461,28 +456,72 @@ HIDDEN() static __inline__ __attribute__((always_inline, nonnull)) void *webdriv
   return memp;
 }
 
-HIDDEN() void webdriverMemoryPoolDelete(Webdriver_TMemoryPool *mempool, void *chunk)
+void webdriverMemoryPoolDelete(Webdriver_TMemoryPool mempool, void *chunk)
 {
   if (NOT (chunk))
 	return;
 
-  memset(chunk, 0, (uint16_t *)chunk[-1]); // TODO: memset here or when fitted in Get
-  if (NOT (mempool.__free__)) {
-	mempool.__free__ = mempool.__tail__ = chunk;
+  if (NOT (mempool->__free__)) {
+	mempool->__free__ = mempool->__tail__ = chunk;
 	return;
   }
-  *(mempool.__tail__) = chunk;
-  mempool.__tail__  = chunk;
+  *(void **)(mempool->__tail__) = chunk;
+  mempool->__tail__  = chunk;
 }
 
-HIDDEN() void webdriverMemoryPoolGrow(webdriver_TObject *mempool, const uin16_t flags, const uint16_t factor)
+void *webdriverMemoryPoolChunkGrow(Webdriver_TMemoryPool mempool, void **chunk, uint16_t size)
 {
-  /*
-   * Implentation: No actual grow happens here rather give hint that mempool should resize/realloc
-   * its memory by a factor of N.
-   *The flags are:
-   * MEMPOOL_EXT: extend the current pool
-   * MEMPOOL_NEW_POOL: link a new pool to current pool
-   * MEMPOOL_NONE or 0: pool is fixed (default)
-   */
+  void *nchunk __attribute__((unused));
+
+  if (size == 0)
+	{
+	  webdriverMemoryPoolDelete(mempool, *chunk);
+	  *chunk = NULL;
+	  return (void *)WEBDR_EOMEM;
+	}
+  if (size < chunkSize(*chunk))
+	return *chunk;
+
+  nchunk = webdriverMemoryPoolGet(mempool, size);
+  if (nchunk != (void *)WEBDR_EOMEM)
+	memcpy(nchunk, *chunk, size);
+
+  return nchunk;
+}
+
+HIDDEN() void webdriverMemoryPoolGrow(Webdriver_TMemoryPool mempool, const uint16_t flags, const uint16_t factor)
+{
+
+#ifdef WEBDR_MEMPOOL_EXT
+  //MEMPOOL_EXT: extend the current pool
+#elif defined(WEBDR_MEMPOOL_LINK)
+  // WEBDR_MEMPOOL_LINK: link a new pool to current pool
+#else
+  // Pool is fixed (default)
+  fprintf(stderr, "Bad request: attempt to resize a fixed pool");
+  exit(WEBDR_FAILURE);
+#endif
+
+}
+
+typedef struct {
+  void *ObjectCon[ webdriverObjectArraySize ];
+  void * __malloc__;
+  uint8_t __meta__;
+} Webdriver_TObject;
+
+#if 0
+__attribute__((nonnull)) void webdriverObject(Webdriver_TObject *object)
+{
+  if ( (object->__malloc__ = webdriverMemoryPoolGet(mempool__, sizeof(Webdriver_TObject))) == (void *)WEBDR_EOMEM )
+	{
+	  fprintf(stderr, "Error<EOMEM>: unable to create object");
+	  exit(WEBDR_FAILURE);
+	}
+  object->__meta__  |= OBJECT;
+}
+#endif
+
+int main(void) {
+  
 }

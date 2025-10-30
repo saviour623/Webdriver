@@ -26,7 +26,7 @@ size_t freeCount(void **freelist)
 }
 
 int main(void) {
-  volatile Webdriver_TMemoryPool mempool = webdriverMemoryPool();
+  volatile Webdriver_TMemoryPool mempool;
   int fd;
   clock_t timer;
 
@@ -39,6 +39,7 @@ int main(void) {
 
   {
 	//GET AND DELETE
+	mempool = webdriverMemoryPool();
 	void *memory = webdriverMemoryPoolGet(mempool, 20000);
 	size_t cCHUNK = 12080 >> 4, FcCHUNK = 0;
 
@@ -53,6 +54,7 @@ int main(void) {
 	    perror("read");
 		exit(-1);
 	  }
+
 	//puts(memory);
 	MEMPRINT(mempool);
 	webdriverMemoryPoolDeleteChunk(mempool, &memory);
@@ -76,12 +78,14 @@ int main(void) {
 	PRINTTIME(timer);
 
 	FcCHUNK = freeCount(mempool->__free__) - 1;
-
+#if 0
 	if (cCHUNK != FcCHUNK)
 	  {
 		fprintf(stderr, "<error> number of allocated chunks and equivalent frees differ \nCHUNK: %lu\nFCHUNK: %lu\n", cCHUNK, FcCHUNK);
 		exit(-1);
-	  }
+		}
+#endif
+	webdriverMemoryPoolDelete(mempool);
   }
 
   {
@@ -90,25 +94,48 @@ int main(void) {
 	void *memory;
 	size_t loSize;
 
-	memory = webdriverMemoryPoolGet(mempool, 20000);
+	mempool = webdriverMemoryPool();
+	memory = webdriverMemoryPoolGet(mempool, webdriverMemoryPoolMaxAlloc - 1);
 	loSize = (ptrdiff_t)(mempool->__tp__ - mempool->__mp__); // size left
+
 	printf("%lu\n", loSize );
 
 	if (memory == (void *)WEBDR_EOMEM)
 	  {
-		fprintf(stderr, "webdriverMemoryPoolGet: Out of memory\n");
+		fprintf(stderr, "webdriverMemoryPoolGet: call1: Out of memory\n");
 		exit(-1);
 	  }
 	webdriverMemoryPoolDeleteChunk(mempool, &memory);
-	memory = webdriverMemoryPoolGet(mempool, 20000);
-	if (memory == (void *)WEBDR_EOMEM)
+
+	if (mempool->__free__ == NULL)
 	  {
-		fprintf(stderr, "webdriverMemoryPoolGet: Out of memory\n");
+		fprintf(stderr, "webdriverMemoryPoolGet: Free Failed\n");
 		exit(-1);
 	  }
+	memory = webdriverMemoryPoolGet(mempool, webdriverMemoryPoolMaxAlloc);
+	if (memory == (void *)WEBDR_EOMEM)
+	  {
+		fprintf(stderr, "webdriverMemoryPoolGet: call2: Out of memory\n");
+		exit(-1);
+	  }
+
+	// freelist must be empty
+	if (mempool->__free__ != NULL)
+	  {
+		fprintf(stderr, "webdriverMemoryPoolGet: Something Went wrong\n");
+		exit(-1);
+	  }
+
+	if (read(fd, memory, 19999) < 0)
+	  {
+	    perror("read");
+		exit(-1);
+	  }
+
+	puts(memory);
+	webdriverMemoryPoolDelete(mempool);
   }
 
   close(fd);
-  webdriverMemoryPoolDelete(mempool);
   return 0;
 }

@@ -104,7 +104,7 @@ struct Webdriver_Client__ {
 #define webdriverMemoryPoolMetaSize 2
 #define webdriverSizeofMemoryPool sizeof (struct Webdriver_TMemoryPool__)
 #define webdriverMemoryPoolSize   (UINT16_MAX - webdriverSizeofMemoryPool - webdriverMemoryPoolMetaSize)
-#define webdriverMemoryPoolMaxAlloc webdriverMemoryPoolSize
+#define webdriverMemoryPoolMaxAlloc (webdriverMemoryPoolSize - 1)
 
 typedef struct {
   char    *host;

@@ -537,20 +537,22 @@ void webdriverMemoryPoolGrow(Webdriver_TMemoryPool mempool, const uint16_t flags
 
 }
 
-typedef struct {
-  void *ObjectCon[ webdriverObjectArraySize ];
-  void * __malloc__;
-  uint8_t __meta__;
-} Webdriver_TObject;
+struct Webdriver_TObject__ {
+  void   *__object__[webdriverObjectArraySize];
+  void   *__obnext__;
+  uint8_t __obmeta__  [webdriverObjectMetaSize];
+};
+typedef struct Webdriver_TObject__* Webdriver_TObject;
 
-#if 0
-__attribute__((nonnull)) void webdriverObject(Webdriver_TObject *object)
+__attribute__((nonnull)) void webdriverObject(void)
 {
-  if ( (object->__malloc__ = webdriverMemoryPoolGet(mempool__, sizeof(Webdriver_TObject))) == (void *)WEBDR_EOMEM )
+  Webdriver_TObject object;
+
+  if (( object = webdriverMemoryPoolGet(mempool__, sizeof(Webdriver_TObject__)) ))
 	{
-	  fprintf(stderr, "Error<EOMEM>: unable to create object");
-	  exit(WEBDR_FAILURE);
+	 memset(object->__obmeta__, 0, webdriverObjectMetaSize);
+	 object->__obnext__ = NULL;
 	}
-  object->__meta__  |= OBJECT;
+
+  return object;
 }
-#endif

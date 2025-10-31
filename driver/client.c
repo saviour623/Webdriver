@@ -415,10 +415,6 @@ static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryP
 {
   Webdriver_TMemoryPool cpool; void *ctmp __attribute__((unused)) = NULL;
 
-  // Any fit in the free list?
-  if ( (ctmp = free_firstFit(mempool, size)) )
-	  return memset(ctmp, 0, chunkSize(ctmp));
-
   // Any fit in the pool?
   cpool = pool_firstFit(mempool, size);
   if ( cpool ) {
@@ -428,6 +424,10 @@ static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryP
 
 	return ctmp;
   }
+
+  // Any fit in the free list?
+  if ( (ctmp = free_firstFit(mempool, size)) )
+	  return memset(ctmp, 0, chunkSize(ctmp));
 
 #if 0
   // TODO: Add a new pool

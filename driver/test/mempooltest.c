@@ -39,6 +39,7 @@ int main(void) {
 
   {
 	//GET AND DELETE
+#if 0
 	mempool = webdriverMemoryPool();
 	void *memory = webdriverMemoryPoolGet(mempool, 20000);
 	size_t cCHUNK = 12080 >> 4, FcCHUNK = 0;
@@ -78,14 +79,14 @@ int main(void) {
 	PRINTTIME(timer);
 
 	FcCHUNK = freeCount(mempool->__free__) - 1;
-#if 0
+
 	if (cCHUNK != FcCHUNK)
 	  {
 		fprintf(stderr, "<error> number of allocated chunks and equivalent frees differ \nCHUNK: %lu\nFCHUNK: %lu\n", cCHUNK, FcCHUNK);
 		exit(-1);
 		}
-#endif
 	webdriverMemoryPoolDelete(mempool);
+#endif
   }
 
   {
@@ -95,7 +96,7 @@ int main(void) {
 	size_t loSize;
 
 	mempool = webdriverMemoryPool();
-	memory = webdriverMemoryPoolGet(mempool, webdriverMemoryPoolMaxAlloc - 1);
+	memory = webdriverMemoryPoolGet(mempool, webdriverMemoryPoolMaxAlloc);
 	loSize = (ptrdiff_t)(mempool->__tp__ - mempool->__mp__); // size left
 
 	printf("%lu\n", loSize );

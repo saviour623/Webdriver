@@ -419,6 +419,7 @@ static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryP
   if ( (ctmp = free_firstFit(mempool, size)) )
 	  return memset(ctmp, 0, chunkSize(ctmp));
 
+  // Any fit in the pool?
   cpool = pool_firstFit(mempool, size);
   if ( cpool ) {
 	ctmp = cpool->__mp__  += webdriverMemoryPoolMetaSize;

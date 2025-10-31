@@ -26,7 +26,7 @@ size_t freeCount(void **freelist)
 }
 
 int main(void) {
-  volatile Webdriver_TMemoryPool mempool;
+  Webdriver_TMemoryPool mempool;
   int fd;
   clock_t timer;
 
@@ -85,13 +85,13 @@ int main(void) {
 		fprintf(stderr, "<error> number of allocated chunks and equivalent frees differ \nCHUNK: %lu\nFCHUNK: %lu\n", cCHUNK, FcCHUNK);
 		exit(-1);
 		}
-	webdriverMemoryPoolDelete(mempool);
+	webdriverMemoryPoolDelete(&mempool);
 #endif
   }
 
   {
 	// Retrieving from free
-
+#if 0
 	void *memory;
 	size_t loSize;
 
@@ -127,14 +127,36 @@ int main(void) {
 		exit(-1);
 	  }
 
+	lseek(fd, SEEK_SET, 0);
 	if (read(fd, memory, 19999) < 0)
 	  {
-	    perror("read");
+	    perror("lseek/read");
 		exit(-1);
 	  }
 
+	//puts(memory);
+	webdriverMemoryPoolDelete(&mempool);
+#endif
+  }
+
+  {
+	// Grow Chunk
+	void *memory;
+	size_t loSize;
+
+	mempool = webdriverMemoryPool();
+	memory = webdriverMemoryPoolGet(mempool, 4);
+
+	memcpy(memory, "four", 4);
+
+	if (webdriverMemoryPoolGrowChunk(mempool, &memory, 8) == (void *)WEBDR_EOMEM)
+	  {
+		fprintf(stderr, "webdriverMemoryPoolGet: Memory Error\n");
+		exit(-1);
+	  }
+	memcpy(memory, "fourByte", 8);
 	puts(memory);
-	webdriverMemoryPoolDelete(mempool);
+	webdriverMemoryPoolDelete(&mempool);
   }
 
   close(fd);

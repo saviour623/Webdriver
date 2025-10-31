@@ -564,6 +564,7 @@ static __inline__ __attribute__((always_inline, pure)) uint8_t webdriverObjectKe
   mask = *(uint16_t *)key;
   key += e - 2;
   mask |= ((uint32_t)*(uint16_t *)key << 16);
+  mask += key[e >> 1];
 
   return ((~mask ^ 0x5a2b0f0f) + (mask - (0xe2e3e3e3 * key[e-3]))) % (nc - 1);
 }

@@ -537,18 +537,18 @@ void webdriverMemoryPoolGrow(Webdriver_TMemoryPool mempool, const uint16_t flags
 
 }
 
-struct Webdriver_TObject__ {
+typedef struct Webdriver_TObject__ {
   void   *__object__[webdriverObjectArraySize];
   void   *__obnext__;
-  uint8_t __obmeta__  [webdriverObjectMetaSize];
-};
-typedef struct Webdriver_TObject__* Webdriver_TObject;
+  uint8_t __obmeta__ [webdriverObjectMetaSize];
+} Webdriver_TObject__;
+typedef Webdriver_TObject__* Webdriver_TObject;
 
-__attribute__((nonnull)) void webdriverObject(void)
+__attribute__((noinline)) Webdriver_TObject webdriverObject(Webdriver_TMemoryPool mempool)
 {
-  Webdriver_TObject object;
+  Webdriver_TObject object = webdriverMemoryPoolGet(mempool, sizeof (Webdriver_TObject__));
 
-  if (( object = webdriverMemoryPoolGet(mempool__, sizeof(Webdriver_TObject__)) ))
+  if ( object )
 	{
 	 memset(object->__obmeta__, 0, webdriverObjectMetaSize);
 	 object->__obnext__ = NULL;
@@ -556,3 +556,5 @@ __attribute__((nonnull)) void webdriverObject(void)
 
   return object;
 }
+
+__attribute__((nonnull))

@@ -97,7 +97,7 @@ int main(void) {
 
 	mempool = webdriverMemoryPool();
 	memory = webdriverMemoryPoolGet(mempool, webdriverMemoryPoolMaxAlloc);
-	loSize = (ptrdiff_t)(mempool->__tp__ - mempool->__mp__); // size left
+	loSize = (ptrdiff_t)(mempool->__tp__ - mempool->__mp__); // unused
 
 	printf("%lu\n", loSize );
 
@@ -140,6 +140,7 @@ int main(void) {
   }
 
   {
+#if 0
 	// Grow Chunk
 	void *memory;
 	size_t loSize;
@@ -175,7 +176,14 @@ int main(void) {
 		exit(-1);
 	  }
 	printf("chunk-size: %d\n", chunkSize(memory));
+
 	webdriverMemoryPoolDelete(&mempool);
+#endif
+  }
+
+  {
+	// Mempool Grow (UNIMPLEMENTED)
+
   }
 
   close(fd);

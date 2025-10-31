@@ -499,8 +499,11 @@ void *webdriverMemoryPoolGrowChunk(Webdriver_TMemoryPool mempool, void **chunk, 
 
   if (size <= chunkSize(*chunk))
 	{
-	  // TODO: if size is really smaller than chunkSize, free some
 	  size = chunkSize(*chunk) - size;
+	  if ( size )
+		{
+		  // TODO: if size is alot smaller than chunkSize add a fraction to free
+		}
 	  memset(*chunk + size, 0, size);
 
 	  return *chunk;

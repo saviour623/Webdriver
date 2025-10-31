@@ -430,14 +430,8 @@ static __inline__ __attribute__((nonnull, always_inline)) void *webdriverMemoryP
 	  return memset(ctmp, 0, chunkSize(ctmp));
 
 #if 0
-  // TODO: Add a new pool
-  if ((cpool = webdriverMemoryPool(cpool)))
-	{
-	  (++(uint16_t *)cpool)[-1] = size;
-	  cpool->__mp__ = cpool + size;
-
-	  return cpool;
-	}
+  // TODO: extend/Add a new pool
+  cpool = webdriverMemoryPoolGrow(mempool, 0, 0);
 #endif
 
   errno = ENOMEM;
@@ -479,9 +473,9 @@ __attribute__((nonnull)) void webdriverMemoryPoolDeleteChunk(Webdriver_TMemoryPo
   *chunk = NULL;
 }
 
-void webdriverMemoryPoolDelete(Webdriver_TMemoryPool mempool)
+__attribute__((nonnull)) void webdriverMemoryPoolDelete(Webdriver_TMemoryPool *mempool)
 {
-  Webdriver_TMemoryPool cur = mempool, nxt;
+  Webdriver_TMemoryPool cur = *mempool, nxt;
 
   while (cur != NULL)
 	{
@@ -489,35 +483,49 @@ void webdriverMemoryPoolDelete(Webdriver_TMemoryPool mempool)
 	  webdriverDealloc(cur);
 	  cur = nxt;
   }
+  *mempool = NULL;
 }
 
-void *webdriverMemoryPoolChunkGrow(Webdriver_TMemoryPool mempool, void **chunk, uint16_t size)
+void *webdriverMemoryPoolGrowChunk(Webdriver_TMemoryPool mempool, void **chunk, uint16_t size)
 {
   void *chunk__ __attribute__((unused));
 
   if (size == 0)
 	{
-	  webdriverMemoryPoolDeleteChunk(mempool, *chunk);
+	  webdriverMemoryPoolDeleteChunk(mempool, chunk);
 	  *chunk = NULL;
 	  return (void *)WEBDR_EOMEM;
 	}
-  if (size < chunkSize(*chunk))
-	return *chunk;
+
+  if (size <= chunkSize(*chunk))
+	{
+	  // TODO: if size is really smaller than chunkSize, free some
+	  size = chunkSize(*chunk) - size;
+	  memset(*chunk + size, 0, size);
+
+	  return *chunk;
+	}
 
   chunk__ = webdriverMemoryPoolGet(mempool, size);
   if (chunk__ != (void *)WEBDR_EOMEM)
-	memcpy(chunk__, *chunk, size);
+	{
+	  memcpy(chunk__, *chunk, size);
+	  webdriverMemoryPoolDeleteChunk(mempool, chunk);
+	  *chunk = chunk__;
+	}
 
   return chunk__;
 }
 
-HIDDEN() void webdriverMemoryPoolGrow(Webdriver_TMemoryPool mempool, const uint16_t flags, const uint16_t factor)
+void webdriverMemoryPoolGrow(Webdriver_TMemoryPool mempool, const uint16_t flags, const uint16_t factor)
 {
 
 #ifdef WEBDR_MEMPOOL_EXT
   //MEMPOOL_EXT: extend the current pool
+  ASSERT ("UNIMPLEMENTED", false);
 #elif defined(WEBDR_MEMPOOL_LINK)
   // WEBDR_MEMPOOL_LINK: link a new pool to current pool
+  ASSERT ("UNIMPLEMENTED", false);
 #else
   // Pool is fixed (default)
   fprintf(stderr, "Bad request: attempt to resize a fixed pool");

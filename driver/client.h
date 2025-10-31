@@ -68,7 +68,7 @@
 #define NOT(e) !(e)
 #define ASSERT(...) assert((__VA_ARGS__))
 
-#if defined(__GNUC__) || defined(__gcc__) || defined(__clang__)
+#if defined(_GNU_SOURCE) || defined(__GNUC__) || defined(__gcc__) || defined(__clang__)
 #define HIDDEN() __attribute__((visibility("hidden")))
 #endif
 #define _LOCK() //TODO: Implement a thread locking mechanism

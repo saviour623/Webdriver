@@ -1,4 +1,0 @@
-#!/bin/bash
-
-gcc -g -O2 mempooltest.c -o output
-valgrind --tool=memcheck ./output

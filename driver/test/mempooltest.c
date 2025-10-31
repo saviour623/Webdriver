@@ -151,11 +151,30 @@ int main(void) {
 
 	if (webdriverMemoryPoolGrowChunk(mempool, &memory, 8) == (void *)WEBDR_EOMEM)
 	  {
-		fprintf(stderr, "webdriverMemoryPoolGet: Memory Error\n");
+		fprintf(stderr, "webdriverMemoryPoolGrowChunk: Memory Error\n");
 		exit(-1);
 	  }
 	memcpy(memory, "fourByte", 8);
-	puts(memory);
+	//puts(memory);
+
+	if (chunkSize(memory) != 8)
+	  {
+		fprintf(stderr, "webdriverMemoryPoolGrowChunk: Invalid resize\n");
+		exit(-1);
+	  }
+
+	if (webdriverMemoryPoolGrowChunk(mempool, &memory, 256) == (void *)WEBDR_EOMEM)
+	  {
+		fprintf(stderr, "webdriverMemoryPoolGrowChunk: Memory Error\n");
+		exit(-1);
+	  }
+
+	if (chunkSize(memory) == 8)
+	  {
+		fprintf(stderr, "webdriverMemoryPoolGrowChunk: Invalid resize\n");
+		exit(-1);
+	  }
+	printf("chunk-size: %d\n", chunkSize(memory));
 	webdriverMemoryPoolDelete(&mempool);
   }
 

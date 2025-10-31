@@ -3,6 +3,21 @@
 #include <string.h>
 #include <fcntl.h>
 
+uint8_t djb2hash13(char *key)
+{
+  unsigned long hash = 5381;
+  int c;
+  int len = strlen(key);
+
+  if (len < 4)
+  	return -1;
+
+  while ((c = *key++))
+	{
+	  hash = ((hash << 5) + hash) + c;
+	}
+  return hash % 13;
+}
 int main(void)
 {
   Webdriver_TMemoryPool mempool = webdriverMemoryPool();
@@ -33,6 +48,7 @@ int main(void)
 	void *ptr;
 	char *str = chunk, *tok;
 
+	printf("%lu\n", ~(uint64_t)0x5a2b0f0f);
 	while (read(fd, chunk, webdriverMemoryPoolMaxAlloc - 1) > 0)
 	  {
 		// TEST HASH DISTRIBUTION
@@ -40,10 +56,11 @@ int main(void)
 
 		while ((tok = strtok(str, "\n")) != NULL)
 		  {
-			hash = webdriverObjectKeyHash13(tok);
+		   hash = webdriverObjectKeyHash13(tok);
+			//hash = djb2hash13(tok);
 			if (tok && hash != -1)
 			  hashes[hash] += 1;
-			//fprintf(stderr, "%d, ", hash);
+			fprintf(stderr, "%d, ", hash);
 			str = NULL;
 		  }
 	  }

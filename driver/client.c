@@ -556,19 +556,30 @@ __attribute__((noinline)) Webdriver_TObject webdriverObject(Webdriver_TMemoryPoo
 
   return object;
 }
-
 static __inline__ __attribute__((always_inline, pure)) int webdriverObjectKeyHash13(const char *key)
 {
   uint32_t mask = 0, e = __builtin_strlen(key);
 
   if (e < 4)
 	{
+	  mask = 5381;
+	  switch (e){
+	  case 3:
+		mask = (mask << 5 + mask) + *key++;
+	  case 2:
+		mask = (mask << 5 + mask) + *key++;
+	  case 1:
+		mask = (mask << 5 + mask) + *key++;
+
+		return mask % 13;
+	  }
 	  // Something different for keys less than 4
-	  return -1;
 	}
   mask = *(uint16_t *)key;
-  key += e - 2;
-  mask ^= ((uint32_t)*(uint16_t *)key << 16);
+  mask |= ((uint32_t)*(uint16_t *)(key + e - 3) << 16);
+  mask = ((mask * 0x5a2b0f0f) + (uint32_t)((key[(uint32_t)(e * 0.56f)]) << 3));
 
-  return ((~mask ^ 0x5a2b0f0f) + (mask - (0xe2e3e3e3 * key[e-1]))) % 13;
+  return (mask + (0xe2e3e11 * key[e-1])) % 13;
 }
+//0xe2e3e3e3
+//123132424

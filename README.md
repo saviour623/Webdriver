@@ -39,7 +39,7 @@ int main(void) {
         
         Webdriver_Service service;
         WebdriverServiceAdd(service, Service->port, 39675);
-        Webdriver fromservice = webdriverChrome(service);
+        Webdriver fromservice = webdriverChrome(service, opt);
 
         if (webdriver_Error(fromservice))
            {

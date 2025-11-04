@@ -8,18 +8,48 @@
 #include <stdlib.h>
 
 int main(void) {
-       Webdriver handle = webdriver("chrome"); // Start session
+       Webdriver handle = webdriverChome(NULL); // Start session
 
         if (webdriver_Error(Handle)) {
             fprintf(stderr, webdriver_strerror());
             exit(EXIT_FAILURE);
         }
         handle.open("www.example.com");
-        WebdriverClass element = handle.findElement(handle, By.ID, "box");
-        element.sendKeys("hello world");
-        WebdriverClose(handle); // Session is running
+        WebdriverClass element = handle->findElement(handle, By->ID, "box");
+        element->sendKeys(element, "hello world");
+        // or
+        sendKeys(element, "closing")->action->scroll(element, 25px, 30px);
 
-        WebdriverQuit(handle); // close all session
+        //Screenshot window 
+        handle->window->action(handle, Action->screenshot); // base64
+        handle->window->action(handle, Action->screenshot, "jpg");
+
+        // Make a request
+        Webdriver_Request req = handle->httprequest(GET, "https://google.com/index.html");
+
+        // Any connection?
+        if ( webdriver_Error( handle->ping("8.8.8.8", 5) ))
+           {
+             // No connection 
+           }
+        
+        Webdriver_Options opt;
+        WebdriverChromeOptionsAdd(opt, "experimental");
+        WebdriverChromeOptionsAdd(opt, WebdriverObject("excludeSwitches", ["--automation", "--logger"]));
+        
+        Webdriver_Service service;
+        WebdriverServiceAdd(service, Service->port, 39675);
+        Webdriver fromservice = webdriverChrome(service);
+
+        if (webdriver_Error(fromservice))
+           {
+              // handle error
+           }
+        WebdriverClose(handle); // Session is closed
+
+        WebdriverQuit(handle); // quit driver instance
+        WebdriverQuit(fromservice); // or WebdriverClose(service)
+
         return 0;
 }
 ```

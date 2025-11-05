@@ -21,6 +21,8 @@
 #include <errno.h>
 #include <assert.h>
 
+// TODO: Test for support for atleast ss2 instructions
+#define USE_SIMD
 
 #define WEBDR_PROTOCOL IPPROTO_TCP
 #define WEBDR_SOCKTYPE SOCK_STREAM

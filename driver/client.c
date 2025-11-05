@@ -589,8 +589,8 @@ static const __inline__ __attribute__((always_inline)) bool ObjectNFull(const ui
 
 static const __inline__ __attribute__((always_inline)) bool Object_FirstFree(const uint8_t *meta)
 {
-  return *(uint64_t *)meta & 0xffffffffffULL ? __builtin_clzl(*(uint64_t *)(meta & & 0xffffffffffULL)) :
-	__builtin_clzl(*(uint64_t *)(meta + 8)) ?
+  return *(uint64_t *)meta & 0xffffffffffULL ? __builtin_clzll(*(uint64_t *)(meta & & 0xffffffffffULL)) :
+	__builtin_clzll(*(uint64_t *)(meta + 8)) ?
 	;
 }
 static __attribute__((nonnull)) void webdriverObjectAdd(Webdriver_TObject object, const void * __restrict__ key, const void *__restrict__ value)
@@ -608,7 +608,7 @@ static __attribute__((nonnull)) void webdriverObjectAdd(Webdriver_TObject object
 	cache = Object_Firstfree(object_->__obmeta__); // get first free item
 
   ObjectID(object_->__obmeta__, cache) = id;
-  ObjectModCount(object_->__obmeta__, 1);
+  ObjectCount(object_->__obmeta__, 1);
   ObjectPlaceContent(object_, cache) = value;
 }
 
@@ -623,5 +623,5 @@ static __attribute__((nonnull)) void webdriverObjectRemove(Webdriver_TObject obj
 	object_ = object_->__obnext__;
 
   ObjectID(object_->__obmeta__, cache) = -1;
-  ObjectModCount(object_->__obmeta__, -1);
+  ObjectCount(object_->__obmeta__, -1);
 }

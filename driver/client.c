@@ -360,6 +360,7 @@ struct Webdriver_TMemoryPool__ {
   void *__tail__;
   Webdriver_TMemoryPool __next__;
 };
+static const uint16_t webdriverMemoryPoolMaxAlloc = (webdriverMemoryPoolSize - webdriverSizeofMemoryPool - webdriverMemoryPoolMetaSize - webdriverMemoryPoolMinAlloc - 1);
 
 static __inline__ __attribute__((always_inline)) void *webdriverMemoryPool(void)
 {
@@ -445,7 +446,8 @@ static __inline__ __attribute__((always_inline, nonnull)) void *webdriverMemoryP
   if (webdriverMemoryPoolMaxAlloc < size)
 	return (void *)WEBDR_EOMEM;
 
-  (size < webdriverMemoryPoolMinAlloc) && (size = alignUp(size, webdriverMemoryPoolMinAlloc));
+  // align to webdriverMemoryPoolMinAlloc
+  size = alignUp(size, webdriverMemoryPoolMinAlloc);
 
   _LOCK();
   memp = webdriverMemoryPoolGetUnlocked(mempool, size);
@@ -538,7 +540,7 @@ void webdriverMemoryPoolGrow(Webdriver_TMemoryPool mempool, const uint16_t flags
 }
 
 typedef struct Webdriver_TObject__ {
-  void   *__object__[webdriverObjectArraySize];
+  void   *__object__[webdriverObjectNItem];
   void   *__obnext__;
   uint8_t __obmeta__ [webdriverObjectMetaSize];
 } Webdriver_TObject__;
@@ -556,24 +558,20 @@ __attribute__((noinline)) Webdriver_TObject webdriverObject(Webdriver_TMemoryPoo
 
   return object;
 }
-static __inline__ __attribute__((always_inline, pure)) int webdriverObjectKeyHash13(const char *key)
+
+static __inline__ __attribute__((always_inline, pure)) int webdriverObjectKHash13(const char *key)
 {
   uint32_t mask = 0, e = __builtin_strlen(key);
 
   if (e < 4)
 	{
 	  mask = 5381;
-	  switch (e){
-	  case 3:
-		mask = (mask << 5 + mask) + *key++;
-	  case 2:
-		mask = (mask << 5 + mask) + *key++;
-	  case 1:
-		mask = (mask << 5 + mask) + *key++;
-
-		return mask % 13;
-	  }
-	  // Something different for keys less than 4
+	  switch (e)
+		{
+		case 3: mask = (mask << 5 + mask) + *key++;
+		case 2: mask = (mask << 5 + mask) + *key++;
+		}
+	  return ((mask << 5 + mask) + *key) % 13;
 	}
   mask = *(uint16_t *)key;
   mask |= ((uint32_t)*(uint16_t *)(key + e - 3) << 16);
@@ -581,5 +579,49 @@ static __inline__ __attribute__((always_inline, pure)) int webdriverObjectKeyHas
 
   return (mask + (0xe2e3e11 * key[e-1])) % 13;
 }
-//0xe2e3e3e3
-//123132424
+
+#define OBJ_ISNEMPTY 0b1
+
+static const __inline__ __attribute__((always_inline)) bool ObjectNFull(const uint8_t *meta)
+{
+  return NOT(ObjectModCount(meta, 0) ^ webdriverObjectNItem);
+}
+
+static const __inline__ __attribute__((always_inline)) bool Object_FirstFree(const uint8_t *meta)
+{
+  return *(uint64_t *)meta & 0xffffffffffULL ? __builtin_clzl(*(uint64_t *)(meta & & 0xffffffffffULL)) :
+	__builtin_clzl(*(uint64_t *)(meta + 8)) ?
+	;
+}
+static __attribute__((nonnull)) void webdriverObjectAdd(Webdriver_TObject object, const void * __restrict__ key, const void *__restrict__ value)
+{
+  Webdriver_TObject object_;
+  uint8_t id = webdriverObjectKHash13(key), cache;
+
+  object_ = object;
+  while (object_ && NOT( ObjectNFull(object_->__obmeta__) ))
+	object_ = object_->__obnext__;
+
+  // If item is not filled sequentiallyx
+  cache = ObjectCache(LAST_ADDED, object_->__obmeta__);
+  if (webdriverObjectNItem < cache)
+	cache = Object_Firstfree(object_->__obmeta__); // get first free item
+
+  ObjectID(object_->__obmeta__, cache) = id;
+  ObjectModCount(object_->__obmeta__, 1);
+  ObjectPlaceContent(object_, cache) = value;
+}
+
+
+static __attribute__((nonnull)) void webdriverObjectRemove(Webdriver_TObject object, const void * __restrict__ key, const void *__restrict__ value)
+{
+  Webdriver_TObject object_;
+  uint8_t id = webdriverObjectKHash13(key), cache;
+
+  object_ = object;
+  while ((cache = ObjectFindKey(object, key, id)) < 0)
+	object_ = object_->__obnext__;
+
+  ObjectID(object_->__obmeta__, cache) = -1;
+  ObjectModCount(object_->__obmeta__, -1);
+}

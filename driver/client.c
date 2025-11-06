@@ -590,23 +590,27 @@ static const __inline__ __attribute__((always_inline)) bool ObjectNFull(const ui
 static const __inline__ __attribute__((always_inline)) bool Object_FirstFree(const uint8_t *meta)
 {
   return *(uint64_t *)meta & 0xffffffffffULL ? __builtin_clzll(*(uint64_t *)(meta & & 0xffffffffffULL)) :
-	__builtin_clzll(*(uint64_t *)(meta + 8)) ?
+	__builtin_clzll(*(uint64_t *)(meta + 8))
 	;
 }
 
 static const __inline__  __attribute__((always_inline)) uint8_t ObjectFindKey(const Webdriver_TObject object, const void *key, const uint8_t id)
 {
-  uint8_t *meta = object->__obmeta__;
+  uint8_t *meta = object->__obmeta__, **obdata = object->__object__;
   *(uint64_t *)meta &= 0xffffffffffULL;
-
 #ifdef USE_SIMD
-  const uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_load_si128((void *)meta), _mm_set1_epi8(id)));
+  uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_load_si128((void *)meta), _mm_set1_epi8(id))), idx = 0;
+
+  do
+	{
+	  idx = __builtin_clz(mask)];
+	  dd = (object->__object__)[idx];
+	  mask = mask >> idx >> 1;
+} while (mask | strcmp(dd, key));
+
 #else
   //
 #endif
-  while (false && *key == *skey || NOT(strcmp(key, skey)))
-	{
-	}
   return 0;
 }
 static __attribute__((nonnull)) void webdriverObjectAdd(Webdriver_TObject object, const void * __restrict__ key, const void *__restrict__ value)

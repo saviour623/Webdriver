@@ -90,15 +90,25 @@ int main(void)
   uint8_t *meta = (uint8_t[16]){4,6,7,5,4,4,5,4,4,4, 6, 0, 0,4,4, 5};
   uint8_t re[16];
   const uint8_t id = 4;
-  __m128i mask;
+  // __m128i mask;
   __m128i _main;
-
   _main = _mm_load_si128((void *)meta);
+#if 0
+  
   mask  = _mm_cmpeq_epi8(_main,
 						_mm_set1_epi8(id)
 						);
   mask = _mm_subs_epu8(mask, _mm_set_epi8(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15));
   _mm_maskmoveu_si128(_main, mask, re);
+#endif
+  const __m128i cmpv  = _mm_cmpeq_epi8(_mm_load_si128((void *)meta), _mm_set1_epi8(id));
+  const uint16_t mask = _mm_movemask_epi8(cmpv);
+  //const __m128i shuf  = _mm_shufflehi_epi16(cmpv, (uint8_t)(mask & 0b1111111));
 
-  printf("%u\n", re[4]);
+  //_mm_store_si128((void *)re, shuf);
+  //_mm_cmpestri(cmpv, 8, cmpv, 8, 0);
+  
+  __m128i bb =  _mm_blendv_epi8(_main, cmpv, cmpv);
+  _mm_store_si128((void *)re, bb);
+  printf("%u\n", re[1]);
 }

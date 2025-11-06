@@ -600,12 +600,7 @@ static const __inline__  __attribute__((always_inline)) uint8_t ObjectFindKey(co
   *(uint64_t *)meta &= 0xffffffffffULL;
 
 #ifdef USE_SIMD
-  __m128i mask;
-
-  mask  = _mm_cmpeq_si128(
-						_mm_load_si128((void *)(object->__obmeta__)),
-						_mm_set1_epi8(id)
-						);
+  const uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_load_si128((void *)meta), _mm_set1_epi8(id)));
 #else
   //
 #endif

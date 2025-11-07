@@ -590,8 +590,7 @@ static const __inline__ __attribute__((always_inline)) bool ObjectNFull(const ui
 static const __inline__ __attribute__((always_inline)) bool Object_FirstFree(const uint8_t *meta)
 {
   return *(uint64_t *)meta & 0xffffffffffULL ? __builtin_clzll(*(uint64_t *)(meta & & 0xffffffffffULL)) :
-	__builtin_clzll(*(uint64_t *)(meta + 8))
-	;
+	__builtin_clzll(*(uint64_t *)(meta + 8));
 }
 
 static const __inline__  __attribute__((always_inline)) uint8_t ObjectFindKey(const Webdriver_TObject object, const void *key, const uint8_t id)
@@ -603,11 +602,10 @@ static const __inline__  __attribute__((always_inline)) uint8_t ObjectFindKey(co
 
   do
 	{
-	  idx = __builtin_clz(mask)];
+	  idx = __builtin_clz(mask);
 	  dd = (object->__object__)[idx];
 	  mask = mask >> idx >> 1;
 } while (mask | strcmp(dd, key));
-
 #else
   //
 #endif

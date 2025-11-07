@@ -605,7 +605,7 @@ static const __inline__  __attribute__((always_inline)) uint8_t ObjectFindKey(co
 	  idx   = __builtin_ctz(mask);
 	  obkey = obdata__[idx];
 	  mask  &= (0b1111111111110u << idx);
-	} while ((*obkey ^ *key || strcmp(obkey, key)) && mask);
+	} while ((*obkey ^ *key || strcmp(obkey+1, key+1)) * mask);
   return idx;
 #else
   //

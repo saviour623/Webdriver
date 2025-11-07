@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <immintrin.h>
 
-#define USE_SIMD
+//#define USE_SIMD
 #define NOT(e) (!(e))
 #define puti(i) fprintf(stderr, "%llu\n", (long long)(i))
 

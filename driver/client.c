@@ -602,9 +602,9 @@ static const __inline__  __attribute__((always_inline)) uint8_t ObjectFindKey(co
 
   do
 	{
-	  idx   = __builtin_clz(mask);
+	  idx   = __builtin_ctz(mask);
 	  obkey = obdata__[idx];
-	  mask  = mask >> idx >> 1;
+	  mask  &= (0b1111111111110u << idx);
 	} while ((NOT(*obkey ^ *key) || strcmp(obkey, key)) && mask);
   return idx;
 #else

@@ -101,12 +101,12 @@ int main(void)
   START(t);
   for (int i = 0; i ^ MAX; i++)
 	{
-	  mask = i;
-	  // mask = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_load_si128((void *)meta), _mm_set1_epi8(id)));
-	  //clz = __builtin_clz(0b100000000000000);
+	  clz = __builtin_ctzll(0b100000000000000ULL);
+	  mask = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_load_si128((void *)meta), _mm_set1_epi8(id)));
 	}
   STOP(t);
   PRINT(t);
-  //printf("%u\n", mask);
+  clz =  __builtin_ctzll(0b100000000000000ULL);
+  printf("%u\n", 0b100000000000000 >> clz);
   // 0b11000011
 }

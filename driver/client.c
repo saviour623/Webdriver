@@ -540,7 +540,7 @@ void webdriverMemoryPoolGrow(Webdriver_TMemoryPool mempool, const uint16_t flags
 }
 
 typedef struct Webdriver_TObject__ {
-  void   *__object__[webdriverObjectNItem];
+  void   *__obdata__[webdriverObjectNItem];
   void   *__obnext__;
   uint8_t __obmeta__ [webdriverObjectMetaSize];
 } Webdriver_TObject__;
@@ -559,7 +559,7 @@ __attribute__((noinline)) Webdriver_TObject webdriverObject(Webdriver_TMemoryPoo
   return object;
 }
 
-static __inline__ __attribute__((always_inline, pure)) int webdriverObjectKHash13(const char *key)
+static __inline__ __attribute__((always_inline, pure)) int webdriverObjectGetId(const char *key)
 {
   uint32_t mask = 0, e = __builtin_strlen(key);
 
@@ -584,28 +584,29 @@ static __inline__ __attribute__((always_inline, pure)) int webdriverObjectKHash1
 
 static const __inline__ __attribute__((always_inline)) bool ObjectNFull(const uint8_t *meta)
 {
-  return NOT(ObjectModCount(meta, 0) ^ webdriverObjectNItem);
+  return NOT(ObjectCount(meta, 0) ^ webdriverObjectNItem);
 }
 
 static const __inline__ __attribute__((always_inline)) bool Object_FirstFree(const uint8_t *meta)
 {
-  return *(uint64_t *)meta & 0xffffffffffULL ? __builtin_clzll(*(uint64_t *)(meta & & 0xffffffffffULL)) :
-	__builtin_clzll(*(uint64_t *)(meta + 8));
+  return *(uint64_t *)meta & 0xffffffffffULL ? __builtin_ctzll(*(uint64_t *)(meta & & 0xffffffffffULL)) :
+	__builtin_ctzll(*(uint64_t *)(meta + 8));
 }
 
 static const __inline__  __attribute__((always_inline)) uint8_t ObjectFindKey(const Webdriver_TObject object, const void *key, const uint8_t id)
 {
-  uint8_t *meta = object->__obmeta__, **obdata = object->__object__;
-  *(uint64_t *)meta &= 0xffffffffffULL;
+  uint8_t *meta__ = object->__obmeta__, **obdata__ = object->__obdata__, *obkey = NULL __attribute__((unused));
+  *(uint64_t *)meta__ &= 0xffffffffffULL;
 #ifdef USE_SIMD
-  uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_load_si128((void *)meta), _mm_set1_epi8(id))), idx = 0;
+  uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_load_si128((void *)meta__), _mm_set1_epi8(id))), idx = 0;
 
   do
 	{
-	  idx = __builtin_clz(mask);
-	  dd = (object->__object__)[idx];
-	  mask = mask >> idx >> 1;
-} while (mask | strcmp(dd, key));
+	  idx   = __builtin_clz(mask);
+	  obkey = obdata__[idx];
+	  mask  = mask >> idx >> 1;
+	} while ((NOT(*obkey ^ *key) || strcmp(obkey, key)) && mask);
+  return idx;
 #else
   //
 #endif
@@ -614,7 +615,7 @@ static const __inline__  __attribute__((always_inline)) uint8_t ObjectFindKey(co
 static __attribute__((nonnull)) void webdriverObjectAdd(Webdriver_TObject object, const void * __restrict__ key, const void *__restrict__ value)
 {
   Webdriver_TObject object_;
-  uint8_t id = webdriverObjectKHash13(key), cache;
+  uint8_t id = webdriverObjectGetId(key), cache;
 
   object_ = object;
   while (object_ && NOT( ObjectNFull(object_->__obmeta__) ))
@@ -634,7 +635,7 @@ static __attribute__((nonnull)) void webdriverObjectAdd(Webdriver_TObject object
 static __attribute__((nonnull)) void webdriverObjectRemove(Webdriver_TObject object, const void * __restrict__ key, const void *__restrict__ value)
 {
   Webdriver_TObject object_;
-  uint8_t id = webdriverObjectKHash13(key), cache;
+  uint8_t id = webdriverObjectGetId(key), cache;
 
   object_ = object;
   while ((cache = ObjectFindKey(object, key, id)) < 0)

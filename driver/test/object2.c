@@ -8,6 +8,11 @@
 #define NOT(e) (!(e))
 #define puti(i) fprintf(stderr, "%llu\n", (long long)(i))
 
+#include <time.h>
+#define START(t) ((t) = clock())
+#define STOP(t) ((t) = clock() - (t))
+#define PRINT(t) (fprintf(stderr, "%f\n", (t)/(double)CLOCKS_PER_SEC))
+
 struct Tobject {
   uint8_t __obmeta__[16];
   uint8_t *__obdata__[13];
@@ -25,7 +30,7 @@ static __inline__ __attribute__((always_inline, pure)) int objectGetId(const cha
 		{
 		case 3: mask = (mask << 5 + mask) + *key++;
 		case 2: mask = (mask << 5 + mask) + *key++;
-}
+ }
 	  return ((mask << 5 + mask) + *key) % 13;
 	}
   mask = *(uint16_t *)key;
@@ -35,27 +40,36 @@ static __inline__ __attribute__((always_inline, pure)) int objectGetId(const cha
   return (mask + (0xe2e3e11 * key[e-1])) % 13;
 }
 
-static const __inline__  __attribute__((always_inline)) uint8_t ObjectFindKey(const struct Tobject *object, const uint8_t *key, const uint8_t id)
+static const __inline__  __attribute__((always_inline)) int8_t ObjectFindKey(const struct Tobject *object, const uint8_t *key, const uint8_t id)
 {
   uint8_t *meta__ = object->__obmeta__, **obdata__ = object->__obdata__, *obkey __attribute__((unused)) = NULL;
   //*(uint64_t *)meta__ &= 0xffffffffffULL;
 #ifdef USE_SIMD
-  uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_load_si128((void *)meta__), _mm_set1_epi8(id))), idx = 0;
+  uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_load_si128((void *)meta__), _mm_set1_epi8(id))), idx = -1;
   do
 	{
-	  idx   = __builtin_ctz(mask);
+	  idx++;   //= __builtin_ctz(mask);
 	  obkey = obdata__[idx];
 	  mask  &= (0b1111111111110u << idx);
-	} while ((*obkey ^ *key || strcmp(obkey, key)) && mask);
+	} while ((*obkey ^ *key || strcmp(obkey+1, key+1)) && mask);
   return idx;
 #else
-  //
+  uint16_t idx = 0;
+  for (idx = 0; idx < 16; idx++)
+	{
+	  obkey = obdata__[idx];
+	  if (meta__[idx] ^ id || NOT(*obkey ^ *key || strcmp(obkey+1, key+1)))
+		break;
+	}
+  return idx;
 #endif
-  return 0;
+  return -1;
 }
 
 int main(void)
 {
+  clock_t t;
+  int8_t idx;
   struct Tobject *object = malloc(sizeof(struct Tobject));
 
   if (object == NULL)
@@ -87,7 +101,12 @@ int main(void)
 
    _mm_storeu_si128((void *)(object->__obmeta__), _mm_set1_epi8(4));
 
-   printf("%u\n", ObjectFindKey(object, "147258", 4));
+   START(t);
 
+   for (int i = 0; i < 10000; i++)
+	 idx = ObjectFindKey(object, "147258", 4);
+   STOP(t);
+   printf("%u\n", idx);
+   PRINT(t);
    return 0;
 }

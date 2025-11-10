@@ -1,46 +1,66 @@
-#include "../client.c"
+//#include "../client.h"
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdint.h>
 
-uint8_t djb2hash13(char *key)
+#define NOT(e) !(e)
+uint8_t getId2(char *key)
 {
   unsigned long hash = 5381;
   int c;
   int len = strlen(key);
 
-  if (len < 4)
-  	return -1;
-
   while ((c = *key++))
 	{
 	  hash = ((hash << 5) + hash) + c;
 	}
-  return hash % 13;
+  return hash % 14;
+}
+
+static __inline__ __attribute__((always_inline, pure)) int 
+getId(char *key)
+{
+  uint32_t mask = 0, e = __builtin_strlen(key);
+
+  if (e < 2)
+	return (177573ull + *key) % 14;
+
+  mask = *(uint16_t *)key;
+  mask += ((uint32_t)*(uint16_t *)(key + (e >> 1) - 1))<<8;
+  mask = (uint64_t)(mask *176791ULL) + key[14 & (e - 1)];
+  //17679
+  return (mask + (0x7266218736ull * key[e-1])) % 14;
+//0x5a2b0f0f
+//0xe2e3e1
 }
 int main(void)
 {
-  Webdriver_TMemoryPool mempool = webdriverMemoryPool();
+ // Webdriver_TMemoryPool mempool = webdriverMemoryPool();
   int fd;
 
-  void *chunk = webdriverMemoryPoolGet(mempool, webdriverMemoryPoolMaxAlloc);
-
+  //void *chunk = webdriverMemoryPoolGet(mempool, 
+int webdriverMemoryPoolMaxAlloc = 65500;
+void *chunk = malloc(webdriverMemoryPoolMaxAlloc);
   if (NOT (chunk))
 	{
 	  fprintf(stderr, "MEMORY ERROR\n");
-	  exit(WEBDR_EOMEM);
+	  exit(-1);
 	}
 
   if ((fd = open("words", O_RDONLY, 777)) < 0)
 	{
 	  perror("OPEN");
-	  exit(WEBDR_EOMEM);
+	  exit(-1);
 	}
 #if 0
   if (read(fd, chunk, webdriverMemoryPoolMaxAlloc - 1) < 0)
 	{
 	  perror("READ");
-	  exit(WEBDR_EOMEM);
+	  exit(-1);
 	}
 #endif
   {
@@ -48,7 +68,7 @@ int main(void)
 	void *ptr;
 	char *str = chunk, *tok;
 
-	printf("%lu\n", ~(uint64_t)0x5a2b0f0f);
+	//printf("%llu\n", ~(uint64_t)0x5a2b0f0f);
 	while (read(fd, chunk, webdriverMemoryPoolMaxAlloc - 1) > 0)
 	  {
 		// TEST HASH DISTRIBUTION
@@ -56,21 +76,21 @@ int main(void)
 
 		while ((tok = strtok(str, "\n")) != NULL)
 		  {
-		   hash = webdriverObjectKeyHash13(tok);
+		   hash = getId(tok);
 			//hash = djb2hash13(tok);
 			if (tok && hash != -1)
 			  hashes[hash] += 1;
-			fprintf(stderr, "%d, ", hash);
+			//fprintf(stderr, "%d, ", hash);
 			str = NULL;
 		  }
 	  }
 
 	puts("||| HASH DISTRIBUTION |||\n");
 
-	for (int i = 0; i < 13; i++)
+	for (int i = 0; i < 14; i++)
 	  sum += hashes[i];
 
-	for (int i = 0; i < 13; i++)
+	for (int i = 0; i < 14; i++)
 	  {
 		printf("+[hash %d] %d %f%%\n", i, hashes[i], (hashes[i]/(double)sum) * 100);
 	  }
@@ -95,6 +115,5 @@ int main(void)
   }
 
   // TODO: (i) there is a leak (1 byte write) (ii) test hash function against other hash functions
-  webdriverMemoryPoolDelete(&mempool);
   return 0;
 }

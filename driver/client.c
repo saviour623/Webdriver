@@ -540,10 +540,12 @@ void webdriverMemoryPoolGrow(Webdriver_TMemoryPool mempool, const uint16_t flags
 }
 
 typedef struct Webdriver_TObject__ {
-  void   *__obdata__[webdriverObjectNItem];
+  void   *__object__[webdriverObjectTabCap << 1];
   void   *__obnext__;
-  uint8_t __obmeta__ [webdriverObjectMetaSize];
+  uint8_t __obmeta__;
+  uint8_t __obcache__[webdriverObjectCacheMaxCap];
 } Webdriver_TObject__;
+
 typedef Webdriver_TObject__* Webdriver_TObject;
 
 __attribute__((noinline)) Webdriver_TObject webdriverObject(Webdriver_TMemoryPool mempool)
@@ -552,8 +554,8 @@ __attribute__((noinline)) Webdriver_TObject webdriverObject(Webdriver_TMemoryPoo
 
   if ( object )
 	{
-	 memset(object->__obmeta__, 0, webdriverObjectMetaSize);
-	 object->__obnext__ = NULL;
+	  memset(object->__obcache__, 0, webdriverObjectCacheMaxCap);
+	  object->__obnext__ = NULL;
 	}
 
   return object;
@@ -581,6 +583,14 @@ static __inline__ __attribute__((always_inline, pure)) int webdriverObjectGetId(
 }
 
 #define OBJ_ISNEMPTY 0b1
+
+#define ObjectSetId(bf, idx, id) \
+  do {															\
+	const uint16_t shf = (1 >> NOT(idx)) << ((idx) - NOT(idx));	\
+	(bf) = ((bf) ^ (0xfu << shf)) | ((id) << shf);				\
+  } while (0)
+
+#define ObjectClearId(bf, idx) ((bf) ^= (0b1111u << (1 >> NOT(idx) << i - NOT(idx))))
 
 static const __inline__ __attribute__((always_inline)) bool ObjectNFull(const uint8_t *meta)
 {

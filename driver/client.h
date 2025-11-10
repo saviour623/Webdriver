@@ -99,8 +99,8 @@ struct Webdriver_Client__ {
 #define WEBDR_DEF_MALLOC_SIZE 2048
 #define WEBDR_DEF_MALLOC_GRW  1024
 
-#define webdriverObjectArraySize 13
-#define webdriverObjectMetaSize  16
+#define webdriverObjectTabCap 14
+#define webdriverObjectCacheMaxCap  7
 #define webdriverObjecAllocSize 1024
 
 #define webdriverMemoryPoolMinAlloc (sizeof(void *))

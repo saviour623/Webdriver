@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <immintrin.h>
 
-//#define USE_SIMD
+#define USE_SIMD
 #define NOT(e) (!(e))
 #define puti(i) fprintf(stderr, "%llu\n", (long long)(i))
 
@@ -45,20 +45,25 @@ static const __inline__  __attribute__((always_inline)) int8_t ObjectFindKey(con
   uint8_t *meta__ = object->__obmeta__, **obdata__ = object->__obdata__, *obkey __attribute__((unused)) = NULL;
   //*(uint64_t *)meta__ &= 0xffffffffffULL;
 #ifdef USE_SIMD
-  uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_load_si128((void *)meta__), _mm_set1_epi8(id))), idx = -1;
+  uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_load_si128((void *)meta__), _mm_set1_epi8(id))) >> 3, idx = 0;
+  uint8_t *_key;
+
   do
 	{
-	  idx++;   //= __builtin_ctz(mask);
+	  _key  = key;
+	  idx  =  __builtin_ctz(mask);
 	  obkey = obdata__[idx];
 	  mask  &= (0b1111111111110u << idx);
-	} while ((*obkey ^ *key || strcmp(obkey+1, key+1)) && mask);
+	} while ((*obkey++ ^ *_key++ || (*obkey++ ^ *_key++) || strcmp(obkey, _key)) && mask);
   return idx;
 #else
   uint16_t idx = 0;
+  uint8_t *_key;
   for (idx = 0; idx < 16; idx++)
 	{
+	  _key = key;
 	  obkey = obdata__[idx];
-	  if (meta__[idx] ^ id || NOT(*obkey ^ *key || strcmp(obkey+1, key+1)))
+	  if (meta__[idx] ^ id || strcmp(obkey, _key)))
 		break;
 	}
   return idx;
@@ -78,11 +83,12 @@ int main(void)
 	  exit(-1);
 	}
 
-  char *keys[13] = {
+  char *keys[14] = {
 				    "063dyjuy",
 					"070462",
 					"085tzzqi",
 					"10th",
+					"1",
 					"11235813",
 					"12qwaszx",
 					"13576479",
@@ -99,14 +105,49 @@ int main(void)
 	  (object->__obdata__)[i] = keys[i];
 	}
 
-   _mm_storeu_si128((void *)(object->__obmeta__), _mm_set1_epi8(4));
+  uint8_t m[16];
+  uint16_t k;
+  memcpy(object->__obmeta__, (uint8_t[]){4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4}, 16);
+  //_mm_storeu_si128((void *)(object->__obmeta__), _mm_set_epi8(0, 0, 0, 4, 0, 0, 4, 4,6, 6, 5, 2, 4, 4, 0, 5));
 
-   START(t);
+ 
 
-   for (int i = 0; i < 10000; i++)
-	 idx = ObjectFindKey(object, "147258", 4);
+   volatile uint64_t bb = 0;
+
+   bb = 0xffffffffffffffffULL;//0b111111111111111111111111111111111111 1111 1111 1111 0000 1111 1111 1111
+
+#define add(bb, i, d) (bb ^ (0b1111u << ((!!(i) << 2) << (i - NOT(NOT(i)))))) | (d << ((!!(i) << 2) << (i - NOT(NOT(i)))))
+#define clr(bb, i) (bb ^ (0b1111u << (1 << i - 1)))
+#define ObjectSetId(bf, idx, id) \
+  do {															\
+	const uint16_t shf = (NOT(NOT(idx)) << 2) << (idx);			\
+	(bf) = ((bf) ^ (0xfu << shf)) | ((id) << shf);				\
+  } while (0)
+
+   int16_t p = 5;
+    START(t);
+  for (int i = 0; i < 10000; i++)
+	bb = add(bb, p, i & 15);
+	 // idx = ObjectFindKey(object, "1", 4);
    STOP(t);
    printf("%u\n", idx);
    PRINT(t);
+#if 0
+   START(t);
+  for (int i = 0; i < 10000; i++)
+	;//bb = add2(bb, 5, 15);
+	 // idx = ObjectFindKey(object, "1", 4);
+   STOP(t);
+   printf("%u\n", idx);
+   PRINT(t);
+#endif
+   uint64_t i = UINT64_MAX;
+
+   //i = add(i, 3, 15);
+   //i= add(i, 3, 15);
+
+   //ObjectSetId(i, 0, 0);
+   puti(add(i, 1, 0));
+   free(object);
    return 0;
 }

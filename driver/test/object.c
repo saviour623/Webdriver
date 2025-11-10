@@ -28,14 +28,17 @@ getId(char *key)
 
   if (e < 2)
 	return (177573ull + *key) % 14;
-
-  mask = *(uint16_t *)key;
-  mask += ((uint32_t)*(uint16_t *)(key + (e >> 1) - 1))<<8;
-  mask = (mask * 17991u) + key[14 & (e - 1)];
+  mask = *(uint16_t *)key + (*(uint16_t *)(key + (e >> 1) - 1)<<8);
+  mask = ((mask * 0x7c9u) + key[14 & (e - 1)]) + (0x7738u * key[e-1]);
+  //1993
+  //8993
+  //17991
   //17679
-  return (mask + (0x7266218736ull * key[e-1])) % 14;
+  // 0x7c9
+  return mask % 14;
 //0x5a2b0f0f
 //0xe2e3e1
+  //0x7266218736
 }
 int main(void)
 {

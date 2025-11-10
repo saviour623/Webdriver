@@ -31,7 +31,7 @@ getId(char *key)
 
   mask = *(uint16_t *)key;
   mask += ((uint32_t)*(uint16_t *)(key + (e >> 1) - 1))<<8;
-  mask = (uint64_t)(mask *176791ULL) + key[14 & (e - 1)];
+  mask = (mask * 17991u) + key[14 & (e - 1)];
   //17679
   return (mask + (0x7266218736ull * key[e-1])) % 14;
 //0x5a2b0f0f

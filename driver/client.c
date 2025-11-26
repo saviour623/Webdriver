@@ -539,71 +539,54 @@ void webdriverMemoryPoolGrow(Webdriver_TMemoryPool mempool, const uint16_t flags
 
 }
 
+#define WEBDR_OBJMETA_DSIZE 8
+#define WEBDR_OBJDEFAULT_SIZE 16 * 2
+
 typedef struct Webdriver_TObject__ {
-  void   *__object__[webdriverObjectTabCap << 1];
-  void   *__obnext__;
-  uint8_t __obmeta__;
-  uint8_t __obcache__[webdriverObjectCacheMaxCap];
+  uint8_t __meta__[WEBDR_OBJMETA_DSIZE];
+  void   *__next__;
+  uint32_t __size__;
 } Webdriver_TObject__;
 
 typedef Webdriver_TObject__* Webdriver_TObject;
 
 __attribute__((noinline)) Webdriver_TObject webdriverObject(Webdriver_TMemoryPool mempool)
 {
-  Webdriver_TObject object = webdriverMemoryPoolGet(mempool, sizeof (Webdriver_TObject__));
-
+  Webdriver_TObject object = webdriverMemoryPoolGet(mempool, sizeof (Webdriver_TObject__) + (16 * 2));
+6
   if ( object )
 	{
-	  memset(object->__obcache__, 0, webdriverObjectCacheMaxCap);
-	  object->__obnext__ = NULL;
+	  *(uint64_t *)object = 0;
+	  object->__size__    = WEBDR_OBJDEFAULT_SIZE;
+	  object->__next__    = NULL;
 	}
 
   return object;
 }
 
-static __inline__ __attribute__((always_inline, pure)) int webdriverObjectGetId(const char *key)
+static __inline__ __attribute__((always_inline)) uint32_t hashcode(const char * const key)
 {
-  uint32_t mask = 0, e = __builtin_strlen(key);
-
-  if (e < 4)
-	{
-	  mask = 5381;
-	  switch (e)
-		{
-		case 3: mask = (mask << 5 + mask) + *key++;
-		case 2: mask = (mask << 5 + mask) + *key++;
-		}
-	  return ((mask << 5 + mask) + *key) % 13;
-	}
-  mask = *(uint16_t *)key;
-  mask |= ((uint32_t)*(uint16_t *)(key + e - 3) << 16);
-  mask = ((mask * 0x5a2b0f0f) + (uint32_t)((key[(uint32_t)(e * 0.56f)]) << 3));
-
-  return (mask + (0xe2e3e11 * key[e-1])) % 13;
+  uint32_t hash = 5381, c;
+  
+  while (( c = *key++ ))
+    hash = ((hash << 5) + hash) + c;
+  return hash;
 }
 
 #define OBJ_ISNEMPTY 0b1
 
-#define ObjectSetId(bf, idx, id) \
-  do {															\
-	const uint16_t shf = (1 >> NOT(idx)) << ((idx) - NOT(idx));	\
-	(bf) = ((bf) ^ (0xfu << shf)) | ((id) << shf);				\
-  } while (0)
-
-#define ObjectClearId(bf, idx) ((bf) ^= (0b1111u << (1 >> NOT(idx) << i - NOT(idx))))
-
-static const __inline__ __attribute__((always_inline)) bool ObjectNFull(const uint8_t *meta)
+static const __inline__ __attribute__((always_inline)) bool o_isfilled(const uint8_t *meta)
 {
   return NOT(ObjectCount(meta, 0) ^ webdriverObjectNItem);
 }
 
-static const __inline__ __attribute__((always_inline)) bool Object_FirstFree(const uint8_t *meta)
+static const __inline__ __attribute__((always_inline)) bool o_getfree(const uint8_t *meta)
 {
   return *(uint64_t *)meta & 0xffffffffffULL ? __builtin_ctzll(*(uint64_t *)(meta & & 0xffffffffffULL)) :
 	__builtin_ctzll(*(uint64_t *)(meta + 8));
 }
 
-static const __inline__  __attribute__((always_inline)) uint8_t ObjectFindKey(const Webdriver_TObject object, const void *key, const uint8_t id)
+static const __inline__  __attribute__((always_inline)) uint8_t o_find(const Webdriver_TObject object, const void *key, const uint8_t id)
 {
   uint8_t *meta__ = object->__obmeta__, **obdata__ = object->__obdata__, *obkey = NULL __attribute__((unused));
   *(uint64_t *)meta__ &= 0xffffffffffULL;
@@ -622,35 +605,62 @@ static const __inline__  __attribute__((always_inline)) uint8_t ObjectFindKey(co
 #endif
   return 0;
 }
-static __attribute__((nonnull)) void webdriverObjectAdd(Webdriver_TObject object, const void * __restrict__ key, const void *__restrict__ value)
+
+
+#define o_code(obj, key) (o_hashcode(key) & (o_size(obj) - 1))
+#define o_size(obj) ((obj)->__size__)
+#define o_meta(obj) ((obj)->__meta__)
+#define o_next(obj) ((obj)->__next__)
+
+#define o_getemptypos(v)						\
+  ((((v) - 0x101010101010101ull) | ((v) - 0x1010101010101010ull)) & (~(v) & 0x8888888888888888ull))
+
+#define o_emptytest(v)							\
+  (bool)(((v) - 0x1111111111111111ull) & (~(v) & 0x8888888888888888ull))
+
+#define o_setid(bf, idx, id)
+#define o_unsetid(bf, idx)
+#define o_empty(v)
+
+static __inline__ __attribute__((always_inline)) uint32_t o_findempty(Webdriver_TObject *object, uint32_t *place)
+{
+  Webdriver_TObject object_ = *object;
+
+  while (object_ && o_emptytest(o_meta(object_)))
+    object_ = o_next(object_);
+
+  *object = object;
+  return (*place = object_ ? __builtin_ctz(o_getemptypos(o_meta(object_))) : ~0u);
+}
+
+static __attribute__((nonnull)) void o_add(Webdriver_TObject object, const void * __restrict__ key, const void *__restrict__ value)
 {
   Webdriver_TObject object_;
-  uint8_t id = webdriverObjectGetId(key), cache;
+  uint32_t place = o_code(obj, key);
 
-  object_ = object;
-  while (object_ && NOT( ObjectNFull(object_->__obmeta__) ))
-	object_ = object_->__obnext__;
+  for (uint32_t j = (place >> 4) + (place & (16 - 1)); j--;)
+    object_ = o_next(object_);
 
-  // If item is not filled sequentiallyx
-  cache = ObjectCache(LAST_ADDED, object_->__obmeta__);
-  if (webdriverObjectNItem < cache)
-	cache = Object_Firstfree(object_->__obmeta__); // get first free item
+  if ((o_meta(object_)[place] & 0b1111) || (o_findempty(&object_, &place) ^ 0b1111))
+    {
+      // resize table & rehash
+    }
 
-  ObjectID(object_->__obmeta__, cache) = id;
-  ObjectCount(object_->__obmeta__, 1);
-  ObjectPlaceContent(object_, cache) = value;
+  o_meta(object_)[place] = ((place > 8) << 3) | (place - (place > 8));
+  o_data(object_)[place].key = key;
+  o_data(object_)[place].val = val;
 }
 
 
-static __attribute__((nonnull)) void webdriverObjectRemove(Webdriver_TObject object, const void * __restrict__ key, const void *__restrict__ value)
+static __attribute__((nonnull)) void o_remove(Webdriver_TObject object, const void * __restrict__ key, const void *__restrict__ value)
 {
   Webdriver_TObject object_;
-  uint8_t id = webdriverObjectGetId(key), cache;
+  uint32_t place = o_code(obj, key);
 
   object_ = object;
-  while ((cache = ObjectFindKey(object, key, id)) < 0)
-	object_ = object_->__obnext__;
+  while (o_find(object, key, place) < 0)
+    object_ = o_next(object_);
 
-  ObjectID(object_->__obmeta__, cache) = -1;
+  o_setid(obj, place, 0) = -1;
   ObjectCount(object_->__obmeta__, -1);
 }
